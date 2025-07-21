@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "default": "piattaforma-marketing-v2",
+    "v2": "piattaforma-marketing-v2",
+    "originale": "piattaforma-marketing-frattin"
+  },
+  "targets": {},
+  "etags": {}
+}
