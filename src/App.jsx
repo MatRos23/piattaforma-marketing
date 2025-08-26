@@ -1,103 +1,98 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { auth, db } from './firebase/config';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from './firebase/config';
-import { Toaster } from 'react-hot-toast';
-
-// Layouts
-import ManagerLayout from './layouts/ManagerLayout';
-import CollaboratorLayout from './layouts/CollaboratorLayout';
-import AdminLayout from './layouts/AdminLayout';
-
-// Pagine
+import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
-import BudgetPage from './pages/BudgetPage';
 import ExpensesPage from './pages/ExpensesPage';
+import BudgetPage from './pages/BudgetPage';
 import SettingsPage from './pages/SettingsPage';
-
-function LoadingSpinner() {
-  return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}>
-      <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-white"></div>
-    </div>
-  );
-}
+import Spinner from './components/Spinner';
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          setUser({ id: userDoc.id, ...userDoc.data() });
-        } else {
-          signOut(auth);
-          setUser(null);
-        }
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
+    const [user, setUser] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [pageState, setPageState] = useState({
+        currentPage: 'dashboard',
+        initialFilters: {},
     });
-    return () => unsubscribe();
-  }, []);
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
+    const navigate = (page, filters = {}) => {
+        setPageState({ currentPage: page, initialFilters: filters });
+    };
 
-  if (!user) {
+    const renderPage = (page, user, filters) => {
+        const userPermissions = {
+            manager: ['dashboard', 'budget', 'expenses', 'settings'],
+            collaborator: ['dashboard', 'expenses'],
+            admin: ['dashboard', 'expenses', 'budget', 'settings'],
+        };
+        const allowedPages = userPermissions[user.role] || [];
+        if (!allowedPages.includes(page)) {
+            return <DashboardPage user={user} navigate={navigate} />;
+        }
+
+        switch (page) {
+            case 'dashboard':
+                return <DashboardPage user={user} navigate={navigate} />;
+            case 'expenses':
+                return <ExpensesPage user={user} initialFilters={filters} />;
+            case 'budget':
+                return <BudgetPage user={user} />;
+            case 'settings':
+                return <SettingsPage user={user} />;
+            default:
+                return <DashboardPage user={user} navigate={navigate} />;
+        }
+    };
+
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+            if (firebaseUser) {
+                const userDocRef = doc(db, 'users', firebaseUser.uid);
+                const userDoc = await getDoc(userDocRef);
+                if (userDoc.exists()) {
+                    setUser({ uid: firebaseUser.uid, ...userDoc.data() });
+                } else {
+                    signOut(auth);
+                    setUser(null);
+                }
+            } else {
+                setUser(null);
+            }
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const handleLogout = () => {
+        signOut(auth).catch(error => console.error("Errore durante il logout:", error));
+    };
+
+    if (isLoading) {
+        return (
+            <div className="w-screen h-screen flex items-center justify-center">
+                <Spinner />
+            </div>
+        );
+    }
+
+    if (!user) {
+        return <LoginPage />;
+    }
+
     return (
-      <Routes>
-        <Route path="*" element={<LoginPage />} />
-      </Routes>
+        <div className="flex h-screen bg-gray-50">
+            <Sidebar
+                user={user}
+                currentPage={pageState.currentPage}
+                setCurrentPage={(page) => navigate(page)}
+                handleLogout={handleLogout}
+            />
+            <main className="flex-1 overflow-y-auto">
+                {renderPage(pageState.currentPage, user, pageState.initialFilters)}
+            </main>
+        </div>
     );
-  }
-
-  switch (user.role) {
-    case 'manager':
-      return (
-        <Routes>
-          <Route element={<ManagerLayout user={user} />}>
-            <Route index element={<DashboardPage user={user} />} />
-            <Route path="budget" element={<BudgetPage user={user} />} />
-            <Route path="expenses" element={<ExpensesPage user={user} />} />
-            <Route path="settings" element={<SettingsPage user={user} />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Route>
-        </Routes>
-      );
-    case 'collaborator':
-      return (
-        <Routes>
-          <Route element={<CollaboratorLayout user={user} />}>
-            <Route index element={<DashboardPage user={user} />} />
-            <Route path="expenses" element={<ExpensesPage user={user} />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Route>
-        </Routes>
-      );
-    case 'admin':
-        return (
-          <Routes>
-            <Route element={<AdminLayout user={user} />}>
-              <Route index element={<DashboardPage user={user} />} />
-              <Route path="expenses" element={<ExpensesPage user={user} />} />
-              <Route path="*" element={<Navigate to="/" />} />
-            </Route>
-          </Routes>
-        );
-    default:
-        return (
-            <Routes>
-                <Route path="*" element={<LoginPage />} />
-            </Routes>
-        );
-  }
 }

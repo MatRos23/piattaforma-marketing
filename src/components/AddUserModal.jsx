@@ -1,64 +1,57 @@
 import React, { useState } from 'react';
-import { getApp } from 'firebase/app'; // <-- IMPORT MANCANTE
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-export default function AddUserModal({ isOpen, onClose }) {
+export default function AddUserModal({ isOpen, onClose, onSave }) {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [role, setRole] = useState('collaborator');
-    const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
 
     if (!isOpen) return null;
 
-    const handleCreateUser = async () => {
-        if (!name || !email || !password || password.length < 6) {
-            setError('Tutti i campi sono obbligatori e la password deve essere di almeno 6 caratteri.');
-            return;
+    const handleSave = () => {
+        if (!name.trim() || !email.trim() || !password.trim()) {
+            return toast.error("Tutti i campi sono obbligatori.");
         }
-        setLoading(true);
-        setError('');
-
-        try {
-            // Specifichiamo la regione qui per essere sicuri
-            const functions = getFunctions(getApp(), 'europe-west1');
-            const createUser = httpsCallable(functions, 'createUserAccount');
-            const result = await createUser({ name, email, password, role });
-            
-            toast.success(result.data.message);
-            onClose(); // Chiude la modale in caso di successo
-        } catch (err) {
-            console.error("Errore dalla cloud function:", err);
-            setError(err.message || 'Si è verificato un errore.');
-        } finally {
-            setLoading(false);
+        if (password.length < 6) {
+            return toast.error("La password deve essere di almeno 6 caratteri.");
         }
+        onSave({ name, email, password, role });
     };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-                <div className="p-6 border-b"><h3 className="text-xl font-bold text-gray-800">Aggiungi Nuovo Utente</h3></div>
+            <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-2xl w-full max-w-md flex flex-col">
+                <div className="p-6 border-b flex justify-between items-center">
+                    <h3 className="text-xl font-bold text-gray-800">Nuovo Utente</h3>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X /></button>
+                </div>
                 <div className="p-6 space-y-4">
-                    {error && <p className="bg-red-100 text-red-700 p-3 rounded-lg text-center">{error}</p>}
-                    <div><label className="text-sm font-bold text-gray-600 block mb-2">Nome Completo</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg"/></div>
-                    <div><label className="text-sm font-bold text-gray-600 block mb-2">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg"/></div>
-                    <div><label className="text-sm font-bold text-gray-600 block mb-2">Password (min. 6 caratteri)</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg"/></div>
                     <div>
-                        <label className="text-sm font-bold text-gray-600 block mb-2">Ruolo</label>
-                        <select value={role} onChange={e => setRole(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg">
-                            <option value="collaborator">Collaboratore</option>
+                        <label className="text-sm font-bold text-gray-600 block mb-1">Nome Completo</label>
+                        <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition" />
+                    </div>
+                     <div>
+                        <label className="text-sm font-bold text-gray-600 block mb-1">Email</label>
+                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition" />
+                    </div>
+                     <div>
+                        <label className="text-sm font-bold text-gray-600 block mb-1">Password</label>
+                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition" placeholder="Minimo 6 caratteri" />
+                    </div>
+                    <div>
+                        <label className="text-sm font-bold text-gray-600 block mb-1">Ruolo</label>
+                        <select value={role} onChange={(e) => setRole(e.target.value)} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition">
+                            <option value="collaborator">Collaborator</option>
+                            <option value="manager">Manager</option>
                             <option value="admin">Admin</option>
                         </select>
                     </div>
                 </div>
-                <div className="p-4 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
-                    <button type="button" onClick={onClose} disabled={loading} className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 font-semibold disabled:opacity-50">Annulla</button>
-                    <button onClick={handleCreateUser} disabled={loading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-semibold disabled:bg-indigo-300">
-                        {loading ? 'Creazione...' : 'Crea Utente'}
-                    </button>
+                <div className="p-4 bg-gray-50 flex justify-end gap-3 rounded-b-xl border-t">
+                    <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300">Annulla</button>
+                    <button onClick={handleSave} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Crea Utente</button>
                 </div>
             </div>
         </div>

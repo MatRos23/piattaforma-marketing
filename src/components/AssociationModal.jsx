@@ -1,126 +1,114 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X } from 'lucide-react';
+import { X, Check } from 'lucide-react';
 
-export default function AssociationModal({ isOpen, onClose, onSave, initialData, title, itemLabel, associationLists = [], channelCategories = [] }) {
-    const [name, setName] = useState('');
-    const [associations, setAssociations] = useState({});
-    const [category, setCategory] = useState(''); // Aggiunto per gestire la categoria del fornitore
+const MultiSelect = ({ options, selected, onChange }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const filteredOptions = useMemo(() => 
+        (options || []).filter(opt => opt.name.toLowerCase().includes(searchTerm.toLowerCase())),
+        [options, searchTerm]
+    );
+
+    const selectedNames = useMemo(() => 
+        (options || []).filter(opt => (selected || []).includes(opt.id)).map(opt => opt.name).join(', '),
+        [options, selected]
+    );
+
+    return (
+        <div className="relative">
+            <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full h-11 px-3 text-left border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition bg-white">
+                <span className="block truncate text-gray-700">
+                    {selected && selected.length > 0 ? selectedNames : <span className="text-gray-400">Seleziona...</span>}
+                </span>
+            </button>
+            {isOpen && (
+                <div className="absolute z-20 mt-1 w-full bg-white shadow-lg rounded-lg border max-h-60 overflow-y-auto">
+                    <div className="p-2">
+                        <input type="text" placeholder="Cerca..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
+                    </div>
+                    <ul className="p-1">
+                        {filteredOptions.map(option => {
+                            const isChecked = (selected || []).includes(option.id);
+                            return (
+                                <li key={option.id} onClick={() => onChange(option.id)} className="p-2 rounded-md hover:bg-indigo-50 cursor-pointer flex items-center">
+                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${isChecked ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-gray-300'}`}>
+                                        {isChecked && <Check className="w-4 h-4 text-white" />}
+                                    </div>
+                                    <span className="ml-3 text-sm text-gray-700">{option.name}</span>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default function AssociationModal({ isOpen, onClose, onSave, initialData, title, itemLabel, associationLists = [] }) {
+    const [formData, setFormData] = useState({});
 
     useEffect(() => {
         if (isOpen) {
-            setName(initialData?.name || '');
-            setCategory(initialData?.category || ''); // Inizializza la categoria
-            const initialAssociations = {};
+            const data = { name: initialData?.name || '' };
             associationLists.forEach(list => {
-                initialAssociations[list.key] = initialData?.[list.key] || [];
+                data[list.key] = initialData?.[list.key] || [];
             });
-            setAssociations(initialAssociations);
+            setFormData(data);
         }
     }, [isOpen, initialData, associationLists]);
 
-    const groupedMarketingChannels = useMemo(() => {
-        const marketingChannelList = associationLists.find(l => l.key === 'offeredMarketingChannels');
-        if (!marketingChannelList) return null;
-
-        return channelCategories.map(cat => ({
-            name: cat.name,
-            channels: marketingChannelList.items.filter(channel => channel.categoryId === cat.id)
-        })).filter(group => group.channels.length > 0);
-    }, [associationLists, channelCategories]);
-
     if (!isOpen) return null;
 
-    const handleSave = () => {
-        const formData = { ...associations };
-        if (itemLabel.includes("Nome")) {
-            formData.name = name;
-        }
-        // Aggiungi la categoria al salvataggio solo se stiamo modificando un fornitore
-        if (title.toLowerCase().includes('fornitore')) {
-            formData.category = category;
-        }
-        onSave(formData);
+    const handleInputChange = (e) => {
+        setFormData(prev => ({ ...prev, name: e.target.value }));
     };
 
-    const handleAssociationChange = (key, itemId) => {
-        setAssociations(prev => {
-            const currentList = prev[key] || [];
-            const newList = currentList.includes(itemId)
-                ? currentList.filter(id => id !== itemId)
-                : [...currentList, itemId];
-            return { ...prev, [key]: newList };
+    const handleMultiSelectChange = (key, itemId) => {
+        setFormData(prev => {
+            const currentSelection = prev[key] || [];
+            const newSelection = currentSelection.includes(itemId)
+                ? currentSelection.filter(id => id !== itemId)
+                : [...currentSelection, itemId];
+            return { ...prev, [key]: newSelection };
         });
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(formData);
     };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl">
-                <div className="p-6 border-b flex justify-between items-center">
-                    <h3 className="text-xl font-bold text-gray-800">{title}</h3>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><X size={24} /></button>
-                </div>
-                <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-                    {itemLabel.includes("Nome") && (
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+                <form onSubmit={handleSubmit}>
+                    <div className="p-6 border-b flex justify-between items-center">
+                        <h3 className="text-xl font-bold text-gray-800">{title}</h3>
+                        <button type="button" onClick={onClose}><X size={24}/></button>
+                    </div>
+                    <div className="p-6 space-y-4">
                         <div>
                             <label className="text-sm font-bold text-gray-600 block mb-1">{itemLabel}</label>
-                            <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 border rounded-md" />
+                            <input type="text" value={formData.name || ''} onChange={handleInputChange} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition" required />
                         </div>
-                    )}
-                    
-                    {title.toLowerCase().includes('fornitore') && (
-                         <div>
-                            <label className="text-sm font-bold text-gray-600 block mb-1">Categoria Fornitore</label>
-                            <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full p-2 border rounded-md bg-white">
-                                <option value="">Seleziona Categoria</option>
-                                {channelCategories.map(cat => (
-                                    <option key={cat.id} value={cat.name}>{cat.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    {associationLists.map(list => (
-                        <div key={list.key}>
-                            <h4 className="text-md font-bold text-gray-700 mb-2">{list.label}</h4>
-                            {list.key === 'offeredMarketingChannels' && groupedMarketingChannels ? (
-                                <div className="space-y-4">
-                                    {groupedMarketingChannels.map(group => (
-                                        <div key={group.name} className="p-3 bg-gray-50 rounded-lg border">
-                                            <p className="font-semibold text-gray-600 text-sm mb-2">{group.name}</p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {group.channels.map(item => {
-                                                    const isChecked = associations[list.key]?.includes(item.id) || false;
-                                                    return (
-                                                        <div key={item.id}>
-                                                            <input type="checkbox" id={`${list.key}-${item.id}`} checked={isChecked} onChange={() => handleAssociationChange(list.key, item.id)} className="sr-only"/>
-                                                            <label htmlFor={`${list.key}-${item.id}`} className={`px-3 py-1 text-sm rounded-full border cursor-pointer transition-colors ${isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white hover:bg-gray-200'}`}>{item.name}</label>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="flex flex-wrap gap-2">
-                                    {list.items.map(item => {
-                                        const isChecked = associations[list.key]?.includes(item.id) || false;
-                                        return (
-                                            <div key={item.id}>
-                                                <input type="checkbox" id={`${list.key}-${item.id}`} checked={isChecked} onChange={() => handleAssociationChange(list.key, item.id)} className="sr-only"/>
-                                                <label htmlFor={`${list.key}-${item.id}`} className={`px-3 py-1 text-sm rounded-full border cursor-pointer transition-colors ${isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white hover:bg-gray-200'}`}>{item.name}</label>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-                <div className="p-4 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
-                    <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300">Annulla</button>
-                    <button onClick={handleSave} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Salva Associazioni</button>
-                </div>
+                        {associationLists.map(list => (
+                            <div key={list.key}>
+                                <label className="text-sm font-bold text-gray-600 block mb-1">{list.label}</label>
+                                <MultiSelect 
+                                    options={list.items}
+                                    selected={formData[list.key] || []}
+                                    onChange={(itemId) => handleMultiSelectChange(list.key, itemId)}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                    <div className="p-4 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+                        <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300">Annulla</button>
+                        <button type="submit" className="px-6 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Salva</button>
+                    </div>
+                </form>
             </div>
         </div>
     );
