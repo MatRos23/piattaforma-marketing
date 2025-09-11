@@ -1,58 +1,77 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    function isManager() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
+
+    // --- Funzioni Helper per i Ruoli ---
+    // Funzione sicura per leggere il ruolo di un utente.
+    // Restituisce il ruolo o 'none' se non esiste.
+    function getUserRole(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role;
     }
 
+    // Funzione per controllare se l'utente attuale è Manager o Admin
+    function isManagerOrAdmin() {
+      let userRole = getUserRole(request.auth.uid);
+      return userRole == 'manager' || userRole == 'admin';
+    }
+
+    // --- Regole per le Collezioni ---
+
+    // USERS: Gli utenti possono leggere e modificare solo i propri dati.
+    // Manager e Admin possono leggere i dati di tutti.
     match /users/{userId} {
-      allow read: if request.auth.uid == userId || isManager();
-      allow create: if request.auth.uid == userId || isManager();
-      allow update: if request.auth.uid == userId || isManager();
-      allow delete: if isManager();
+      allow read: if request.auth.uid == userId || isManagerOrAdmin();
+      allow update: if request.auth.uid == userId;
+      // Solo Manager e Admin possono creare o eliminare utenti.
+      allow create, delete: if isManagerOrAdmin();
     }
 
+    // EXPENSES: Tutti possono leggere e creare.
+    // Solo il creatore o un Manager/Admin può modificare o eliminare.
+    match /expenses/{expenseId} {
+      allow read, create: if request.auth != null;
+      allow update, delete: if isManagerOrAdmin() || request.auth.uid == resource.data.authorId;
+    }
+
+    // CONTRACTS: Tutti possono leggere (per collegarli alle spese).
+    // Solo Manager e Admin possono scrivere.
+    match /contracts/{contractId} {
+      allow read: if request.auth != null;
+      allow write: if isManagerOrAdmin();
+    }
+
+    // BUDGETS: Solo Manager e Admin possono leggere e scrivere.
+    match /budgets/{docId} {
+      allow read, write: if isManagerOrAdmin();
+    }
+
+    // --- Regole per le Collezioni di Configurazione ---
+    // (Fornitori, Settori, Filiali, etc.)
+    // Tutti possono leggere, solo Manager e Admin possono scrivere.
     match /sectors/{docId} {
       allow read: if request.auth != null;
-      allow write: if isManager();
+      allow write: if isManagerOrAdmin();
     }
-
     match /branches/{docId} {
       allow read: if request.auth != null;
-      allow write: if isManager();
+      allow write: if isManagerOrAdmin();
     }
-
-    // Regola per i FORNITORI (la collezione si chiama ancora 'channels')
-    match /channels/{docId} {
+    match /channels/{docId} { // channels = Fornitori
       allow read: if request.auth != null;
-      allow write: if isManager();
+      allow write: if isManagerOrAdmin();
     }
-
-    // NUOVA REGOLA MANCANTE per i CANALI DI MARKETING
     match /marketing_channels/{docId} {
       allow read: if request.auth != null;
-      allow write: if isManager();
+      allow write: if isManagerOrAdmin();
     }
-
     match /channel_categories/{docId} {
       allow read: if request.auth != null;
-      allow write: if isManager();
+      allow write: if isManagerOrAdmin();
     }
-    
     match /geographic_areas/{docId} {
       allow read: if request.auth != null;
-      allow write: if isManager();
-    }
-    
-    match /budgets/{docId} {
-      allow read, write: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['manager', 'admin'];
-    }
-
-    match /expenses/{expenseId} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null;
-      allow update, delete: if isManager() || request.auth.uid == resource.data.authorId;
+      allow write: if isManagerOrAdmin();
     }
   }
 }

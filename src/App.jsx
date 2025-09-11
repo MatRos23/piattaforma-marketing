@@ -9,6 +9,7 @@ import ExpensesPage from './pages/ExpensesPage';
 import BudgetPage from './pages/BudgetPage';
 import SettingsPage from './pages/SettingsPage';
 import Spinner from './components/Spinner';
+import ContractsPage from './pages/ContractsPage';
 
 export default function App() {
     const [user, setUser] = useState(null);
@@ -24,29 +25,30 @@ export default function App() {
 
     const renderPage = (page, user, filters) => {
         const userPermissions = {
-            manager: ['dashboard', 'budget', 'expenses', 'settings'],
-            collaborator: ['dashboard', 'expenses'],
-            admin: ['dashboard', 'expenses', 'budget', 'settings'],
-        };
+    manager: ['dashboard', 'budget', 'expenses', 'settings', 'contracts'],
+    collaborator: ['dashboard', 'expenses'],
+    admin: ['dashboard', 'expenses', 'budget', 'settings', 'contracts'],
+    };
         const allowedPages = userPermissions[user.role] || [];
         if (!allowedPages.includes(page)) {
             return <DashboardPage user={user} navigate={navigate} />;
         }
 
         switch (page) {
-            case 'dashboard':
-                return <DashboardPage user={user} navigate={navigate} />;
-            case 'expenses':
-                return <ExpensesPage user={user} initialFilters={filters} />;
-            case 'budget':
-                return <BudgetPage user={user} />;
-            case 'settings':
-                return <SettingsPage user={user} />;
-            default:
-                return <DashboardPage user={user} navigate={navigate} />;
-        }
-    };
-
+        case 'dashboard':
+            return <DashboardPage user={user} navigate={navigate} />;
+        case 'expenses':
+            return <ExpensesPage user={user} initialFilters={filters} />;
+        case 'budget':
+            return <BudgetPage user={user} />;
+        case 'settings':
+            return <SettingsPage user={user} />;
+        case 'contracts':
+            return <ContractsPage user={user} />;
+        default:
+            return <DashboardPage user={user} navigate={navigate} />;
+    }
+};
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {

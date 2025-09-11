@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { db } from '../firebase/config';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { collection, query, where, orderBy, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { PlusCircle, SlidersHorizontal, Pencil, Trash2, Search, ChevronDown, Paperclip, Copy, AlertCircle, XCircle, Wallet, X, Car, Sailboat, Caravan, Building2, Layers, DollarSign } from 'lucide-react';
+import { collection, query, orderBy, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { PlusCircle, SlidersHorizontal, Pencil, Trash2, Search, ChevronDown, Paperclip, Copy, AlertCircle, XCircle, Wallet, X, Car, Sailboat, Caravan, Building2, Layers, DollarSign, Group, FileText, Link2, FileSignature } from 'lucide-react';
 import ExpenseFormModal from '../components/ExpenseFormModal';
 import toast from 'react-hot-toast';
 import EmptyState from '../components/EmptyState';
@@ -12,16 +13,9 @@ const storage = getStorage();
 const getSectorIcon = (sectorName, customClassName) => {
     const baseClassName = "w-5 h-5";
     const finalClassName = customClassName || `${baseClassName} text-gray-500`;
-    const icons = {
-        'Auto': <Car className={finalClassName} />,
-        'Camper&Caravan': <Caravan className={finalClassName} />,
-        'Yachting': <Sailboat className={finalClassName} />,
-        'Frattin Group': <Building2 className={finalClassName} />,
-        'default': <DollarSign className={finalClassName} />,
-    };
+    const icons = { 'Auto': <Car className={finalClassName} />, 'Camper&Caravan': <Caravan className={finalClassName} />, 'Yachting': <Sailboat className={finalClassName} />, 'Frattin Group': <Building2 className={finalClassName} />, 'default': <DollarSign className={finalClassName} /> };
     return icons[sectorName] || icons.default;
 };
-
 
 const formatCurrency = (number) => {
     if (typeof number !== 'number') return 'N/A';
@@ -54,7 +48,7 @@ const ExpenseSkeleton = () => (
     </div>
 );
 
-const AdvancedFiltersModal = ({ isOpen, onClose, invoiceFilter, setInvoiceFilter, branchFilter, setBranchFilter, areaFilter, setAreaFilter, branches, geographicAreas }) => {
+const AdvancedFiltersModal = ({ isOpen, onClose, invoiceFilter, setInvoiceFilter, contractFilter, setContractFilter, branchFilter, setBranchFilter, areaFilter, setAreaFilter, branches, geographicAreas }) => {
     if (!isOpen) return null;
     const handleBranchChange = (branchId) => setBranchFilter(prev => prev.includes(branchId) ? prev.filter(id => id !== branchId) : [...prev, branchId]);
     return (
@@ -62,6 +56,14 @@ const AdvancedFiltersModal = ({ isOpen, onClose, invoiceFilter, setInvoiceFilter
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
                 <div className="p-4 border-b flex justify-between items-center"><h3 className="text-lg font-semibold">Filtri Avanzati</h3><button onClick={onClose}><X size={20}/></button></div>
                 <div className="p-4 space-y-4">
+                    <div>
+                        <label htmlFor="contract-filter-modal" className="text-sm font-bold text-gray-600 block mb-1">Stato Contratto</label>
+                        <select id="contract-filter-modal" value={contractFilter} onChange={(e) => setContractFilter(e.target.value)} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition">
+                            <option value="">Tutti</option>
+                            <option value="present">Con Contratto</option>
+                            <option value="missing">Senza Contratto</option>
+                        </select>
+                    </div>
                     <div><label htmlFor="invoice-filter-modal" className="text-sm font-bold text-gray-600 block mb-1">Stato Fattura</label><select id="invoice-filter-modal" value={invoiceFilter} onChange={(e) => setInvoiceFilter(e.target.value)} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition"><option value="">Tutte</option><option value="missing">Mancante</option><option value="present">Presente</option></select></div>
                     <div><label htmlFor="area-filter-modal" className="text-sm font-bold text-gray-600 block mb-1">Area Geografica</label><select id="area-filter-modal" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition"><option value="">Tutte</option>{geographicAreas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
                     <div><label className="text-sm font-bold text-gray-600 block mb-1">Filiali Specifiche</label><div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1">{branches.map(b => (<label key={b.id} className="flex items-center space-x-2 p-1 rounded-md hover:bg-gray-100 cursor-pointer"><input type="checkbox" checked={branchFilter.includes(b.id)} onChange={() => handleBranchChange(b.id)} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"/><span>{b.name}</span></label>))}</div></div>
@@ -72,14 +74,15 @@ const AdvancedFiltersModal = ({ isOpen, onClose, invoiceFilter, setInvoiceFilter
     );
 };
 
-
-export default function ExpensesPage({ user, initialFilters = {} }) {
+export default function ExpensesPage({ user, initialFilters }) {
+    const location = useLocation();
     const [allExpenses, setAllExpenses] = useState([]);
     const [branches, setBranches] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [marketingChannels, setMarketingChannels] = useState([]);
     const [sectors, setSectors] = useState([]);
     const [geographicAreas, setGeographicAreas] = useState([]);
+    const [contracts, setContracts] = useState([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingExpense, setEditingExpense] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -91,6 +94,7 @@ export default function ExpensesPage({ user, initialFilters = {} }) {
     const [selectedSector, setSelectedSector] = useState('all');
     const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
     const [invoiceFilter, setInvoiceFilter] = useState('');
+    const [contractFilter, setContractFilter] = useState('');
     const [branchFilter, setBranchFilter] = useState([]);
     const [areaFilter, setAreaFilter] = useState('');
     const [specialFilter, setSpecialFilter] = useState(null);
@@ -100,100 +104,197 @@ export default function ExpensesPage({ user, initialFilters = {} }) {
     const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers]);
     const marketingChannelMap = useMemo(() => new Map(marketingChannels.map(mc => [mc.id, mc.name])), [marketingChannels]);
     const geoAreaMap = useMemo(() => new Map(geographicAreas.map(a => [a.id, a.name])), [geographicAreas]);
+    const contractMap = useMemo(() => new Map(contracts.map(c => [c.id, c])), [contracts]);
 
     useEffect(() => {
-        if (initialFilters && Object.keys(initialFilters).length > 0) {
-            if (initialFilters.branchFilter) {
-                setBranchFilter(initialFilters.branchFilter);
-                setIsAdvancedFiltersOpen(true);
-            }
-            if (initialFilters.specialFilter) setSpecialFilter(initialFilters.specialFilter);
+        const filters = initialFilters || location.state;
+        if (filters && Object.keys(filters).length > 0) {
+            if (filters.branchFilter) { setBranchFilter(filters.branchFilter); setIsAdvancedFiltersOpen(true); } else { setBranchFilter([]); }
+            if (filters.specialFilter) { setSpecialFilter(filters.specialFilter); } else { setSpecialFilter(null); }
+        } else {
+            setBranchFilter([]); setSpecialFilter(null);
         }
-    }, [initialFilters]);
+    }, [initialFilters, location.state]);
 
     useEffect(() => {
-        setIsLoading(true);
-        const unsubs = [
-            onSnapshot(query(collection(db, "expenses"), orderBy("date", "desc")), (snap) => {
-                const cleanedExpenses = snap.docs.map((doc) => {
-                    const data = doc.data();
-                    const id = doc.id;
-                    let lineItems = [];
-                    if (Array.isArray(data.lineItems) && data.lineItems.length > 0) {
-                        lineItems = data.lineItems.map((item, itemIndex) => ({
-                            description: item.description || '',
-                            amount: item.amount || 0,
-                            marketingChannelId: item.marketingChannelId || '',
-                            assignmentType: item.assignmentType || 'branch',
-                            assignmentId: item.assignmentId || data.branchId || '',
-                            _key: `${id}-${itemIndex}` 
-                        }));
-                    } else {
-                        lineItems.push({
-                            description: data.description || 'Voce principale',
-                            amount: data.amount || 0,
-                            marketingChannelId: data.marketingChannelId || '',
-                            assignmentType: 'branch',
-                            assignmentId: data.branchId || '',
-                            _key: `${id}-0`
-                        });
+    setIsLoading(true);
+
+    const filters = initialFilters || location.state;
+    if (filters) {
+        if (filters.branchFilter) {
+            setBranchFilter(filters.branchFilter);
+            setIsAdvancedFiltersOpen(true);
+        }
+        if (filters.specialFilter) {
+            setSpecialFilter(filters.specialFilter);
+        }
+    }
+
+    const unsubs = [
+        onSnapshot(query(collection(db, "expenses"), orderBy("date", "desc")), (snap) => {
+            const cleanedExpenses = snap.docs.map((doc) => {
+                const data = doc.data();
+                
+                // --- LOGICA DI PULIZIA ALLINEATA A QUELLA DELLA DASHBOARD ---
+                let supplierld = data.supplierld || data.supplierId || data.channelld || data.channelId;
+                let sectorld = data.sectorld || data.sectorId;
+                
+                const lineItems = Array.isArray(data.lineItems) ? data.lineItems.map((item, index) => ({
+                    ...item,
+                    _key: `${doc.id}-${index}` // Assicura una chiave unica
+                })) : [];
+
+                if (!supplierld && lineItems.length > 0) {
+                    for (const item of lineItems) {
+                        if (item.supplierld || item.supplierId) {
+                            supplierld = item.supplierld || item.supplierId;
+                            break;
+                        }
                     }
-                    return { ...data, id, supplierId: data.supplierId || data.channelId, lineItems, branchId: data.branchId || null };
-                });
-                setAllExpenses(cleanedExpenses);
-                setIsLoading(false);
-            }),
-            onSnapshot(query(collection(db, "sectors"), orderBy("name")), (snap) => setSectors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "branches"), orderBy("name")), (snap) => setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "channels"), orderBy("name")), (snap) => setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "marketing_channels"), orderBy("name")), (snap) => setMarketingChannels(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "geographic_areas"), orderBy("name")), (snap) => setGeographicAreas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))))
-        ];
-        return () => unsubs.forEach(unsub => unsub());
-    }, []);
+                }
+                if (!sectorld && lineItems.length > 0) {
+                     for (const item of lineItems) {
+                        if (item.sectorld || item.sectorId) {
+                            sectorld = item.sectorld || item.sectorId;
+                            break;
+                        }
+                    }
+                }
+
+                // Se dopo tutto non ci sono lineItems, ne crea uno fittizio dai dati principali
+                if (lineItems.length === 0) {
+                    lineItems.push({
+                        description: data.description || 'Voce principale',
+                        amount: data.amount || 0,
+                        marketingChannelld: data.marketingChannelld || data.marketingChannelId || '',
+                        assignmentId: data.branchld || data.branchId || '',
+                        _key: `${doc.id}-0`
+                    });
+                }
+                
+                return { ...data, id: doc.id, supplierld, sectorld, lineItems };
+            });
+            setAllExpenses(cleanedExpenses);
+            setIsLoading(false);
+        }),
+        onSnapshot(query(collection(db, "sectors"), orderBy("name")), (snap) => setSectors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(query(collection(db, "branches"), orderBy("name")), (snap) => setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(query(collection(db, "channels"), orderBy("name")), (snap) => setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(query(collection(db, "marketing_channels"), orderBy("name")), (snap) => setMarketingChannels(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(query(collection(db, "geographic_areas"), orderBy("name")), (snap) => setGeographicAreas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(query(collection(db, "contracts"), orderBy("description")), (snap) => setContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))))
+    ];
+
+    return () => unsubs.forEach(unsub => unsub());
+}, [initialFilters, location.state]);
 
     const filteredExpenses = useMemo(() => {
-        let expensesToFilter = [...allExpenses];
-        if (specialFilter === 'unassigned') {
-            expensesToFilter = expensesToFilter.filter(exp => exp.isMultiBranch ? exp.lineItems.some(item => !item.assignmentId || !branchMap.has(item.assignmentId)) : !exp.branchId || !branchMap.has(exp.branchId));
-        }
-        if (selectedSector !== 'all') expensesToFilter = expensesToFilter.filter(exp => exp.sectorId === selectedSector);
-        if (dateFilter.startDate && dateFilter.endDate) {
-            const start = new Date(dateFilter.startDate); start.setHours(0, 0, 0, 0);
-            const end = new Date(dateFilter.endDate); end.setHours(23, 59, 59, 999);
-            expensesToFilter = expensesToFilter.filter(exp => { const expDate = exp.date ? new Date(exp.date) : null; return expDate && expDate >= start && expDate <= end; });
-        }
-        if (supplierFilter) expensesToFilter = expensesToFilter.filter(exp => exp.supplierId === supplierFilter);
-        if (invoiceFilter === 'missing') expensesToFilter = expensesToFilter.filter(exp => !exp.invoicePdfUrl);
-        if (invoiceFilter === 'present') expensesToFilter = expensesToFilter.filter(exp => !!exp.invoicePdfUrl);
-        if (areaFilter) {
-            const area = geographicAreas.find(a => a.id === areaFilter);
-            const branchesInArea = area?.associatedBranches || [];
-            expensesToFilter = expensesToFilter.filter(exp => !exp.isMultiBranch ? branchesInArea.includes(exp.branchId) : exp.lineItems.some(item => branchesInArea.includes(item.assignmentId)));
-        }
-        if (branchFilter.length > 0) {
-            expensesToFilter = expensesToFilter.filter(exp => !exp.isMultiBranch ? branchFilter.includes(exp.branchId) : exp.lineItems.some(item => item.assignmentType === 'branch' && branchFilter.includes(item.assignmentId)));
-        }
-        if (searchTerm.trim() !== '') {
-            const lowerSearchTerm = searchTerm.toLowerCase();
-            expensesToFilter = expensesToFilter.filter(exp => {
-                const channelNames = [...new Set(exp.lineItems?.map(item => item.marketingChannelId).filter(Boolean))].map(id => marketingChannelMap.get(id) || '').join(' ');
-                return exp.description?.toLowerCase().includes(lowerSearchTerm) || supplierMap.get(exp.supplierId)?.toLowerCase().includes(lowerSearchTerm) || exp.lineItems?.some(item => item.description?.toLowerCase().includes(lowerSearchTerm)) || channelNames.toLowerCase().includes(lowerSearchTerm);
-            });
-        }
-        return expensesToFilter;
-    }, [allExpenses, searchTerm, supplierFilter, invoiceFilter, dateFilter, selectedSector, branchFilter, areaFilter, specialFilter, supplierMap, marketingChannelMap, geographicAreas, branchMap]);
+    let expensesToFilter = [...allExpenses];
+
+    // --- NUOVA LOGICA DI FILTRO PER "NON ASSEGNATE" ---
+    if (specialFilter === 'unassigned') {
+        expensesToFilter = expensesToFilter.filter(exp => {
+            // Un spesa è "non assegnata" se ha delle voci di costo E almeno una di esse non ha una filiale valida.
+            if (exp.lineItems && exp.lineItems.length > 0) {
+                return exp.lineItems.some(item => {
+                    const assignmentId = item.assignmentId || item.assignmentid;
+                    return !assignmentId || !branchMap.has(assignmentId);
+                });
+            }
+            // Altrimenti (se non ha voci di costo), controlla la filiale a livello principale.
+            const branchId = exp.branchld || exp.branchId;
+            return !branchId || !branchMap.has(branchId);
+        });
+    }
+    // --- FINE NUOVA LOGICA ---
+
+    if (selectedSector !== 'all') {
+        expensesToFilter = expensesToFilter.filter(exp => exp.sectorld === selectedSector);
+    }
+    
+    if (dateFilter.startDate && dateFilter.endDate) {
+        const start = new Date(dateFilter.startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(dateFilter.endDate);
+        end.setHours(23, 59, 59, 999);
+        expensesToFilter = expensesToFilter.filter(exp => {
+            const expDate = exp.date ? new Date(exp.date) : null;
+            return expDate && expDate >= start && expDate <= end;
+        });
+    }
+
+    if (supplierFilter) {
+        expensesToFilter = expensesToFilter.filter(exp => exp.supplierld === supplierFilter);
+    }
+    
+    if (contractFilter === 'present') expensesToFilter = expensesToFilter.filter(exp => !!exp.contractPdfUrl || !!exp.relatedContractId);
+    if (contractFilter === 'missing') expensesToFilter = expensesToFilter.filter(exp => !exp.contractPdfUrl && !exp.relatedContractId);
+    if (invoiceFilter === 'present') expensesToFilter = expensesToFilter.filter(exp => !!exp.invoicePdfUrl);
+    if (invoiceFilter === 'missing') expensesToFilter = expensesToFilter.filter(exp => !exp.invoicePdfUrl);
+    
+    if (areaFilter) {
+        const area = geographicAreas.find(a => a.id === areaFilter);
+        const branchesInArea = area?.associatedBranches || [];
+        expensesToFilter = expensesToFilter.filter(exp => 
+            exp.lineItems.some(item => branchesInArea.includes(item.assignmentId))
+        );
+    }
+    
+    if (branchFilter.length > 0) {
+        expensesToFilter = expensesToFilter.filter(exp => 
+            exp.lineItems.some(item => branchFilter.includes(item.assignmentId))
+        );
+    }
+
+    if (searchTerm.trim() !== '') {
+        const lowerSearchTerm = searchTerm.toLowerCase();
+        expensesToFilter = expensesToFilter.filter(exp => {
+            const channelNames = [...new Set(exp.lineItems?.map(item => item.marketingChannelld).filter(Boolean))]
+                .map(id => marketingChannelMap.get(id) || "").join(' ');
+            return exp.description?.toLowerCase().includes(lowerSearchTerm) ||
+                supplierMap.get(exp.supplierld)?.toLowerCase().includes(lowerSearchTerm) ||
+                exp.lineItems?.some(item => item.description?.toLowerCase().includes(lowerSearchTerm)) ||
+                channelNames.toLowerCase().includes(lowerSearchTerm);
+        });
+    }
+    
+    return expensesToFilter;
+}, [allExpenses, searchTerm, supplierFilter, invoiceFilter, contractFilter, dateFilter, selectedSector, branchFilter, areaFilter, specialFilter, supplierMap, marketingChannelMap, geographicAreas, branchMap]);
 
     const totalFilteredSpend = useMemo(() => filteredExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0), [filteredExpenses]);
     
     const groupedByMonth = useMemo(() => {
-        return filteredExpenses.reduce((acc, expense) => {
+        const groups = filteredExpenses.reduce((acc, expense) => {
             const month = expense.date ? expense.date.substring(0, 7) : 'Senza Data';
             if (!acc[month]) acc[month] = [];
             acc[month].push(expense);
             return acc;
         }, {});
-    }, [filteredExpenses]);
+        for (const month in groups) {
+            groups[month] = groups[month].map(expense => {
+                if (!expense.lineItems || expense.lineItems.length === 0) return { ...expense, groupedLineItems: [] };
+                const grouped = [];
+                const processedGroupIds = new Set();
+                expense.lineItems.forEach(item => {
+                    if (item.splitGroupId) {
+                        if (processedGroupIds.has(item.splitGroupId)) return;
+                        const groupItems = expense.lineItems.filter(li => li.splitGroupId === item.splitGroupId);
+                        const totalGroupAmount = groupItems.reduce((sum, gi) => sum + gi.amount, 0);
+                        const branchNames = groupItems.map(gi => branchMap.get(gi.assignmentId) || 'N/D').join(', ');
+                        grouped.push({
+                            _key: item.splitGroupId, isGroup: true, description: item.description, amount: totalGroupAmount,
+                            marketingChannelId: item.marketingChannelId, branchNames: branchNames, branchCount: groupItems.length,
+                        });
+                        processedGroupIds.add(item.splitGroupId);
+                    } else {
+                        grouped.push({ ...item, isGroup: false });
+                    }
+                });
+                return { ...expense, groupedLineItems: grouped };
+            });
+        }
+        return groups;
+    }, [filteredExpenses, branchMap]);
     
     useEffect(() => {
         if(Object.keys(groupedByMonth).length > 0) {
@@ -205,7 +306,7 @@ export default function ExpensesPage({ user, initialFilters = {} }) {
     const toggleMonth = (month) => setExpandedMonths(prev => ({ ...prev, [month]: !prev[month] }));
     const toggleExpense = (expenseId) => setExpandedExpenses(prev => ({ ...prev, [expenseId]: !prev[expenseId] }));
     const monthKeysSorted = Object.keys(groupedByMonth).sort((a, b) => b.localeCompare(a));
-    const canEditOrDelete = (expense) => user.role === 'manager' || expense.authorId === user.uid;
+    const canEditOrDelete = (expense) => user.role === 'manager' || user.role === 'admin' || expense.authorId === user.uid;
     const handleOpenAddModal = () => { setEditingExpense(null); setIsModalOpen(true); };
     const handleCloseModal = () => { setIsModalOpen(false); setEditingExpense(null); };
 
@@ -215,53 +316,46 @@ export default function ExpensesPage({ user, initialFilters = {} }) {
         setIsModalOpen(true);
     };
     
-    const handleSaveExpense = async (expenseData, invoiceFile) => {
+    const handleSaveExpense = async (expenseData, invoiceFile, contractFile) => {
         const isEditing = !!expenseData.id;
         const toastId = toast.loading(isEditing ? 'Aggiornamento...' : 'Salvataggio...');
-        
         try {
             const expenseId = isEditing ? expenseData.id : doc(collection(db, 'expenses')).id;
-            let fileURL = expenseData.invoicePdfUrl || "";
+            let invoiceURL = expenseData.invoicePdfUrl || "";
+            let contractURL = expenseData.contractPdfUrl || "";
             if (invoiceFile) {
-                const storageRef = ref(storage, `invoices/${expenseId}/${invoiceFile.name}`);
-                await uploadBytes(storageRef, invoiceFile);
-                fileURL = await getDownloadURL(storageRef);
+                const invoiceRef = ref(storage, `invoices/${expenseId}/${invoiceFile.name}`);
+                await uploadBytes(invoiceRef, invoiceFile);
+                invoiceURL = await getDownloadURL(invoiceRef);
             }
-
-            const cleanLineItems = (expenseData.lineItems || []).map(item => {
-                const assignmentId = expenseData.isMultiBranch ? item.assignmentId : expenseData.branchId;
-                if (!assignmentId) {
-                    throw new Error(`Assegnazione filiale mancante per la voce: "${item.description || '(voce senza nome)'}"`);
-                }
-                return {
-                    description: (item.description || '').trim(),
-                    amount: parseFloat(String(item.amount || '0').replace(',', '.')),
-                    assignmentType: 'branch',
-                    assignmentId: assignmentId,
-                    marketingChannelId: item.marketingChannelId,
-                };
-            });
-
+            if (contractFile) {
+                const contractRef = ref(storage, `contracts_on_expenses/${expenseId}/${contractFile.name}`);
+                await uploadBytes(contractRef, contractFile);
+                contractURL = await getDownloadURL(contractRef);
+            }
+            if (expenseData.isAmortized && (!expenseData.amortizationStartDate || !expenseData.amortizationEndDate)) {
+                throw new Error("Se la spesa è per competenza, le date di inizio e fine sono obbligatorie.");
+            }
+            if (expenseData.isAmortized && new Date(expenseData.amortizationStartDate) >= new Date(expenseData.amortizationEndDate)) {
+                throw new Error("La data di inizio competenza deve essere precedente alla data di fine.");
+            }
+            const cleanLineItems = expenseData.lineItems;
             if (cleanLineItems.length === 0) throw new Error("Aggiungere almeno una voce di spesa valida.");
             const finalTotalAmount = cleanLineItems.reduce((sum, item) => sum + item.amount, 0);
-            
             const dataToSave = {
-                date: expenseData.date,
-                description: expenseData.description,
-                sectorId: expenseData.sectorId,
-                supplierId: expenseData.supplierId,
-                isMultiBranch: expenseData.isMultiBranch,
-                branchId: expenseData.isMultiBranch ? null : expenseData.branchId,
-                amount: finalTotalAmount,
-                lineItems: cleanLineItems,
-                invoicePdfUrl: fileURL,
+                date: expenseData.date, description: expenseData.description, sectorId: expenseData.sectorId,
+                supplierId: expenseData.supplierId, isMultiBranch: expenseData.isMultiBranch,
+                branchId: expenseData.branchId, amount: finalTotalAmount, lineItems: cleanLineItems,
+                invoicePdfUrl: invoiceURL, contractPdfUrl: contractURL,
+                relatedContractId: expenseData.relatedContractId || null,
+                isAmortized: expenseData.isAmortized || false,
+                amortizationStartDate: expenseData.isAmortized ? expenseData.amortizationStartDate : null,
+                amortizationEndDate: expenseData.isAmortized ? expenseData.amortizationEndDate : null,
             };
-
             if (isEditing) {
                 await updateDoc(doc(db, "expenses", expenseId), { ...dataToSave, updatedAt: serverTimestamp() });
             } else {
-                dataToSave.authorId = user.uid;
-                dataToSave.authorName = user.name;
+                dataToSave.authorId = user.uid; dataToSave.authorName = user.name;
                 dataToSave.createdAt = serverTimestamp();
                 await setDoc(doc(db, "expenses", expenseId), dataToSave);
             }
@@ -279,7 +373,11 @@ export default function ExpensesPage({ user, initialFilters = {} }) {
         try {
             if (expense.invoicePdfUrl) {
                 const fileRef = ref(storage, expense.invoicePdfUrl);
-                await deleteObject(fileRef).catch(err => console.warn("File non trovato, potrebbe essere già stato eliminato:", err));
+                await deleteObject(fileRef).catch(err => console.warn("File non trovato:", err));
+            }
+            if (expense.contractPdfUrl) {
+                const fileRef = ref(storage, expense.contractPdfUrl);
+                await deleteObject(fileRef).catch(err => console.warn("File non trovato:", err));
             }
             await deleteDoc(doc(db, "expenses", expense.id));
             toast.success("Spesa eliminata con successo!", { id: toastId });
@@ -290,7 +388,7 @@ export default function ExpensesPage({ user, initialFilters = {} }) {
     };
     
     const handleDuplicateExpense = (expenseToDuplicate) => {
-        const { id, invoicePdfUrl, createdAt, updatedAt, authorId, authorName, ...restOfExpense } = expenseToDuplicate;
+        const { id, invoicePdfUrl, contractPdfUrl, createdAt, updatedAt, authorId, authorName, ...restOfExpense } = expenseToDuplicate;
         const newExpenseData = { ...restOfExpense, description: `${expenseToDuplicate.description || ''} (Copia)`, date: new Date().toISOString().split('T')[0] };
         setEditingExpense(newExpenseData);
         setIsModalOpen(true);
@@ -298,10 +396,12 @@ export default function ExpensesPage({ user, initialFilters = {} }) {
     
     const resetFilters = () => {
         setSearchTerm(''); setSupplierFilter(''); setDateFilter({ startDate: '', endDate: '' }); setSelectedSector('all');
-        setInvoiceFilter(''); setBranchFilter([]); setAreaFilter(''); setSpecialFilter(null);
+        setInvoiceFilter(''); setContractFilter(''); setBranchFilter([]); setAreaFilter(''); setSpecialFilter(null);
     };
 
-    const areAdvancedFiltersActive = invoiceFilter || branchFilter.length > 0 || areaFilter;
+    const areAdvancedFiltersActive = invoiceFilter || contractFilter || branchFilter.length > 0 || areaFilter;
+
+    if (isLoading) return <ExpenseSkeleton />;
 
     return (
         <div className="p-8">
@@ -328,18 +428,23 @@ export default function ExpensesPage({ user, initialFilters = {} }) {
                         <button onClick={resetFilters} title="Resetta tutti i filtri" className="text-sm font-semibold text-red-600 hover:text-red-800 transition flex items-center gap-2 bg-red-100 px-3 py-2 rounded-lg"><XCircle size={16} />Reset Filtri</button>
                     </div>
                 </div>
-                 {(areAdvancedFiltersActive || specialFilter) && (<div className="pt-2 flex items-center gap-2 flex-wrap">{specialFilter === 'unassigned' && <span className="flex items-center gap-1 bg-amber-100 text-amber-800 px-2 py-1 rounded-full text-xs">Filtro: Spese non assegnate <button onClick={() => setSpecialFilter(null)}><XCircle size={14}/></button></span>}{invoiceFilter && <span className="flex items-center gap-1 bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs">Fattura: {invoiceFilter} <button onClick={() => setInvoiceFilter('')}><XCircle size={14}/></button></span>}{areaFilter && <span className="flex items-center gap-1 bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs">Area: {geoAreaMap.get(areaFilter)} <button onClick={() => setAreaFilter('')}><XCircle size={14}/></button></span>}{branchFilter.map(id => <span key={id} className="flex items-center gap-1 bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs">Filiale: {branchMap.get(id)} <button onClick={() => setBranchFilter(prev => prev.filter(bId => bId !== id))}><XCircle size={14}/></button></span>)}</div>)}
+                 {(areAdvancedFiltersActive || specialFilter) && (<div className="pt-2 flex items-center gap-2 flex-wrap">{specialFilter === 'unassigned' && <span className="flex items-center gap-1 bg-amber-100 text-amber-800 px-2 py-1 rounded-full text-xs font-semibold"><AlertCircle size={14} />Filtro: Spese non assegnate <button onClick={() => setSpecialFilter(null)} className="ml-1"><XCircle size={14}/></button></span>}{contractFilter && <span className="flex items-center gap-1 bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs">Contratto: {contractFilter === 'present' ? 'Presente' : 'Mancante'} <button onClick={() => setContractFilter('')}><XCircle size={14}/></button></span>}{invoiceFilter && <span className="flex items-center gap-1 bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs">Fattura: {invoiceFilter === 'present' ? 'Presente' : 'Mancante'} <button onClick={() => setInvoiceFilter('')}><XCircle size={14}/></button></span>}{areaFilter && <span className="flex items-center gap-1 bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs">Area: {geoAreaMap.get(areaFilter)} <button onClick={() => setAreaFilter('')}><XCircle size={14}/></button></span>}{branchFilter.map(id => <span key={id} className="flex items-center gap-1 bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs">Filiale: {branchMap.get(id)} <button onClick={() => setBranchFilter(prev => prev.filter(bId => bId !== id))}><XCircle size={14}/></button></span>)}</div>)}
             </div>
             <div className="mb-8 p-4 bg-white/70 backdrop-blur-sm rounded-xl shadow-lg border flex justify-between items-center">
                 <div><h3 className="text-lg font-semibold text-gray-800">Riepilogo Filtri</h3><p className="text-sm text-gray-500">{filteredExpenses.length} spese trovate</p></div>
                 <div className="text-right"><p className="text-sm text-gray-500">Spesa Totale</p><p className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">{formatCurrency(totalFilteredSpend)}</p></div>
             </div>
             <div className="space-y-6">
-                {isLoading ? <ExpenseSkeleton /> : monthKeysSorted.length > 0 ? (monthKeysSorted.map(monthKey => (<div key={monthKey} className="bg-white rounded-2xl shadow-md border overflow-hidden"><div className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => toggleMonth(monthKey)}><h3 className="text-xl font-bold text-gray-800 capitalize">{new Date(monthKey + '-02').toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</h3><ChevronDown className={`transition-transform duration-200 ${expandedMonths[monthKey] ? 'rotate-180' : ''}`} /></div>{expandedMonths[monthKey] && (<table className="w-full text-sm"><thead className="bg-gray-100 border-b"><tr><th className="p-3 text-left font-semibold text-gray-600 w-12"></th><th className="p-3 text-left font-semibold text-gray-600 w-2/12">Data</th><th className="p-3 text-left font-semibold text-gray-600 w-6/12">Fornitore</th><th className="p-3 text-right font-semibold text-gray-600 w-2/12">Importo</th><th className="p-3 text-center font-semibold text-gray-600 w-2/12">Azioni</th></tr></thead><tbody>{groupedByMonth[monthKey].map((expense) => {const locationTags = expense.isMultiBranch ? [...new Map(expense.lineItems.map(item => [item.assignmentId, item])).values()].map(item => {const name = branchMap.get(item.assignmentId); const color = 'bg-indigo-100 text-indigo-800'; return name ? { name, color, id: item.assignmentId } : null;}).filter(Boolean) : expense.branchId ? [{ name: branchMap.get(expense.branchId), color: 'bg-indigo-100 text-indigo-800', id: expense.branchId }] : []; return (<React.Fragment key={expense.id}><tr className="border-b last:border-b-0 hover:bg-indigo-50/50 transition-colors cursor-pointer" onClick={() => toggleExpense(expense.id)}><td className="p-3 text-center align-middle">{getSectorIcon(sectorMap.get(expense.sectorId))}</td><td className="p-3 whitespace-nowrap align-middle">{expense.date ? new Date(expense.date + 'T00:00:00').toLocaleDateString('it-IT') : 'N/D'}</td><td className="p-3 align-middle"><p className="font-bold text-gray-800 truncate">{supplierMap.get(expense.supplierId) || 'N/D'}</p><div className="flex items-center gap-1 flex-wrap mt-1">{locationTags.map(tag => (tag && <span key={tag.id} className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tag.color}`}>{tag.name}</span>))}</div></td><td className="p-3 text-right font-bold text-indigo-600 whitespace-nowrap align-middle">{formatCurrency(expense.amount)}</td><td className="p-3 align-middle"><div className="flex items-center justify-center gap-3 text-gray-400"><ChevronDown className={`transition-transform duration-200 ${expandedExpenses[expense.id] ? 'rotate-180' : ''}`} />{!expense.invoicePdfUrl && <AlertCircle className="text-amber-500" size={18} title="Fattura mancante"/>}{expense.invoicePdfUrl && (<a href={expense.invoicePdfUrl} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600" onClick={e => e.stopPropagation()}><Paperclip size={18}/></a>)}{canEditOrDelete(expense) && (<><button className="hover:text-indigo-600" onClick={(e) => {e.stopPropagation(); handleDuplicateExpense(expense)}}><Copy size={18} /></button><button className="hover:text-indigo-600" onClick={(e) => {e.stopPropagation(); handleOpenEditModal(expense)}}><Pencil size={18} /></button><button className="hover:text-red-500" onClick={(e) => {e.stopPropagation(); handleDeleteExpense(expense)}}><Trash2 size={18} /></button></>)}</div></td></tr>{expandedExpenses[expense.id] && (<tr className="bg-gray-50"><td colSpan="5" className="p-4 text-xs"><div className="mb-3"><h4 className="font-bold text-gray-600">Descrizione Fattura</h4><p className="italic text-gray-800">{expense.description}</p></div><h4 className="font-bold text-gray-600 mb-2">Dettaglio Voci</h4><div className="pl-2 border-l-2 border-gray-300 space-y-1">{expense.lineItems.map((item, idx) => (<div key={item._key || idx} className="flex justify-between items-center pr-2"><span>{item.description}</span><div className="flex items-center gap-2"><span className="font-semibold text-gray-500">({marketingChannelMap.get(item.marketingChannelId) || 'N/D'})</span>{expense.isMultiBranch && (() => {let name = branchMap.get(item.assignmentId) || 'N/D'; let color = 'text-indigo-600'; return <span className={`font-semibold ${color}`}>({name})</span>;})()}<span className="font-medium text-gray-900">{formatCurrency(item.amount)}</span></div></div>))}</div></td></tr>)}</React.Fragment>);})}</tbody></table>)}</div>))) : ( <EmptyState title="Nessuna Spesa" message="Non ci sono spese che corrispondono ai filtri." /> )}
+                {isLoading ? <ExpenseSkeleton /> : monthKeysSorted.length > 0 ? (monthKeysSorted.map(monthKey => (<div key={monthKey} className="bg-white rounded-2xl shadow-md border overflow-hidden"><div className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => toggleMonth(monthKey)}><h3 className="text-xl font-bold text-gray-800 capitalize">{new Date(monthKey + '-02').toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</h3><ChevronDown className={`transition-transform duration-200 ${expandedMonths[monthKey] ? 'rotate-180' : ''}`} /></div>{expandedMonths[monthKey] && (<table className="w-full text-sm"><thead className="bg-gray-100 border-b"><tr><th className="p-3 text-left font-semibold text-gray-600 w-12"></th><th className="p-3 text-left font-semibold text-gray-600 w-2/12">Data</th><th className="p-3 text-left font-semibold text-gray-600 w-6/12">Fornitore</th><th className="p-3 text-right font-semibold text-gray-600 w-2/12">Importo</th><th className="p-3 text-center font-semibold text-gray-600 w-2/12">Azioni</th></tr></thead><tbody>{groupedByMonth[monthKey].map((expense) => {const locationTags = [...new Set(expense.lineItems.flatMap(item => item.splitGroupId ? expense.lineItems.filter(li => li.splitGroupId === item.splitGroupId).map(li => li.assignmentId) : [item.assignmentId]))].map(id => ({ name: branchMap.get(id), color: 'bg-indigo-100 text-indigo-800', id })); const relatedContract = contractMap.get(expense.relatedContractId); return (<React.Fragment key={expense.id}><tr className="border-b last:border-b-0 hover:bg-indigo-50/50 transition-colors cursor-pointer" onClick={() => toggleExpense(expense.id)}><td className="p-3 text-center align-middle">{getSectorIcon(sectorMap.get(expense.sectorId))}</td><td className="p-3 whitespace-nowrap align-middle">{expense.date ? new Date(expense.date + 'T00:00:00').toLocaleDateString('it-IT') : 'N/D'}</td><td className="p-3 align-middle"><p className="font-bold text-gray-800 truncate">{supplierMap.get(expense.supplierId) || 'N/D'}</p><div className="flex items-center gap-1 flex-wrap mt-1">{locationTags.map(tag => (tag.name && <span key={tag.id} className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tag.color}`}>{tag.name}</span>))}</div></td><td className="p-3 text-right font-bold text-indigo-600 whitespace-nowrap align-middle">{formatCurrency(expense.amount)}</td><td className="p-3 align-middle"><div className="flex items-center justify-center gap-3 text-gray-400"><ChevronDown className={`transition-transform duration-200 ${expandedExpenses[expense.id] ? 'rotate-180' : ''}`} />{!expense.invoicePdfUrl && <AlertCircle className="text-amber-500" size={18} title="Fattura mancante"/>}{relatedContract && relatedContract.contractPdfUrl && (<a href={relatedContract.contractPdfUrl} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600" title={`Contratto: ${relatedContract.description}`} onClick={e => e.stopPropagation()}><FileSignature size={18}/></a>)}{expense.invoicePdfUrl && (<a href={expense.invoicePdfUrl} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600" title="Visualizza fattura" onClick={e => e.stopPropagation()}><Paperclip size={18}/></a>)}{canEditOrDelete(expense) && (<><button className="hover:text-indigo-600" onClick={(e) => {e.stopPropagation(); handleDuplicateExpense(expense)}}><Copy size={18} /></button><button className="hover:text-indigo-600" onClick={(e) => {e.stopPropagation(); handleOpenEditModal(expense)}}><Pencil size={18} /></button><button className="hover:text-red-500" onClick={(e) => {e.stopPropagation(); handleDeleteExpense(expense)}}><Trash2 size={18} /></button></>)}</div></td></tr>
+                                    {expandedExpenses[expense.id] && (<tr className="bg-gray-50"><td colSpan="5" className="p-4 text-xs"><div className="mb-3"><h4 className="font-bold text-gray-600">Descrizione Fattura</h4><p className="italic text-gray-800">{expense.description}</p></div><h4 className="font-bold text-gray-600 mb-2">Dettaglio Voci</h4><div className="pl-2 border-l-2 border-gray-300 space-y-2">{expense.groupedLineItems.map((item) => (<div key={item._key || item.splitGroupId} className="p-2 bg-white rounded-md border"><div className="flex justify-between items-center pr-2"><span>{item.description}</span><div className="flex items-center gap-2"><span className="font-semibold text-gray-500">({marketingChannelMap.get(item.marketingChannelId) || 'N/D'})</span><span className="font-medium text-gray-900">{formatCurrency(item.amount)}</span></div></div>{item.isGroup && (<div className="mt-1 pt-1 border-t text-gray-500 flex items-center gap-2"><Group size={14} className="text-indigo-600" /><span className="font-semibold">Ripartito su {item.branchCount} filiali:</span><span className="italic">{item.branchNames}</span></div>)}{!item.isGroup && (<div className="mt-1 pt-1 border-t text-gray-500 flex items-center gap-2"><span className="font-semibold text-indigo-600">Filiale:</span><span>{branchMap.get(item.assignmentId) || 'N/D'}</span></div>)}</div>))}</div></td></tr>)}
+                                </React.Fragment>);})}</tbody>
+                        </table>)}
+                    </div>
+                ))) : ( <EmptyState title="Nessuna Spesa" message="Non ci sono spese che corrispondono ai filtri." /> )}
             </div>
             
-            <ExpenseFormModal isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveExpense} initialData={editingExpense} sectors={sectors} branches={branches} suppliers={suppliers} marketingChannels={marketingChannels} geographicAreas={geographicAreas} />
-            <AdvancedFiltersModal isOpen={isAdvancedFiltersOpen} onClose={() => setIsAdvancedFiltersOpen(false)} invoiceFilter={invoiceFilter} setInvoiceFilter={setInvoiceFilter} branchFilter={branchFilter} setBranchFilter={setBranchFilter} areaFilter={areaFilter} setAreaFilter={setAreaFilter} branches={branches} geographicAreas={geographicAreas}/>
+            <ExpenseFormModal isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveExpense} initialData={editingExpense} sectors={sectors} branches={branches} suppliers={suppliers} marketingChannels={marketingChannels} contracts={contracts} geographicAreas={geographicAreas} />
+            <AdvancedFiltersModal isOpen={isAdvancedFiltersOpen} onClose={() => setIsAdvancedFiltersOpen(false)} invoiceFilter={invoiceFilter} setInvoiceFilter={setInvoiceFilter} contractFilter={contractFilter} setContractFilter={setContractFilter} branchFilter={branchFilter} setBranchFilter={setBranchFilter} areaFilter={areaFilter} setAreaFilter={setAreaFilter} branches={branches} geographicAreas={geographicAreas}/>
         </div>
     );
 }
