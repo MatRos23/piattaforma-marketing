@@ -3,7 +3,7 @@ import { db } from '../firebase/config';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, query, onSnapshot, addDoc, doc, deleteDoc, updateDoc, orderBy, serverTimestamp } from 'firebase/firestore';
-import { Users, Layers, Building2, RadioTower, MapPin, PlusCircle, Pencil, Trash2, Search, ShoppingCart, Link2, Car, Sailboat, Caravan, DollarSign } from 'lucide-react';
+import { Users, Layers, Building2, RadioTower, Link2, PlusCircle, Pencil, Trash2, Search, ShoppingCart, Car, Sailboat, Caravan, DollarSign, Settings } from 'lucide-react';
 import AssociationModal from '../components/AssociationModal';
 import UserPermissionsModal from '../components/UserPermissionsModal';
 import AddUserModal from '../components/AddUserModal';
@@ -14,31 +14,31 @@ import toast from 'react-hot-toast';
 // --- COMPONENTI INTERNI ---
 
 const SettingsSkeleton = () => (
-    <div className="bg-white/70 backdrop-blur-sm p-6 rounded-xl shadow-lg border animate-pulse">
-        <div className="flex justify-between items-center mb-4">
-            <div className="h-7 bg-gray-200 rounded w-1/4"></div>
-            <div className="h-9 bg-gray-200 rounded-full w-24"></div>
+    <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/30 p-6 animate-pulse">
+        <div className="flex justify-between items-center mb-6">
+            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+            <div className="h-10 bg-gray-200 rounded-lg w-32"></div>
         </div>
-        <div className="h-10 bg-gray-200 rounded w-1/3 mb-4"></div>
-        <div className="space-y-2">
+        <div className="h-11 bg-gray-200 rounded-lg w-1/2 mb-6"></div>
+        <div className="space-y-3">
             {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-12 bg-gray-100 rounded-lg"></div>
+                <div key={i} className="h-16 bg-gray-100 rounded-lg"></div>
             ))}
         </div>
     </div>
 );
 
 const SettingsListItem = ({ children, onEdit, onDelete }) => (
-    <li className="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors group">
+    <li className="flex justify-between items-center p-4 bg-white/60 rounded-xl border-2 border-white hover:shadow-lg hover:border-indigo-200/50 transition-all group">
         <div className="flex-1 min-w-0">{children}</div>
-        <div className="flex items-center gap-2 ml-4 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-2 ml-4 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
             {onEdit && (
-                <button onClick={onEdit} className="text-gray-400 hover:text-indigo-600" title="Modifica">
+                <button onClick={onEdit} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-100 rounded-lg" title="Modifica">
                     <Pencil size={16} />
                 </button>
             )}
             {onDelete && (
-                <button onClick={onDelete} className="text-gray-400 hover:text-red-500" title="Elimina">
+                <button onClick={onDelete} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-100 rounded-lg" title="Elimina">
                     <Trash2 size={16} />
                 </button>
             )}
@@ -47,14 +47,31 @@ const SettingsListItem = ({ children, onEdit, onDelete }) => (
 );
 
 const sectorIcons = {
-    'Auto': <Car className="w-5 h-5 text-gray-500" />,
-    'Camper&Caravan': <Caravan className="w-5 h-5 text-gray-500" />,
-    'Yachting': <Sailboat className="w-5 h-5 text-gray-500" />,
-    'Frattin Group': <Building2 className="w-5 h-5 text-gray-500" />,
-    'default': <DollarSign className="w-5 h-5 text-gray-500" />,
+    'Auto': <Car className="w-5 h-5 text-gray-600" />,
+    'Camper&Caravan': <Caravan className="w-5 h-5 text-gray-600" />,
+    'Yachting': <Sailboat className="w-5 h-5 text-gray-600" />,
+    'Frattin Group': <Building2 className="w-5 h-5 text-gray-600" />,
+    'default': <DollarSign className="w-5 h-5 text-gray-600" />,
 };
+
 const getSectorIcon = (sectorName) => sectorIcons[sectorName] || sectorIcons.default;
 
+const TabButton = ({ tabKey, label, icon: Icon, activeTab, setActiveTab }) => {
+    const isActive = activeTab === tabKey;
+    return (
+        <button 
+            onClick={() => setActiveTab(tabKey)}
+            className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 ${
+                isActive 
+                    ? 'bg-gradient-to-r from-slate-800 to-slate-900 text-white shadow-md' 
+                    : 'text-gray-500 hover:bg-white/60 hover:text-slate-800'
+            }`}
+        >
+            <Icon size={18} />
+            <span>{label}</span>
+        </button>
+    );
+};
 
 // --- COMPONENTE PRINCIPALE ---
 
@@ -74,9 +91,10 @@ export default function SettingsPage({ user }) {
 
     // MAPPE PER PERFORMANCE
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
-
+    
     // CARICAMENTO DATI
     useEffect(() => {
+        setLoading(true);
         const collectionsConfig = {
             sectors: { setter: setSectors, collectionName: "sectors" },
             branches: { setter: setBranches, collectionName: "branches" },
@@ -92,7 +110,7 @@ export default function SettingsPage({ user }) {
             })
         );
         
-        setLoading(false);
+        setTimeout(() => setLoading(false), 500);
         return () => unsubs.forEach(unsub => unsub());
     }, []);
 
@@ -113,7 +131,7 @@ export default function SettingsPage({ user }) {
             }
         }
     };
-    
+
     const handleDeleteUser = async (userIdToDelete) => {
         if (userIdToDelete === user.uid) {
             toast.error("Non puoi eliminare te stesso.");
@@ -125,7 +143,6 @@ export default function SettingsPage({ user }) {
                 const functions = getFunctions(getApp(), 'europe-west1');
                 const deleteUserAccount = httpsCallable(functions, 'deleteUserAccount');
                 const result = await deleteUserAccount({ uidToDelete: userIdToDelete });
-
                 if (result.data.status === 'success') {
                     toast.success("Utente eliminato con successo!", { id: toastId });
                 } else {
@@ -137,14 +154,13 @@ export default function SettingsPage({ user }) {
             }
         }
     };
-    
+
     const handleSave = async (collectionName, formData) => {
         const { data } = modalState;
         const isEditing = !!(data && data.id);
         const toastId = toast.loading("Salvataggio in corso...");
         try {
             if (!formData.name?.trim()) throw new Error("Il nome è obbligatorio.");
-            
             let dataToSave = formData;
             
             if (isEditing) {
@@ -165,7 +181,6 @@ export default function SettingsPage({ user }) {
         const toastId = toast.loading("Salvataggio in corso...");
         try {
             if (!formData.name?.trim()) throw new Error("Il nome è obbligatorio.");
-            
             const dataToSave = { name: formData.name };
             
             if (isEditing) {
@@ -197,7 +212,6 @@ export default function SettingsPage({ user }) {
             const functions = getFunctions(getApp(), 'europe-west1');
             const createUserAccount = httpsCallable(functions, 'createUserAccount');
             const result = await createUserAccount(userData);
-    
             if (result.data.status === 'success') {
                 toast.success("Utente creato con successo!", { id: toastId });
                 handleCloseModal();
@@ -211,94 +225,91 @@ export default function SettingsPage({ user }) {
     };
 
     const TABS = {
-        suppliers: { label: 'Fornitori', icon: <ShoppingCart size={18} />, modalType: 'supplier' },
-        branches: { label: 'Filiali', icon: <Building2 size={18} />, modalType: 'branch' },
-        sectors: { label: 'Settori', icon: <Layers size={18} />, modalType: 'sector' },
-        marketing_channels: { label: 'Canali Marketing', icon: <RadioTower size={18} />, modalType: 'marketing_channel' },
-        channel_categories: { label: 'Categorie Canali', icon: <Link2 size={18} />, modalType: 'category' },
-        users: { label: 'Utenti', icon: <Users size={18} />, modalType: 'user_permissions', addModalType: 'add_user' },
+        suppliers: { label: 'Fornitori', icon: ShoppingCart, modalType: 'supplier', collectionName: 'channels' },
+        branches: { label: 'Filiali', icon: Building2, modalType: 'branch', collectionName: 'branches' },
+        sectors: { label: 'Settori', icon: Layers, modalType: 'sector', collectionName: 'sectors' },
+        marketing_channels: { label: 'Canali Marketing', icon: RadioTower, modalType: 'marketing_channel', collectionName: 'marketing_channels' },
+        channel_categories: { label: 'Categorie Canali', icon: Link2, modalType: 'category', collectionName: 'channel_categories' },
+        users: { label: 'Utenti', icon: Users, modalType: 'user_permissions', addModalType: 'add_user', collectionName: 'users' },
     };
-    
+
     const currentSearchTerm = searchTerms[activeTab] || '';
     const filterItems = (items) => items.filter(item => item.name?.toLowerCase().includes(currentSearchTerm.toLowerCase()));
 
     const renderTabContent = () => {
         if (loading) return <SettingsSkeleton />;
 
+        const renderList = (items, collectionName, modalType, renderItemContent) => (
+            <ul className="space-y-2">
+                {filterItems(items).map(item => (
+                    <SettingsListItem key={item.id} onEdit={() => handleOpenModal(modalType, item)} onDelete={() => handleDelete(collectionName, item.id)}>
+                        {renderItemContent(item)}
+                    </SettingsListItem>
+                ))}
+            </ul>
+        );
+        
+        const renderAssociationList = (items, collectionName, modalType, defaultIcon) => {
+             return renderList(items, collectionName, modalType, (item) => {
+                const primarySectorId = item.associatedSectors?.[0];
+                const primarySectorName = sectorMap.get(primarySectorId);
+                const associatedSectorNames = item.associatedSectors?.map(id => sectorMap.get(id)).filter(Boolean).join(', ');
+                
+                return (
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-gray-100 rounded-xl flex-shrink-0">
+                            {primarySectorName ? getSectorIcon(primarySectorName) : defaultIcon}
+                        </div>
+                        <div className="min-w-0">
+                            <p className="font-semibold text-gray-800 truncate">{item.name}</p>
+                            {associatedSectorNames && (
+                                <p className="text-sm text-gray-500 truncate">
+                                    Settori: {associatedSectorNames}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                );
+            });
+        };
+
         switch (activeTab) {
             case 'suppliers':
-                return (
-                    <ul className="space-y-2">
-                        {filterItems(suppliers).map(item => (
-                            <SettingsListItem key={item.id} onEdit={() => handleOpenModal('supplier', item)} onDelete={() => handleDelete('channels', item.id)}>
-                                <p className="font-semibold text-gray-800">{item.name}</p>
-                                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                    {item.associatedSectors?.map(id => <span key={id} className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{sectorMap.get(id) || '...'}</span>)}
-                                </div>
-                            </SettingsListItem>
-                        ))}
-                    </ul>
-                );
+                return renderAssociationList(suppliers, TABS.suppliers.collectionName, TABS.suppliers.modalType, <ShoppingCart className="w-5 h-5 text-gray-600" />);
             case 'branches':
-                 return (
-                    <ul className="space-y-2">
-                        {filterItems(branches).map(item => (
-                            <SettingsListItem key={item.id} onEdit={() => handleOpenModal('branch', item)} onDelete={() => handleDelete('branches', item.id)}>
-                                <p className="font-semibold text-gray-800">{item.name}</p>
-                                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                    {item.associatedSectors?.map(id => <span key={id} className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{sectorMap.get(id) || '...'}</span>)}
-                                </div>
-                            </SettingsListItem>
-                        ))}
-                    </ul>
-                );
+                 return renderAssociationList(branches, TABS.branches.collectionName, TABS.branches.modalType, <Building2 className="w-5 h-5 text-gray-600" />);
             case 'sectors':
-                 return (
-                    <ul className="space-y-2">
-                        {filterItems(sectors).map(item => (
-                            <SettingsListItem key={item.id} onEdit={() => handleOpenModal('sector', item)} onDelete={() => handleDelete('sectors', item.id)}>
-                                <div className="flex items-center gap-3">
-                                    {getSectorIcon(item.name)}
-                                    <p className="font-semibold text-gray-800">{item.name}</p>
-                                </div>
-                            </SettingsListItem>
-                        ))}
-                    </ul>
-                );
+                return renderList(sectors, TABS.sectors.collectionName, TABS.sectors.modalType, (item) => (
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-gray-100 rounded-xl">{getSectorIcon(item.name, 'w-5 h-5 text-gray-600')}</div>
+                        <p className="font-semibold text-gray-800">{item.name}</p>
+                    </div>
+                ));
             case 'marketing_channels':
-                 return (
-                    <ul className="space-y-2">
-                        {filterItems(marketingChannels).map(item => (
-                            <SettingsListItem key={item.id} onEdit={() => handleOpenModal('marketing_channel', item)} onDelete={() => handleDelete('marketing_channels', item.id)}>
-                                <p className="font-semibold text-gray-800">{item.name}</p>
-                            </SettingsListItem>
-                        ))}
-                    </ul>
-                );
             case 'channel_categories':
-                 return (
-                    <ul className="space-y-2">
-                        {filterItems(channelCategories).map(item => (
-                            <SettingsListItem key={item.id} onEdit={() => handleOpenModal('category', item)} onDelete={() => handleDelete('channel_categories', item.id)}>
-                                <p className="font-semibold text-gray-800">{item.name}</p>
-                            </SettingsListItem>
-                        ))}
-                    </ul>
-                );
+                const channelItems = activeTab === 'marketing_channels' ? marketingChannels : channelCategories;
+                return renderList(channelItems, TABS[activeTab].collectionName, TABS[activeTab].modalType, (item) => (
+                     <div className="flex items-center gap-4">
+                        <div className="p-3 bg-gray-100 rounded-xl"><RadioTower className="w-5 h-5 text-gray-600" /></div>
+                        <p className="font-semibold text-gray-800">{item.name}</p>
+                    </div>
+                ));
             case 'users':
-                 return (
-                    <ul className="space-y-2">
+                return (
+                     <ul className="space-y-2">
                         {filterItems(allUsers).map(item => (
                             <SettingsListItem 
                                 key={item.id} 
                                 onEdit={() => handleOpenModal('user_permissions', item)}
                                 onDelete={() => handleDeleteUser(item.id)}
                             >
-                                <div>
-                                    <p className="font-semibold text-gray-800">{item.name}</p>
-                                    <p className="text-sm text-gray-500">{item.email}</p>
+                                <div className="flex items-center justify-between w-full">
+                                    <div>
+                                        <p className="font-semibold text-gray-800">{item.name}</p>
+                                        <p className="text-sm text-gray-500">{item.email}</p>
+                                    </div>
+                                    <span className="text-xs font-bold uppercase bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full">{item.role}</span>
                                 </div>
-                                <span className="text-xs font-bold uppercase bg-gray-200 text-gray-600 px-2 py-1 rounded-full">{item.role}</span>
                             </SettingsListItem>
                         ))}
                     </ul>
@@ -309,49 +320,61 @@ export default function SettingsPage({ user }) {
     };
 
     return (
-        <div className="p-8 space-y-8">
-            <h1 className="text-3xl font-bold text-gray-800">Impostazioni</h1>
-            
-            <div className="flex border-b border-gray-200 overflow-x-auto">
-                {Object.entries(TABS).map(([key, { label, icon }]) => (
-                    <button 
-                        key={key} 
-                        onClick={() => setActiveTab(key)}
-                        className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-colors flex-shrink-0 ${activeTab === key ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-800'}`}
-                    >
-                        {icon}
-                        {label}
-                    </button>
-                ))}
-            </div>
-
-            <div className="bg-white/70 backdrop-blur-sm p-6 rounded-xl shadow-lg border">
-                <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-4">
-                    <div className="relative flex-grow">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                        <input 
-                            type="text" 
-                            placeholder={`Cerca in ${TABS[activeTab].label}...`}
-                            value={currentSearchTerm}
-                            onChange={handleSearchChange}
-                            className="w-full md:w-80 h-11 pl-10 pr-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition" 
-                        />
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100">
+            <div className="relative p-4 lg:p-8 space-y-6">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-2xl bg-gradient-to-br from-slate-700 to-gray-900 text-white shadow-lg">
+                        <Settings className="w-7 h-7" />
                     </div>
-                    <button onClick={() => handleOpenModal(TABS[activeTab].addModalType || TABS[activeTab].modalType)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-2 h-full shadow-sm w-full md:w-auto justify-center">
-                        <PlusCircle size={20} />Aggiungi
-                    </button>
+                    <div>
+                        <h1 className="text-3xl lg:text-4xl font-black text-gray-900">Impostazioni</h1>
+                        <p className="text-gray-600 font-medium mt-1">Gestisci le entità principali della tua applicazione</p>
+                    </div>
                 </div>
-                {renderTabContent()}
+
+                <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 p-2">
+                    <div className="flex items-center gap-2 overflow-x-auto">
+                        {Object.entries(TABS).map(([key, { label, icon }]) => (
+                            <TabButton 
+                                key={key} 
+                                tabKey={key} 
+                                label={label} 
+                                icon={icon} 
+                                activeTab={activeTab} 
+                                setActiveTab={setActiveTab} 
+                            />
+                        ))}
+                    </div>
+                </div>
+
+                <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/30 p-6">
+                    <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
+                         <div className="relative flex-grow">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <input 
+                                type="text" 
+                                placeholder={`Cerca in ${TABS[activeTab].label}...`}
+                                value={currentSearchTerm}
+                                onChange={handleSearchChange}
+                                className="w-full md:w-72 h-11 pl-11 pr-4 bg-white border-2 border-gray-200 rounded-xl focus:border-slate-500 focus:ring-4 focus:ring-slate-500/20 transition-all" 
+                            />
+                        </div>
+                        <button onClick={() => handleOpenModal(TABS[activeTab].addModalType || TABS[activeTab].modalType)} className="h-11 flex items-center justify-center gap-2 px-5 bg-gradient-to-r from-slate-800 to-slate-900 text-white font-semibold rounded-xl hover:shadow-lg transition-all hover:scale-105">
+                            <PlusCircle size={20} />
+                            <span className="hidden sm:inline">Aggiungi {TABS[activeTab].label}</span>
+                        </button>
+                    </div>
+                    {renderTabContent()}
+                </div>
             </div>
 
-            {/* Logica di rendering dei Modal */}
             {modalState.isOpen && (
                 <>
                     {modalState.type === 'supplier' && (
-                        <AssociationModal isOpen={modalState.isOpen} onClose={handleCloseModal} onSave={(data) => handleSave('channels', data)} initialData={modalState.data} title={modalState.data ? 'Modifica Fornitore' : 'Nuovo Fornitore'} itemLabel="Nome Fornitore" associationLists={[{ key: 'associatedSectors', label: 'Settori di Competenza', items: sectors }, { key: 'offeredMarketingChannels', label: 'Canali di Marketing Offerti', items: marketingChannels }]} />
+                         <AssociationModal isOpen={modalState.isOpen} onClose={handleCloseModal} onSave={(data) => handleSave('channels', data)} initialData={modalState.data} title={modalState.data ? 'Modifica Fornitore' : 'Nuovo Fornitore'} itemLabel="Nome Fornitore" associationLists={[{ key: 'associatedSectors', label: 'Settori di Competenza', items: sectors }, { key: 'offeredMarketingChannels', label: 'Canali di Marketing Offerti', items: marketingChannels }]} />
                     )}
                     {modalState.type === 'branch' && (
-                        <AssociationModal isOpen={modalState.isOpen} onClose={handleCloseModal} onSave={(data) => handleSave('branches', data)} initialData={modalState.data} title={modalState.data ? 'Modifica Filiale' : 'Nuova Filiale'} itemLabel="Nome Filiale" associationLists={[{ key: 'associatedSectors', label: 'Settori di Competenza', items: sectors }]} />
+                         <AssociationModal isOpen={modalState.isOpen} onClose={handleCloseModal} onSave={(data) => handleSave('branches', data)} initialData={modalState.data} title={modalState.data ? 'Modifica Filiale' : 'Nuova Filiale'} itemLabel="Nome Filiale" associationLists={[{ key: 'associatedSectors', label: 'Settori di Competenza', items: sectors }]} />
                     )}
                     {(modalState.type === 'sector' || modalState.type === 'category') && (
                         <SimpleAddModal isOpen={modalState.isOpen} onClose={handleCloseModal} onSave={(data) => handleSaveSimple(modalState.type === 'sector' ? 'sectors' : 'channel_categories', data)} initialData={modalState.data} type={modalState.type} />

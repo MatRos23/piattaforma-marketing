@@ -1,95 +1,85 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, onSnapshot, where, orderBy } from 'firebase/firestore';
-import { ResponsiveContainer, AreaChart, BarChart, Bar, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Cell, Treemap } from 'recharts';
-import { DollarSign, Users, Hash, Car, Sailboat, Caravan, Building2, Layers, SlidersHorizontal, XCircle, PieChart, Target } from 'lucide-react';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, ComposedChart, Line } from 'recharts';
+import { DollarSign, Target, Wallet, Building2, Layers, FileText, PiggyBank, SlidersHorizontal, XCircle, ChevronRight, Car, Sailboat, Caravan, TrendingUp, Calendar, Filter, BarChart3, Activity, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const KpiCard = ({ title, value, icon }) => (
-    <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-gray-200/80 flex items-center gap-4 transition-transform hover:scale-[1.02] duration-300">
-        <div className="bg-indigo-100 p-3 rounded-full">{icon}</div>
-        <div>
-            <p className="text-sm font-semibold text-gray-500">{title}</p>
-            <p className="text-2xl font-bold text-gray-800">{value}</p>
-        </div>
-    </div>
-);
-
+// --- COSTANTI E HELPERS ---
+const CHART_COLORS = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
 const formatCurrency = (number) => {
     if (typeof number !== 'number' || isNaN(number)) return '€ 0,00';
     return number.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 };
 
-const getSectoricon = (sectorName) => {
-    const icons = { 'Auto': <Car className="w-4 h-4" />, 'Camper&Caravan': <Caravan className="w-4 h-4" />, 'Yachting': <Sailboat className="w-4 h-4" />, 'Frattin Group': <Building2 className="w-4 h-4" />, default: <DollarSign className="w-4 h-4" /> };
+const getSectorIcon = (sectorName, className = "w-4 h-4") => {
+    const icons = {
+        'Auto': <Car className={className} />,
+        'Camper&Caravan': <Caravan className={className} />,
+        'Yachting': <Sailboat className={className} />,
+        'Frattin Group': <Building2 className={className} />,
+        default: <DollarSign className={className} />
+    };
     return icons[sectorName] || icons.default;
 };
 
-const CustomTooltip = ({ active, payload, label }) => {
+// --- COMPONENTI UI ---
+const HarmoniousKpiCard = ({ title, value, subtitle, icon, gradient, isLoading = false }) => {
+    return (
+        <div className="group relative bg-white/90 backdrop-blur-2xl rounded-2xl lg:rounded-3xl shadow-lg border border-white/30 p-5 lg:p-6 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+            <div className="absolute -right-4 -top-4 text-gray-200/50 opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500">
+                {React.cloneElement(icon, { className: "w-20 h-20 lg:w-24 lg:h-24" })}
+            </div>
+            <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className={`p-2 rounded-lg bg-gradient-to-br ${gradient} text-white shadow-md`}>
+                        {React.cloneElement(icon, { className: "w-5 h-5" })}
+                    </div>
+                    <p className="text-sm font-bold text-gray-600 tracking-wide uppercase">{title}</p>
+                </div>
+                {isLoading ? (
+                    <div className="animate-pulse">
+                        <div className="h-8 bg-gray-200 rounded-lg w-32 mb-2"></div>
+                        <div className="h-4 bg-gray-200 rounded w-24"></div>
+                    </div>
+                ) : (
+                    <>
+                        <p className="text-3xl lg:text-4xl font-black text-gray-900 mb-1 leading-tight">
+                            {value}
+                        </p>
+                        {subtitle && (
+                            <p className="text-sm text-gray-500 font-medium leading-tight">{subtitle}</p>
+                        )}
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const ModernTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
-        let total = 0;
-        payload.forEach(p => total += p.value);
         return (
-            <div className="bg-white/80 backdrop-blur-sm p-3 rounded-xl border border-gray-200 shadow-lg">
-                <p className="font-bold text-gray-800 mb-2">{label || payload[0].payload.name}</p>
-                {payload.map((pld, index) => (
-                    <div key={index} className="flex items-center justify-between text-sm gap-4">
-                        <div className="flex items-center">
-                            <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: pld.stroke || pld.fill }}></div>
-                            <span className="text-gray-600">{pld.name}:</span>
+            <div className="bg-white/95 backdrop-blur-xl p-4 rounded-2xl shadow-2xl border border-white/20">
+                <p className="font-bold text-gray-800 mb-3 text-lg">{label}</p>
+                {payload.map((entry, index) => (
+                    <div key={index} className="flex items-center justify-between gap-6 text-sm mb-2 last:mb-0">
+                        <div className="flex items-center gap-3">
+                            <div className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: entry.color || entry.fill }}></div>
+                            <span className="text-gray-600 font-medium">{entry.name}:</span>
                         </div>
-                        <span className="font-bold">{formatCurrency(pld.value)}</span>
+                        <span className="font-bold text-gray-900 text-lg">{formatCurrency(entry.value)}</span>
                     </div>
                 ))}
-                {payload.length > 1 && <div className="border-t mt-1 pt-1 font-bold flex justify-between"><span>Totale:</span><span>{formatCurrency(total)}</span></div>}
             </div>
         );
     }
     return null;
 };
 
-const CHART_COLORS = ['#312e81', '#4338ca', '#4f46e5', '#6366f1', '#a5b4fc', '#c7d2fe', '#e0e7ff'];
-const FONT_STYLE = { fontFamily: 'system-ui, sans-serif', fontSize: '12px', fill: '#6B7280' };
-
-const CustomizedTreemapContent = ({ root, depth, x, y, width, height, index, name, value }) => {
-    return (
-        <g>
-            <rect x={x} y={y} width={width} height={height} style={{ fill: CHART_COLORS[index % CHART_COLORS.length], stroke: '#fff', strokeWidth: 2, strokeOpacity: 0.5 }} />
-            {width > 80 && height > 40 && (
-                <foreignObject x={x + 8} y={y + 8} width={width - 16} height={height - 16} style={{ overflow: 'hidden' }}>
-                    <div className="text-white font-semibold" style={{ whiteSpace: 'normal', wordWrap: 'break-word' }}>
-                        <p className="text-sm leading-tight">{name}</p>
-                        <p className="text-xs opacity-80 pt-1">{formatCurrency(value)}</p>
-                    </div>
-                </foreignObject>
-            )}
-        </g>
-    );
-};
-
-const calculateAccrualPortion = (item, filterStartDate, filterEndDate) => {
-    const isAmortized = item.isAmortized || item.isProjection;
-    const startDate = item.amortizationStartDate || item.startDate;
-    const endDate = item.amortizationEndDate || item.endDate;
-    if (!isAmortized) {
-        if (!item.date) return 0;
-        const expDate = new Date(item.date);
-        return (expDate >= filterStartDate && expDate <= filterEndDate) ? (item.amount || 0) : 0;
-    }
-    if (!startDate || !endDate) return 0;
-    const expenseStart = new Date(startDate);
-    const expenseEnd = new Date(endDate);
-    const durationDays = (expenseEnd - expenseStart) / (1000 * 60 * 60 * 24) + 1;
-    if (durationDays <= 0) return 0;
-    const dailyCost = (item.amount || 0) / durationDays;
-    const overlapStart = new Date(Math.max(filterStartDate, expenseStart));
-    const overlapEnd = new Date(Math.min(filterEndDate, expenseEnd));
-    if (overlapStart > overlapEnd) return 0;
-    const overlapDays = (overlapEnd - overlapStart) / (1000 * 60 * 60 * 24) + 1;
-    return dailyCost * overlapDays;
-};
-
+// --- COMPONENTE PRINCIPALE ---
 export default function DashboardPage({ navigate }) {
+    // Stati dei dati
     const [allExpenses, setAllExpenses] = useState([]);
     const [allContracts, setAllContracts] = useState([]);
     const [allBudgets, setAllBudgets] = useState([]);
@@ -98,212 +88,191 @@ export default function DashboardPage({ navigate }) {
     const [branches, setBranches] = useState([]);
     const [marketingChannels, setMarketingChannels] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
-    
+    // Stati dei filtri
     const [dateFilter, setDateFilter] = useState(() => {
         const currentYear = new Date().getFullYear();
-        const startDate = new Date(currentYear, 0, 1);
-        const endDate = new Date(currentYear, 11, 31);
-        return { startDate: startDate.toISOString().split('T')[0], endDate: endDate.toISOString().split('T')[0] };
+        return {
+            startDate: new Date(currentYear, 0, 1).toISOString().split('T')[0],
+            endDate: new Date(currentYear, 11, 31).toISOString().split('T')[0],
+        };
     });
     const [selectedSupplier, setSelectedSupplier] = useState('all');
     const [selectedSector, setSelectedSector] = useState('all');
     const [selectedBranch, setSelectedBranch] = useState('all');
     const [selectedChannel, setSelectedChannel] = useState('all');
+    const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
 
+    // Mappe per lookup veloci
     const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers]);
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
     const branchMap = useMemo(() => new Map(branches.map(b => [b.id, b.name])), [branches]);
-    const branchNameToldMap = useMemo(() => new Map(branches.map(b => [b.name, b.id])), [branches]);
-    const sectorNameToIdMap = useMemo(() => new Map(sectors.map(s => [s.name, s.id])), [sectors]);
-
+    
+    // Caricamento dati da Firebase
     useEffect(() => {
         setIsLoading(true);
-        const currentYear = new Date(dateFilter.endDate).getFullYear();
+        const year = new Date(dateFilter.endDate).getFullYear();
+        
         const unsubs = [
             onSnapshot(query(collection(db, "expenses")), snap => setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "contracts")), snap => setAllContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "budgets"), where("year", "==", currentYear)), snap => setAllBudgets(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+            onSnapshot(query(collection(db, "budgets"), where("year", "==", year)), snap => setAllBudgets(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "channels"), orderBy("name")), snap => setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "sectors"), orderBy("name")), snap => setSectors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "branches")), orderBy("name"), snap => setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "marketing_channels")), orderBy("name"), snap => {
+            onSnapshot(query(collection(db, "branches"), orderBy("name")), snap => setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+            onSnapshot(query(collection(db, "marketing_channels"), orderBy("name")), snap => {
                 setMarketingChannels(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
                 setIsLoading(false);
             })
         ];
+        
         return () => unsubs.forEach(unsub => unsub());
     }, [dateFilter.endDate]);
 
-    const analyticsData = useMemo(() => {
-        if (isLoading) return { totalSpend: 0, budgetTotale: 0, budgetResiduo: 0, expenseCount: 0, activeSuppliersCount: 0, spendBySupplier: [], spendBySector: [], spendByBranch: [], monthlyData: [] };
+    // Calcolo delle metriche
+    const metrics = useMemo(() => {
+        if (isLoading) return { spesaSostenuta: 0, spesaPrevista: 0, budgetTotale: 0, monthlyData: [], sectorData: [], branchData: [], supplierData: [] };
 
         const filterStartDate = new Date(dateFilter.startDate);
         const filterEndDate = new Date(dateFilter.endDate);
         const year = filterEndDate.getFullYear();
+        
+        const totals = { bySupplier: {}, bySector: {}, byBranch: {} };
+        const monthlyTotals = Array.from({ length: 12 }, () => ({ real: 0, projected: 0 }));
+        
+        let spesaSostenuta = 0;
+        let spesaPrevista = 0;
+        
+        const frattinGroupSectorId = sectors.find(s => s.name === 'Frattin Group')?.id;
+        const genericoBranchId = branches.find(b => b.name.toLowerCase() === 'generico')?.id;
 
-        let allItems = [];
-        allExpenses.forEach(expense => {
-            (expense.lineItems || [{...expense}]).forEach(li => {
-                allItems.push({ type: 'real', ...expense, ...li, sectorld: li.sectorld || expense.sectorld });
-            });
-        });
+        const distributeAmount = (amount, item) => {
+            const supplierName = supplierMap.get(item.supplierld || item.supplierId) || 'Non definito';
+            totals.bySupplier[supplierName] = (totals.bySupplier[supplierName] || 0) + amount;
 
-        allContracts.forEach(contract => {
-            const linkedExpenses = allExpenses.filter(e => e.relatedContractId === contract.id);
-            const spentOnContract = linkedExpenses.reduce((sum, e) => sum + e.amount, 0);
-            const contractTotal = (contract.lineItems || []).reduce((sum, item) => sum + (item.totalAmount || 0), 0);
-            const remaining = contractTotal - spentOnContract;
-
-            if (remaining > 0) {
-                const coveredMonths = new Set();
-                linkedExpenses.forEach(exp => {
-                    const expDate = new Date(exp.date);
-                    coveredMonths.add(`${expDate.getFullYear()}-${expDate.getMonth()}`);
-                });
-
-                let totalUncoveredAmount = 0;
-                const monthlyDistribution = {};
-                (contract.lineItems || []).forEach(li => {
-                    const start = new Date(li.startDate);
-                    const end = new Date(li.endDate);
-                    const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
-                    if (months <= 0) return;
-                    const monthlyAmount = (li.totalAmount || 0) / months;
-                    for (let i = 0; i < months; i++) {
-                        const date = new Date(start.getFullYear(), start.getMonth() + i, 1);
-                        const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
-                        if (!monthlyDistribution[monthKey]) monthlyDistribution[monthKey] = { amount: 0, lineItem: li };
-                        monthlyDistribution[monthKey].amount += monthlyAmount;
-                        if (!coveredMonths.has(monthKey)) {
-                            totalUncoveredAmount += monthlyAmount;
-                        }
-                    }
-                });
-
-                if (totalUncoveredAmount > 0) {
-                    const projectionRatio = remaining / totalUncoveredAmount;
-                    Object.keys(monthlyDistribution).forEach(monthKey => {
-                        if (!coveredMonths.has(monthKey)) {
-                            const [projYear, projMonth] = monthKey.split('-').map(Number);
-                            const { lineItem, amount } = monthlyDistribution[monthKey];
-                            allItems.push({
-                                type: 'projected', isProjection: true, amount: amount * projectionRatio,
-                                supplierld: contract.supplierld, sectorld: lineItem.sectorld, branchld: lineItem.branchld,
-                                startDate: new Date(projYear, projMonth, 1).toISOString().split('T')[0],
-                                endDate: new Date(projYear, projMonth + 1, 0).toISOString().split('T')[0],
-                                isAmortized: true, description: `Proiezione per ${contract.description}`
-                            });
+            if (item.sectorld === frattinGroupSectorId) {
+                const businessSectors = sectors.filter(s => s.id !== frattinGroupSectorId);
+                if (businessSectors.length > 0) {
+                    const amountPerSector = amount / businessSectors.length;
+                    businessSectors.forEach(sector => {
+                        totals.bySector[sector.name] = (totals.bySector[sector.name] || 0) + amountPerSector;
+                        const sectorBranches = branches.filter(b => b.id !== genericoBranchId && b.associatedSectors?.includes(sector.id));
+                        if (sectorBranches.length > 0) {
+                            const amountPerBranch = amountPerSector / sectorBranches.length;
+                            sectorBranches.forEach(branch => totals.byBranch[branch.name] = (totals.byBranch[branch.name] || 0) + amountPerBranch);
                         }
                     });
                 }
-            }
-        });
-
-        const filteredItems = allItems.filter(item => {
-            item.amountToConsider = calculateAccrualPortion(item, filterStartDate, filterEndDate);
-            if (item.amountToConsider <= 0) return false;
-            if (selectedSupplier !== 'all' && item.supplierld !== selectedSupplier) return false;
-            if (selectedSector !== 'all' && item.sectorld !== selectedSector) return false;
-            const branchId = item.assignmentId || item.branchld;
-            if (selectedBranch !== 'all' && branchId !== selectedBranch) return false;
-            if (item.type === 'real' && selectedChannel !== 'all' && item.marketingChannelld !== selectedChannel) return false;
-            return true;
-        });
-
-        const totals = { bySupplier: {}, bySector: {}, byBranch: {}, byMonth: { real: {}, projected: {} } };
-        
-        filteredItems.forEach(item => {
-            const amount = item.amountToConsider;
-            const key = item.type === 'real' ? 'real' : 'projected';
-            
-            const processSplit = (branchld, amountToSplit) => {
-                const branchName = branchMap.get(branchld) || 'Non Assegnata';
-                const branchData = branches.find(b => b.id === branchld);
-                const primarySectorId = branchData?.associatedSectors?.[0] || item.sectorld;
-                const sectorName = sectorMap.get(primarySectorId) || 'Sconosciuto';
-                const supplierName = supplierMap.get(item.supplierld) || 'Sconosciuto';
-                
-                if (!totals.bySupplier[supplierName]) totals.bySupplier[supplierName] = { real: 0, projected: 0, total: 0 };
-                if (!totals.bySector[sectorName]) totals.bySector[sectorName] = { real: 0, projected: 0, total: 0 };
-                if (!totals.byBranch[branchName]) totals.byBranch[branchName] = { real: 0, projected: 0, total: 0 };
-                
-                totals.bySupplier[supplierName][key] += amountToSplit;
-                totals.bySector[sectorName][key] += amountToSplit;
-                totals.byBranch[branchName][key] += amountToSplit;
-                totals.bySupplier[supplierName].total += amountToSplit;
-                totals.bySector[sectorName].total += amountToSplit;
-                totals.byBranch[branchName].total += amountToSplit;
-            };
-
-            const genericoBranch = branches.find(b => b.name.toLowerCase() === 'generico');
-            const itemBranchld = item.assignmentId || item.branchld;
-            const frattinGroupSectorId = sectors.find(s => s.name === 'Frattin Group')?.id;
-
-            if (itemBranchld === genericoBranch?.id || item.sectorld === frattinGroupSectorId) {
-                const sectorsToDistribute = item.sectorld === frattinGroupSectorId ? (sectors.filter(s => s.id !== frattinGroupSectorId).map(s => s.id)) : (item.associatedSectors || [item.sectorld]);
-                const targetBranches = branches.filter(b => b.name.toLowerCase() !== 'generico' && (b.associatedSectors || []).some(bs => sectorsToDistribute.includes(bs)));
+            } else if ((item.branchld || item.assignmentId) === genericoBranchId) {
+                const sectorName = sectorMap.get(item.sectorld) || 'Non Assegnato';
+                totals.bySector[sectorName] = (totals.bySector[sectorName] || 0) + amount;
+                const targetBranches = branches.filter(b => b.id !== genericoBranchId && b.associatedSectors?.includes(item.sectorld));
                 if (targetBranches.length > 0) {
-                    const amountPerBranch = item.amountToConsider / targetBranches.length;
-                    targetBranches.forEach(branch => processSplit(branch.id, amountPerBranch));
+                    const amountPerBranch = amount / targetBranches.length;
+                    targetBranches.forEach(branch => totals.byBranch[branch.name] = (totals.byBranch[branch.name] || 0) + amountPerBranch);
                 } else {
-                    processSplit(undefined, item.amountToConsider);
+                    totals.byBranch['Non assegnata'] = (totals.byBranch['Non assegnata'] || 0) + amount;
                 }
             } else {
-                processSplit(itemBranchld, item.amountToConsider);
+                const sectorName = sectorMap.get(item.sectorld) || 'Non Assegnato';
+                const branchName = branchMap.get(item.branchld || item.assignmentId) || 'Non Assegnata';
+                totals.bySector[sectorName] = (totals.bySector[sectorName] || 0) + amount;
+                totals.byBranch[branchName] = (totals.byBranch[branchName] || 0) + amount;
             }
+        };
 
-            const itemStartDate = new Date(item.date || item.amortizationStartDate || item.startDate);
-            const itemEndDate = new Date(item.date || item.amortizationEndDate || item.endDate);
-            const totalDurationDays = Math.max(1, (itemEndDate - itemStartDate) / (1000 * 60 * 60 * 24) + 1);
-            const dailyCost = item.amount / totalDurationDays;
-            
-            for (let d = new Date(itemStartDate); d <= itemEndDate; d.setDate(d.getDate() + 1)) {
-                if(d >= filterStartDate && d <= filterEndDate) {
-                    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                    if (!totals.byMonth[key][monthKey]) totals.byMonth[key][monthKey] = 0;
-                    totals.byMonth[key][monthKey] += dailyCost;
+        allExpenses.forEach(expense => {
+            const lineItems = (expense.lineItems && expense.lineItems.length > 0) ? expense.lineItems : [{}];
+            lineItems.forEach(li => {
+                const item = { 
+                    ...expense, 
+                    ...li, 
+                    amount: li.amount || expense.amount,
+                    sectorld: li.sectorld || expense.sectorld || expense.sectorId,
+                    branchld: li.branchld || li.assignmentId || expense.branchld || expense.assignmentId
+                };
+                
+                if (selectedSupplier !== 'all' && (item.supplierld || item.supplierId) !== selectedSupplier) return;
+                if (selectedSector !== 'all' && item.sectorld !== selectedSector) return;
+                if (selectedBranch !== 'all' && (item.branchld || item.assignmentId) !== selectedBranch) return;
+                if (selectedChannel !== 'all' && item.marketingChannelld !== selectedChannel) return;
+
+                if (item.isAmortized && item.amortizationStartDate && item.amortizationEndDate) {
+                    const expenseStart = new Date(item.amortizationStartDate);
+                    const expenseEnd = new Date(item.amortizationEndDate);
+                    const durationDays = (expenseEnd - expenseStart) / (1000 * 60 * 60 * 24) + 1;
+                    if (durationDays <= 0) return;
+                    const dailyCost = (item.amount || 0) / durationDays;
+
+                    for (let d = new Date(expenseStart); d <= expenseEnd; d.setDate(d.getDate() + 1)) {
+                        if (d >= filterStartDate && d <= filterEndDate) {
+                            spesaSostenuta += dailyCost;
+                            distributeAmount(dailyCost, item);
+                            monthlyTotals[d.getMonth()].real += dailyCost;
+                        }
+                    }
+                } else if (item.date) {
+                    const expenseDate = new Date(item.date);
+                    if (expenseDate >= filterStartDate && expenseDate <= filterEndDate) {
+                        const amount = item.amount || 0;
+                        spesaSostenuta += amount;
+                        distributeAmount(amount, item);
+                        monthlyTotals[expenseDate.getMonth()].real += amount;
+                    }
                 }
-            }
+            });
+        });
+        
+        allContracts.forEach(c => {
+            (c.lineItems || []).forEach(li => {
+                const item = {...c, ...li, totalAmount: li.totalAmount || 0, startDate: li.startDate, endDate: li.endDate };
+                if (selectedSupplier !== 'all' && item.supplierld !== selectedSupplier) return;
+                if (selectedSector !== 'all' && item.sectorld !== selectedSector) return;
+                if (selectedBranch !== 'all' && item.branchld !== selectedBranch) return;
+
+                const contractStart = new Date(item.startDate);
+                const contractEnd = new Date(item.endDate);
+                const durationDays = (contractEnd - contractStart) / (1000 * 60 * 60 * 24) + 1;
+                if(durationDays <= 0) return;
+                const dailyCost = item.totalAmount / durationDays;
+
+                for (let d = new Date(contractStart); d <= contractEnd; d.setDate(d.getDate() + 1)) {
+                    if (d >= filterStartDate && d <= filterEndDate) {
+                        spesaPrevista += dailyCost;
+                        monthlyTotals[d.getMonth()].projected += dailyCost;
+                    }
+                }
+            });
         });
 
-        const spesaImpegnata = filteredItems.reduce((sum, item) => sum + item.amountToConsider, 0);
-        const budgetTotale = allBudgets.reduce((sum, budget) => {
-            if (!budget.allocations) return sum;
-            if (selectedSupplier !== 'all' && budget.supplierId !== selectedSupplier) return sum;
-            return sum + (budget.allocations || []).reduce((allocSum, alloc) => (selectedSector === 'all' || alloc.sectorId === selectedSector) ? allocSum + (alloc.budgetAmount || 0) : allocSum, 0);
-        }, 0);
-        const budgetResiduo = budgetTotale - spesaImpegnata;
+        const budgetTotale = allBudgets.reduce((sum, budget) => sum + (budget.allocations || []).reduce((allocSum, alloc) => allocSum + (alloc.budgetAmount || 0), 0), 0);
+        const spesaTotale = spesaSostenuta + spesaPrevista;
 
-        const monthlyData = [];
-        const monthlyBudget = budgetTotale / 12;
-        for (let i = 0; i < 12; i++) {
-            const monthKey = `${year}-${String(i + 1).padStart(2, '0')}`;
-            monthlyData.push({
-                mese: new Date(year, i).toLocaleString('it-IT', { month: 'short' }),
-                "Spese Reali": totals.byMonth.real[monthKey] || 0,
-                "Proiezioni": totals.byMonth.projected[monthKey] || 0,
-                "Budget Previsto": monthlyBudget,
-            });
-        }
+        const monthlyData = monthlyTotals.map((data, i) => ({
+            mese: new Date(year, i).toLocaleString('it-IT', { month: 'short' }),
+            'Spese Effettive': data.real,
+            'Proiezioni': data.projected,
+            'Budget Mensile': budgetTotale > 0 ? budgetTotale / 12 : 0,
+        }));
         
-        const formatChartData = (totalsObject) => Object.entries(totalsObject).map(([name, values]) => ({ name, spesaReale: values.real, proiezione: values.projected, total: values.total })).sort((a, b) => b.total - a.total);
-
-        return {
-            totalSpend: spesaImpegnata, budgetTotale, budgetResiduo, expenseCount: filteredItems.length,
-            activeSuppliersCount: Object.keys(totals.bySupplier).length,
-            spendBySupplier: formatChartData(totals.bySupplier),
-            spendBySector: formatChartData(totals.bySector),
-            spendByBranch: formatChartData(totals.byBranch),
-            monthlyData,
+        return { 
+            spesaSostenuta, 
+            spesaPrevista,
+            budgetTotale, 
+            budgetResiduo: budgetTotale - spesaTotale,
+            percentualeUtilizzo: budgetTotale > 0 ? (spesaTotale / budgetTotale) * 100 : 0,
+            monthlyData, 
+            sectorData: Object.entries(totals.bySector).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value).slice(0, 5), 
+            branchData: Object.entries(totals.byBranch).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value), 
+            supplierData: Object.entries(totals.bySupplier).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value).slice(0, 5) 
         };
-    }, [allExpenses, allContracts, allBudgets, dateFilter, selectedSupplier, selectedSector, selectedBranch, selectedChannel, suppliers, sectors, branches, supplierMap, sectorMap, branchMap]);
-    
+    }, [isLoading, allExpenses, allContracts, allBudgets, dateFilter, selectedSupplier, selectedSector, selectedBranch, selectedChannel, suppliers, sectors, branches, supplierMap, sectorMap, branchMap]);
+
     const resetFilters = () => {
         const currentYear = new Date().getFullYear();
-        const startDate = new Date(currentYear, 0, 1);
-        const endDate = new Date(currentYear, 11, 31);
-        setDateFilter({ startDate: startDate.toISOString().split('T')[0], endDate: endDate.toISOString().split('T')[0] });
+        setDateFilter({
+            startDate: new Date(currentYear, 0, 1).toISOString().split('T')[0],
+            endDate: new Date(currentYear, 11, 31).toISOString().split('T')[0]
+        });
         setSelectedSupplier('all');
         setSelectedSector('all');
         setSelectedBranch('all');
@@ -312,74 +281,432 @@ export default function DashboardPage({ navigate }) {
         toast.success("Filtri resettati!");
     };
     
-    const handleSectorClick = (data) => {
-        if (!data || !data.activePayload) return;
-        const payload = data.activePayload[0]?.payload;
-        if (!payload) return;
-        if (payload.name === 'Sconosciuto') {
-            navigate('expenses', { specialFilter: 'unassigned_sector' });
-        } else {
-            const sectorId = sectorNameToIdMap.get(payload.name);
-            if (sectorId) {
-                navigate('expenses', { sectorFilter: sectorId });
-            }
-        }
-    };
-    
-    const handleBranchClick = (data) => {
-        if (data && data.name) {
-            if (data.name === 'Non Assegnata') {
-                navigate('expenses', { specialFilter: 'unassigned' });
-            } else {
-                const branchld = branchNameToldMap.get(data.name);
-                if (branchld) {
-                    navigate('expenses', { branchFilter: [branchld] });
-                }
-            }
-        }
-    };
-
     const areAdvancedFiltersActive = selectedChannel !== 'all' || selectedBranch !== 'all';
 
-    if (isLoading) return <div className="p-8 text-center">Caricamento dati...</div>;
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+                <div className="text-center space-y-4">
+                    <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    <div className="text-xl font-semibold text-gray-700">Caricamento dati in corso...</div>
+                    <div className="text-gray-500">Sincronizzazione con Firebase</div>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="p-4 md:p-8 space-y-8">
-            <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
-            <div className="mb-6 p-4 bg-white/70 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-                    <div className="md:col-span-2 lg:col-span-2"><label className="text-sm font-bold text-gray-600 block mb-1">Periodo</label><div className="flex items-center gap-2"><input type="date" name="startDate" value={dateFilter.startDate} onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition" /><span className="text-gray-500">al</span><input type="date" name="endDate" value={dateFilter.endDate} onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition" /></div></div>
-                    <div className="md:col-span-1 lg:col-span-2"><label className="text-sm font-bold text-gray-600 block mb-1">Fornitore</label><select value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition"><option value="all">Tutti i Fornitori</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-                    <div className="md:col-span-2 lg:col-span-1 flex items-end"><button onClick={() => setIsAdvancedFiltersOpen(!isAdvancedFiltersOpen)} className={'relative w-full h-11 flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg border transition ' + (areAdvancedFiltersActive ? 'bg-indigo-100 text-indigo-700 border-indigo-300' : 'bg-white text-gray-600 hover:bg-gray-100')}><SlidersHorizontal size={16} /> Filtri {areAdvancedFiltersActive && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-indigo-500 rounded-full border-2 border-white"></span>}</button></div>
-                </div>
-                <div className="border-t pt-4 flex justify-between items-center flex-wrap gap-4">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <button onClick={() => setSelectedSector('all')} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition flex items-center gap-2 ${selectedSector === 'all' ? 'bg-indigo-600 text-white' : 'bg-white border text-gray-600 hover:bg-gray-100'}`}><Layers size={14} /> Tutti i Settori</button>
-                        {sectors.map(sector => (<button key={sector.id} onClick={() => setSelectedSector(sector.id)} className={`px-4 py-1.5 rounded-full text-sm font-semibold transition flex items-center gap-2 ${selectedSector === 'all' ? 'bg-indigo-600 text-white' : 'bg-white border text-gray-600 hover:bg-gray-100'}`}>{getSectoricon(sector.name)}{sector.name}</button>))}
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative overflow-hidden">
+            <div className="relative p-3 md:p-4 lg:p-6 xl:p-8 space-y-4 md:space-y-5 lg:space-y-6 xl:space-y-8">
+                {/* Header */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 lg:gap-6">
+                    <div className="space-y-3 lg:space-y-4">
+                        <div className="flex items-center gap-3 lg:gap-4">
+                            <div className="p-2 sm:p-3 lg:p-4 rounded-xl sm:rounded-2xl lg:rounded-3xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white shadow-2xl">
+                                <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8" />
+                            </div>
+                            <div>
+                                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-gray-900 leading-tight">
+                                    Centro di Controllo
+                                </h1>
+                                <p className="text-sm sm:text-base lg:text-lg text-gray-600 font-medium mt-1 lg:mt-2">
+                                    Dashboard avanzato per il monitoraggio budget e performance marketing
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 sm:gap-4 lg:gap-6 flex-wrap">
+                            <div className="flex items-center gap-2 px-2 sm:px-3 lg:px-4 py-1 sm:py-1.5 lg:py-2 bg-white/70 backdrop-blur-sm rounded-full border border-white/20">
+                                <Activity className="w-3 h-3 lg:w-4 lg:h-4 text-green-500" />
+                                <span className="text-xs lg:text-sm font-semibold text-gray-700">Sistema Attivo</span>
+                            </div>
+                            <div className="flex items-center gap-2 px-2 sm:px-3 lg:px-4 py-1 sm:py-1.5 lg:py-2 bg-white/70 backdrop-blur-sm rounded-full border border-white/20">
+                                <Zap className="w-3 h-3 lg:w-4 lg:h-4 text-amber-500" />
+                                <span className="text-xs lg:text-sm font-semibold text-gray-700">Ultimo aggiornamento: ora</span>
+                            </div>
+                        </div>
                     </div>
-                    <button onClick={resetFilters} className="text-sm font-semibold text-red-600 hover:text-red-800 transition flex items-center gap-2 bg-red-100 px-3 py-2 rounded-lg"><XCircle size={16} />Reset Filtri</button>
                 </div>
-                {isAdvancedFiltersOpen && (
-                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 border-t pt-4">
-                        <div className="lg:col-span-2"><label className="text-sm font-bold text-gray-600 block mb-1">Canale Marketing</label><select value={selectedChannel} onChange={e => setSelectedChannel(e.target.value)} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition"><option value="all">Tutti i Canali</option>{marketingChannels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-                        <div className="lg:col-span-3"><label className="text-sm font-bold text-gray-600 block mb-1">Filiale</label><select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} className="w-full h-11 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition" disabled={filteredBranches.length === 0}><option value="all">Tutte le Filiali</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+
+                {/* Filters */}
+                <div className="relative bg-white/70 backdrop-blur-xl rounded-2xl lg:rounded-3xl shadow-2xl border border-white/30 p-4 lg:p-8 overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 opacity-50"></div>
+                    
+                    <div className="relative space-y-4 lg:space-y-6">
+                        <div className="flex items-center gap-3 mb-4 lg:mb-6">
+                            <div className="p-2 lg:p-3 rounded-xl lg:rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
+                                <Filter className="w-5 h-5 lg:w-6 lg:h-6" />
+                            </div>
+                            <h3 className="text-xl lg:text-2xl font-bold text-gray-800">Filtri Avanzati</h3>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-end">
+                            <div className="lg:col-span-5">
+                                <label className="text-xs lg:text-sm font-bold text-gray-700 block mb-2 lg:mb-3 flex items-center gap-2">
+                                    <Calendar className="w-3 h-3 lg:w-4 lg:h-4" />
+                                    Periodo
+                                </label>
+                                <div className="flex items-center gap-2 lg:gap-3">
+                                    <input 
+                                        type="date" 
+                                        value={dateFilter.startDate} 
+                                        onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))} 
+                                        className="flex-1 h-10 lg:h-12 px-3 lg:px-4 border-2 border-gray-200 rounded-xl lg:rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-300 bg-white/80 backdrop-blur-sm text-sm lg:text-base"
+                                    />
+                                    <span className="text-gray-500 font-semibold text-sm lg:text-base">al</span>
+                                    <input 
+                                        type="date" 
+                                        value={dateFilter.endDate} 
+                                        onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))} 
+                                        className="flex-1 h-10 lg:h-12 px-3 lg:px-4 border-2 border-gray-200 rounded-xl lg:rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-300 bg-white/80 backdrop-blur-sm text-sm lg:text-base"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="lg:col-span-4">
+                                <label className="text-xs lg:text-sm font-bold text-gray-700 block mb-2 lg:mb-3">Fornitore</label>
+                                <select 
+                                    value={selectedSupplier} 
+                                    onChange={e => setSelectedSupplier(e.target.value)} 
+                                    className="w-full h-10 lg:h-12 px-3 lg:px-4 border-2 border-gray-200 rounded-xl lg:rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-300 bg-white/80 backdrop-blur-sm text-sm lg:text-base"
+                                >
+                                    <option value="all">Tutti i Fornitori</option>
+                                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                            </div>
+                            
+                            <div className="lg:col-span-3 flex items-end">
+                                <button 
+                                    onClick={() => setIsAdvancedFiltersOpen(!isAdvancedFiltersOpen)} 
+                                    className={`relative w-full h-10 lg:h-12 flex items-center justify-center gap-2 lg:gap-3 px-4 lg:px-6 py-2 lg:py-3 text-xs lg:text-sm font-bold rounded-xl lg:rounded-2xl border-2 transition-all duration-300 ${
+                                        areAdvancedFiltersActive 
+                                            ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-indigo-500 shadow-lg' 
+                                            : 'bg-white/80 text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                                    }`}
+                                >
+                                    <SlidersHorizontal className="w-4 h-4 lg:w-5 lg:h-5" /> 
+                                    <span className="hidden sm:inline">Filtri Avanzati</span>
+                                    <span className="sm:hidden">Filtri</span>
+                                    {areAdvancedFiltersActive && (
+                                        <span className="absolute -top-1 lg:-top-2 -right-1 lg:-right-2 w-3 h-3 lg:w-4 lg:h-4 bg-gradient-to-r from-pink-500 to-red-500 rounded-full border-2 border-white"></span>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="border-t-2 border-gray-100 pt-4 lg:pt-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+                            <div className="flex items-center gap-2 lg:gap-3 flex-wrap w-full xl:w-auto">
+                                <button 
+                                    onClick={() => setSelectedSector('all')} 
+                                    className={`px-3 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-bold transition-all duration-300 flex items-center gap-1 lg:gap-2 ${
+                                        selectedSector === 'all' 
+                                            ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg' 
+                                            : 'bg-transparent border-2 border-transparent text-gray-500 hover:bg-white/70 hover:text-gray-800 hover:border-gray-200'
+                                    }`}
+                                >
+                                    <Layers className="w-3 h-3 lg:w-4 lg:h-4" /> 
+                                    <span className="hidden sm:inline">Tutti i Settori</span>
+                                    <span className="sm:hidden">Tutti</span>
+                                </button>
+                                {sectors.map(sector => (
+                                    <button 
+                                        key={sector.id} 
+                                        onClick={() => setSelectedSector(sector.id)} 
+                                        className={`px-3 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-bold transition-all duration-300 flex items-center gap-1 lg:gap-2 hover:scale-105 ${
+                                            selectedSector === sector.id 
+                                                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg' 
+                                                : 'bg-transparent border-2 border-transparent text-gray-500 hover:bg-white/70 hover:text-gray-800 hover:border-gray-200'
+                                        }`}
+                                    >
+                                        {getSectorIcon(sector.name, "w-3 h-3 lg:w-4 lg:h-4")}
+                                        <span className="hidden sm:inline">{sector.name}</span>
+                                        <span className="sm:hidden">{sector.name.includes('&') ? sector.name.split('&')[0] : sector.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            
+                            <button 
+                                onClick={resetFilters} 
+                                className="text-xs lg:text-sm font-bold text-red-600 hover:text-white transition-all duration-300 flex items-center gap-1 lg:gap-2 bg-red-100 hover:bg-gradient-to-r hover:from-red-500 hover:to-pink-600 px-3 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl hover:shadow-lg hover:scale-105 w-full xl:w-auto justify-center xl:justify-start"
+                            >
+                                <XCircle className="w-3 h-3 lg:w-4 lg:h-4" />Reset Filtri
+                            </button>
+                        </div>
+                        
+                        {isAdvancedFiltersOpen && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6 border-t-2 border-gray-100 pt-4 lg:pt-6">
+                                <div>
+                                    <label className="text-xs lg:text-sm font-bold text-gray-700 block mb-2 lg:mb-3">Canale Marketing</label>
+                                    <select 
+                                        value={selectedChannel} 
+                                        onChange={e => setSelectedChannel(e.target.value)} 
+                                        className="w-full h-10 lg:h-12 px-3 lg:px-4 border-2 border-gray-200 rounded-xl lg:rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-300 bg-white/80 backdrop-blur-sm text-sm lg:text-base"
+                                    >
+                                        <option value="all">Tutti i Canali</option>
+                                        {marketingChannels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label className="text-xs lg:text-sm font-bold text-gray-700 block mb-2 lg:mb-3">Filiale</label>
+                                    <select 
+                                        value={selectedBranch} 
+                                        onChange={e => setSelectedBranch(e.target.value)} 
+                                        className="w-full h-10 lg:h-12 px-3 lg:px-4 border-2 border-gray-200 rounded-xl lg:rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-300 bg-white/80 backdrop-blur-sm text-sm lg:text-base"
+                                    >
+                                        <option value="all">Tutte le Filiali</option>
+                                        {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                )}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-                <KpiCard title="Spesa Totale Impegnata" value={formatCurrency(analyticsData.totalSpend)} icon={<DollarSign className="w-6 h-6 text-indigo-600" />} />
-                <KpiCard title="Budget Totale Assegnato" value={formatCurrency(analyticsData.budgetTotale)} icon={<Target className="w-6 h-6 text-indigo-600" />} />
-                <KpiCard title="Budget Residuo" value={formatCurrency(analyticsData.budgetResiduo)} icon={<PieChart className="w-6 h-6 text-indigo-600" />} />
-            </div>
-            <div className="grid grid-cols-1 gap-8">
-                <div className="bg-white/70 backdrop-blur-sm p-6 rounded-2xl shadow-lg border"><h3 className="font-bold text-lg text-gray-800 mb-4">Andamento Mensile (Costi Impegnati vs Budget)</h3><ResponsiveContainer width="100%" height={300}><AreaChart data={analyticsData.monthlyData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}><defs><linearGradient id="colorSpesa" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4338ca" stopOpacity={0.7}/><stop offset="95%" stopColor="#4338ca" stopOpacity={0.1}/></linearGradient><linearGradient id="colorProiezioni" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#a5b4fc" stopOpacity={0.6}/><stop offset="95%" stopColor="#a5b4fc" stopOpacity={0.0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="mese" tick={FONT_STYLE} /><YAxis tickFormatter={formatCurrency} tick={FONT_STYLE} /><Tooltip content={<CustomTooltip />} /><Legend verticalAlign="top" height={36} /><Area type="monotone" dataKey="Spese Reali" stackId="1" stroke="#312e81" fill="url(#colorSpesa)" /><Area type="monotone" dataKey="Proiezioni" stackId="1" stroke="#6366f1" fill="url(#colorProiezioni)" /><Line type="monotone" dataKey="Budget Previsto" stroke="#9ca3af" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Budget Mensile" /></AreaChart></ResponsiveContainer></div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {analyticsData.spendBySupplier.length > 0 && (<div className="bg-white/70 backdrop-blur-sm p-6 rounded-2xl shadow-lg border"><h3 className="font-bold text-lg text-gray-800 mb-4">Top Fornitori</h3><ResponsiveContainer width="100%" height={300}><BarChart data={analyticsData.spendBySupplier.slice(0, 5)} layout="vertical" margin={{ left: 20, right: 20 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" /><XAxis type="number" tick={false} axisLine={false} tickLine={false} width={0} stacked /><YAxis type="category" dataKey="name" width={100} tick={FONT_STYLE} axisLine={false} tickLine={false} /><Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(238, 242, 255, 0.6)' }} /><Legend verticalAlign="top" height={36} /><Bar dataKey="spesaReale" name="Spesa Reale" stackId="a" fill="#312e81" /><Bar dataKey="proiezione" name="Proiezione" stackId="a" fill="#a5b4fc" /></BarChart></ResponsiveContainer></div>)}
-                    {analyticsData.spendBySector.length > 0 && (<div className="bg-white/70 backdrop-blur-sm p-6 rounded-2xl shadow-lg border"><h3 className="font-bold text-lg text-gray-800 mb-4">Spesa per Settore</h3><ResponsiveContainer width="100%" height={300}><BarChart onClick={handleSectorClick} className="cursor-pointer" data={analyticsData.spendBySector} layout="vertical" margin={{ left: 20, right: 20 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" /><XAxis type="number" tick={false} axisLine={false} tickLine={false} width={0} stacked /><YAxis type="category" dataKey="name" width={100} tick={FONT_STYLE} axisLine={false} tickLine={false} /><Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(238, 242, 255, 0.6)' }} /><Legend verticalAlign="top" height={36} /><Bar dataKey="spesaReale" name="Spesa Reale" stackId="a" fill="#312e81" /><Bar dataKey="proiezione" name="Proiezione" stackId="a" fill="#a5b4fc" /></BarChart></ResponsiveContainer></div>)}
                 </div>
-                {analyticsData.spendByBranch.length > 0 && (<div className="bg-white/70 backdrop-blur-sm p-6 rounded-2xl shadow-lg border"><h3 className="font-bold text-lg text-gray-800 mb-4">Ripartizione Spesa per Filiale</h3><ResponsiveContainer width="100%" height={300}><Treemap data={analyticsData.spendByBranch} dataKey="total" nameKey="name" ratio={4 / 3} stroke="#fff" fill="#8884d8" content={<CustomizedTreemapContent />} onClick={handleBranchClick} className="cursor-pointer"><Tooltip content={<CustomTooltip />} /></Treemap></ResponsiveContainer></div>)}
+
+                {/* KPI Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-4 lg:gap-6">
+                    <HarmoniousKpiCard 
+                        title="Spesa Sostenuta" 
+                        value={formatCurrency(metrics.spesaSostenuta)} 
+                        subtitle="Spese registrate nel periodo" 
+                        icon={<Wallet className="w-6 h-6 lg:w-7 lg:h-7" />}
+                        gradient="from-indigo-500 to-purple-600"
+                        isLoading={isLoading}
+                    />
+                    <HarmoniousKpiCard 
+                        title="Proiezioni Contratti" 
+                        value={formatCurrency(metrics.spesaPrevista)} 
+                        subtitle="Costi futuri da contratti" 
+                        icon={<FileText className="w-6 h-6 lg:w-7 lg:h-7" />}
+                        gradient="from-cyan-500 to-blue-500"
+                        isLoading={isLoading}
+                    />
+                    <HarmoniousKpiCard 
+                        title="Budget Totale" 
+                        value={formatCurrency(metrics.budgetTotale)} 
+                        subtitle={`Anno ${new Date(dateFilter.endDate).getFullYear()}`}
+                        icon={<Target className="w-6 h-6 lg:w-7 lg:h-7" />}
+                        gradient="from-emerald-500 to-green-600"
+                        isLoading={isLoading}
+                    />
+                    <HarmoniousKpiCard 
+                        title="Budget Residuo" 
+                        value={formatCurrency(metrics.budgetResiduo)} 
+                        subtitle={`${(metrics.percentualeUtilizzo || 0).toFixed(1)}% utilizzato`} 
+                        icon={<PiggyBank className="w-6 h-6 lg:w-7 lg:h-7" />}
+                        gradient="from-amber-500 to-orange-500"
+                        isLoading={isLoading}
+                    />
+                </div>
+
+                {/* Monthly Chart */}
+                <div className="bg-white/80 backdrop-blur-xl rounded-2xl lg:rounded-3xl shadow-2xl border border-white/20 p-4 lg:p-8 overflow-hidden relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-purple-50/30 to-pink-50/50"></div>
+                    <div className="relative">
+                        <div className="flex items-center justify-between mb-6 lg:mb-8">
+                            <div className="flex items-center gap-3 lg:gap-4">
+                                <div className="p-2 lg:p-3 rounded-xl lg:rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
+                                    <TrendingUp className="w-5 h-5 lg:w-6 lg:h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl lg:text-2xl font-bold text-gray-800">Andamento Mensile</h3>
+                                    <p className="text-sm lg:text-base text-gray-600">Performance delle spese nel tempo</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 bg-white/50 rounded-full px-3 lg:px-4 py-1.5 lg:py-2">
+                                <div className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600"></div>
+                                <span className="text-xs lg:text-sm font-semibold text-gray-700">Dati Real-time</span>
+                            </div>
+                        </div>
+                        
+                        <ResponsiveContainer width="100%" height={350}>
+                            <ComposedChart data={metrics.monthlyData}>
+                                <defs>
+                                    <linearGradient id="speseFill" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#6366f1" stopOpacity={1}/>
+                                        <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.8}/>
+                                    </linearGradient>
+                                    <linearGradient id="proiezioniFill" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.9}/>
+                                        <stop offset="100%" stopColor="#c084fc" stopOpacity={0.7}/>
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="2 4" stroke="#e5e7eb" opacity={0.6} />
+                                <XAxis dataKey="mese" tick={{ fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} />
+                                <YAxis tick={{ fontSize: 11, fontWeight: 500 }} tickFormatter={(value) => `€${(value/1000).toFixed(0)}k`} axisLine={false} tickLine={false} />
+                                <Tooltip content={<ModernTooltip />} />
+                                <Legend />
+                                <Bar dataKey="Spese Effettive" stackId="a" fill="url(#speseFill)" radius={[0, 0, 0, 0]} stroke="#6366f1" strokeWidth={1} />
+                                <Bar dataKey="Proiezioni" stackId="a" fill="url(#proiezioniFill)" radius={[6, 6, 0, 0]} stroke="#a78bfa" strokeWidth={1} />
+                                <Line type="monotone" dataKey="Budget Mensile" stroke="#ef4444" strokeWidth={2.5} strokeDasharray="6 3" dot={{ fill: '#ef4444', strokeWidth: 2, r: 4 }} activeDot={{ r: 6, stroke: '#ef4444', strokeWidth: 2, fill: '#ffffff' }} />
+                            </ComposedChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* Charts Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+                    {/* Sector Chart */}
+                    <div className="bg-white/80 backdrop-blur-xl rounded-2xl lg:rounded-3xl shadow-2xl border border-white/20 p-4 lg:p-8 overflow-hidden relative">
+                        <div className="absolute inset-0 bg-gradient-to-br from-cyan-50/50 via-blue-50/30 to-indigo-50/50"></div>
+                        <div className="relative">
+                            <div className="flex items-center gap-3 lg:gap-4 mb-6 lg:mb-8">
+                                <div className="p-2 lg:p-3 rounded-xl lg:rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white">
+                                    <Layers className="w-5 h-5 lg:w-6 lg:h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl lg:text-2xl font-bold text-gray-800">Distribuzione per Settore</h3>
+                                    <p className="text-sm lg:text-base text-gray-600">Analisi delle spese per business unit</p>
+                                </div>
+                            </div>
+                            
+                            <ResponsiveContainer width="100%" height={280}>
+                                <PieChart>
+                                    <Pie 
+                                        data={metrics.sectorData} 
+                                        cx="50%" 
+                                        cy="50%" 
+                                        labelLine={false} 
+                                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} 
+                                        outerRadius={90}
+                                        innerRadius={35}
+                                        fill="#8884d8" 
+                                        dataKey="value"
+                                        stroke="rgba(255,255,255,0.8)"
+                                        strokeWidth={2}
+                                    >
+                                        {metrics.sectorData.map((entry, index) => (
+                                            <Cell 
+                                                key={`cell-${index}`} 
+                                                fill={CHART_COLORS[index % CHART_COLORS.length]}
+                                            />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip content={<ModernTooltip />} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    {/* Suppliers Chart */}
+                    <div className="bg-white/80 backdrop-blur-xl rounded-2xl lg:rounded-3xl shadow-2xl border border-white/20 p-4 lg:p-8 overflow-hidden relative">
+                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 via-green-50/30 to-teal-50/50"></div>
+                        <div className="relative">
+                            <div className="flex items-center gap-3 lg:gap-4 mb-6 lg:mb-8">
+                                <div className="p-2 lg:p-3 rounded-xl lg:rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+                                    <Building2 className="w-5 h-5 lg:w-6 lg:h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl lg:text-2xl font-bold text-gray-800">Top Fornitori</h3>
+                                    <p className="text-sm lg:text-base text-gray-600">Performance dei principali partner</p>
+                                </div>
+                            </div>
+                            
+                            <ResponsiveContainer width="100%" height={280}>
+                                <BarChart data={metrics.supplierData} layout="vertical">
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                    <XAxis type="number" tick={{ fontSize: 11, fontWeight: 500 }} tickFormatter={(value) => `€${(value/1000).toFixed(0)}k`} axisLine={false} tickLine={false} />
+                                    <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} />
+                                    <Tooltip content={<ModernTooltip />} />
+                                    <Bar dataKey="value" radius={[0, 6, 6, 0]} stroke="rgba(255,255,255,0.8)" strokeWidth={1}>
+                                        {metrics.supplierData.map((entry, index) => (
+                                            <Cell 
+                                                key={`cell-${index}`} 
+                                                fill={CHART_COLORS[index % CHART_COLORS.length]}
+                                            />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Branch Details Table */}
+                <div className="bg-white/80 backdrop-blur-xl rounded-2xl lg:rounded-3xl shadow-2xl border border-white/20 p-4 lg:p-8 overflow-hidden relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-50/50 via-pink-50/30 to-rose-50/50"></div>
+                    <div className="relative">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 lg:mb-8">
+                            <div className="flex items-center gap-3 lg:gap-4">
+                                <div className="p-2 lg:p-3 rounded-xl lg:rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 text-white">
+                                    <Building2 className="w-5 h-5 lg:w-6 lg:h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl lg:text-2xl font-bold text-gray-800">Dettaglio Spese per Filiale</h3>
+                                    <p className="text-sm lg:text-base text-gray-600">Breakdown dettagliato delle performance locali</p>
+                                </div>
+                            </div>
+                            
+                            <button 
+                                onClick={() => navigate('expenses')} 
+                                className="group flex items-center gap-2 lg:gap-3 px-4 lg:px-6 py-2 lg:py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl lg:rounded-2xl hover:shadow-lg hover:scale-105 transition-all duration-300 text-sm lg:text-base"
+                            >
+                                Vedi tutte le spese 
+                                <ChevronRight className="w-4 h-4 lg:w-5 lg:h-5 group-hover:translate-x-1 transition-transform" />
+                            </button>
+                        </div>
+                        
+                        <div className="overflow-hidden rounded-xl lg:rounded-2xl border border-gray-200/50">
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                                        <tr>
+                                            <th className="p-4 lg:p-6 text-left font-bold text-gray-800 text-base lg:text-lg">Filiale</th>
+                                            <th className="p-4 lg:p-6 text-right font-bold text-gray-800 text-base lg:text-lg">Spesa Totale</th>
+                                            <th className="p-4 lg:p-6 text-right font-bold text-gray-800 text-base lg:text-lg">% sul Totale</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {metrics.branchData && metrics.branchData.map((branch, index) => {
+                                            const percentage = metrics.spesaSostenuta > 0 ? ((branch.value / metrics.spesaSostenuta) * 100).toFixed(1) : 'N/A';
+                                            return (
+                                                <tr key={index} className="hover:bg-indigo-50/50 transition-colors duration-200 group">
+                                                    <td className="p-4 lg:p-6">
+                                                        <div className="flex items-center gap-3 lg:gap-4">
+                                                            <div className={`w-3 h-3 lg:w-4 lg:h-4 rounded-full ${
+                                                                index === 0 ? 'bg-gradient-to-r from-emerald-400 to-green-500' :
+                                                                index === 1 ? 'bg-gradient-to-r from-blue-400 to-indigo-500' :
+                                                                index === 2 ? 'bg-gradient-to-r from-purple-400 to-pink-500' :
+                                                                'bg-gradient-to-r from-amber-400 to-orange-500'
+                                                            }`}></div>
+                                                            <span className="font-bold text-gray-900 text-base lg:text-lg group-hover:text-indigo-600 transition-colors">
+                                                                {branch.name}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-4 lg:p-6 text-right">
+                                                        <span className="font-bold text-lg lg:text-xl text-gray-900">
+                                                            {formatCurrency(branch.value)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-4 lg:p-6 text-right">
+                                                        <div className="flex items-center justify-end gap-2 lg:gap-3">
+                                                            <div className="w-full max-w-[80px] lg:max-w-[100px] bg-gray-200 rounded-full h-2 lg:h-3 overflow-hidden">
+                                                                <div 
+                                                                    className={`h-full transition-all duration-1000 ease-out ${
+                                                                        index === 0 ? 'bg-gradient-to-r from-emerald-400 to-green-500' :
+                                                                        index === 1 ? 'bg-gradient-to-r from-blue-400 to-indigo-500' :
+                                                                        index === 2 ? 'bg-gradient-to-r from-purple-400 to-pink-500' :
+                                                                        'bg-gradient-to-r from-amber-400 to-orange-500'
+                                                                    }`}
+                                                                    style={{ width: `${Math.min(parseFloat(percentage) * 2, 100)}%` }}
+                                                                ></div>
+                                                            </div>
+                                                            <span className="font-semibold text-gray-700 min-w-[50px] lg:min-w-[60px] text-sm lg:text-base">
+                                                                {percentage}%
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );
 }
-

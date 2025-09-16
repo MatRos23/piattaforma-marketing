@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, LogIn, UserPlus } from 'lucide-react';
 
 const getFriendlyErrorMessage = (code) => {
   return {
@@ -25,9 +25,14 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
+
     try {
       if (isRegistering) {
-        if (!name) { setError('Il campo nome è obbligatorio.'); setLoading(false); return; }
+        if (!name) { 
+            setError('Il campo nome è obbligatorio.');
+            setLoading(false); 
+            return; 
+        }
         
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
@@ -43,7 +48,6 @@ export default function LoginPage() {
           role: role, 
           assignedChannels: [] 
         });
-        // Non c'è bisogno di fare altro, l'onAuthStateChanged in App.jsx gestirà il redirect
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
@@ -55,25 +59,71 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4" style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4">
       <div className="w-full max-w-md">
-        <div className="bg-white shadow-2xl rounded-xl p-8">
+        <div className="bg-white/80 backdrop-blur-2xl shadow-2xl rounded-2xl lg:rounded-3xl p-8 border border-white/30">
           <div className="text-center mb-8">
-            <BarChart3 className="mx-auto h-12 w-12 text-indigo-600" />
-            <h1 className="text-3xl font-bold text-gray-800 mt-4">Marketing Platform</h1>
-            <p className="text-gray-500 mt-1">{isRegistering ? 'Crea un nuovo account' : 'Accedi al tuo account'}</p>
+            <div className="inline-block p-3 bg-gradient-to-br from-purple-600 to-pink-600 rounded-2xl shadow-lg">
+                <BarChart3 className="h-8 w-8 text-white" />
+            </div>
+            <h1 className="text-4xl font-black text-gray-900 mt-4">Marketing Platform</h1>
+            <p className="text-gray-600 font-medium mt-1">{isRegistering ? 'Crea un nuovo account per iniziare' : 'Accedi al tuo account'}</p>
           </div>
-          {error && <p className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-center">{error}</p>}
-          <form onSubmit={handleSubmit} className="space-y-6">
+
+          {error && <p className="bg-red-100/70 text-red-700 p-3 rounded-xl mb-6 text-center font-semibold border border-red-200">{error}</p>}
+          
+          <form onSubmit={handleSubmit} className="space-y-4">
             {isRegistering && (
-              <div><label className="text-sm font-bold text-gray-600 block mb-2">Nome Completo</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg" placeholder="Es. Mario Rossi" /></div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700 block mb-1">Nome Completo</label>
+                <input 
+                    type="text" 
+                    value={name} 
+                    onChange={(e) => setName(e.target.value)} 
+                    className="w-full h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/20 transition-all" 
+                    placeholder="Es. Mario Rossi" 
+                />
+              </div>
             )}
-            <div><label className="text-sm font-bold text-gray-600 block mb-2">Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg" placeholder="tu@frattin-auto.it" /></div>
-            <div><label className="text-sm font-bold text-gray-600 block mb-2">Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg" placeholder="........" /></div>
-            <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white p-3 rounded-lg font-bold text-lg hover:bg-indigo-700 transition disabled:bg-indigo-300 flex items-center justify-center">{loading ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : (isRegistering ? 'Registrati' : 'Accedi')}</button>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-1">Email</label>
+              <input 
+                type="email" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                className="w-full h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/20 transition-all" 
+                placeholder="tu@frattin-auto.it" 
+              />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-1">Password</label>
+              <input 
+                type="password" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                className="w-full h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/20 transition-all" 
+                placeholder="••••••••" 
+              />
+            </div>
+            <button 
+                type="submit" 
+                disabled={loading} 
+                className="w-full flex items-center justify-center gap-2 h-12 px-6 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-xl hover:shadow-lg transition-all hover:scale-105 disabled:opacity-70 disabled:scale-100"
+            >
+                {loading 
+                    ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> 
+                    : (isRegistering ? <><UserPlus size={20}/>Registrati</> : <><LogIn size={20}/>Accedi</>)
+                }
+            </button>
           </form>
+          
           <div className="text-center mt-6">
-            <button onClick={() => { setIsRegistering(!isRegistering); setError(''); }} className="text-sm text-indigo-600 hover:underline">{isRegistering ? 'Hai già un account? Accedi' : 'Non hai un account? Registrati'}</button>
+            <button 
+                onClick={() => { setIsRegistering(!isRegistering); setError(''); }} 
+                className="text-sm font-semibold text-purple-600 hover:text-purple-800 hover:underline transition-colors"
+            >
+                {isRegistering ? 'Hai già un account? Accedi' : 'Non hai un account? Registrati'}
+            </button>
           </div>
         </div>
       </div>
