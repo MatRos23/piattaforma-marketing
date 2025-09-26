@@ -28,7 +28,10 @@ const MultiSelect = ({ options, selected, onChange }) => {
                 <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
             {isOpen && (
-                <div className="absolute z-20 mt-1 w-full bg-white/95 backdrop-blur-xl shadow-2xl rounded-xl border border-white/30 max-h-60 overflow-y-auto">
+                <div 
+                    className="absolute z-20 mt-1 w-full bg-white/95 backdrop-blur-xl shadow-2xl rounded-xl border border-white/30 max-h-60 overflow-y-auto"
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <div className="p-2 sticky top-0 bg-white/80 backdrop-blur-xl">
                         <input type="text" placeholder="Cerca..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg"/>
                     </div>
@@ -70,7 +73,7 @@ export default function ExpenseFormModal({
         description: '',
         amount: '',
         sectorId: '',
-        branchIds: [], // Modificato per supportare la multi-selezione
+        branchIds: [],
         marketingChannelId: '',
         relatedContractId: '',
     }), []);
@@ -99,7 +102,7 @@ export default function ExpenseFormModal({
                         _key: Math.random(),
                         amount: item.amount || '',
                         sectorId: item.sectorId || item.sectorld || initialData.sectorId || initialData.sectorld,
-                        branchIds: item.assignmentId ? [item.assignmentId] : [], // Retrocompatibilità
+                        branchIds: item.assignmentId ? [item.assignmentId] : [],
                         marketingChannelId: item.marketingChannelId || item.marketingChannelld,
                     }))
                     : [{ ...defaultLineItem, _key: Math.random() }];
@@ -179,7 +182,8 @@ export default function ExpenseFormModal({
     
     const availableContracts = useMemo(() => {
         if (!formData.supplierId || !contracts) return [];
-        return contracts.filter(c => c.supplierId === formData.supplierId);
+        // **LA CORREZIONE**: Usa 'supplierld' per i dati dei contratti, e 'supplierId' per i dati del form
+        return contracts.filter(c => c.supplierld === formData.supplierId);
     }, [formData.supplierId, contracts]);
 
     const filteredMarketingChannels = useMemo(() => {
@@ -202,9 +206,18 @@ export default function ExpenseFormModal({
         }
         
         const finalLineItems = [];
-        formData.lineItems.forEach(item => {
-            const amount = parseFloat(item.amount) || 0;
+        let hasError = false;
+
+        formData.lineItems.forEach((item, index) => {
+            if (hasError) return;
             const branches = item.branchIds || [];
+            if (!item.description || !item.amount || !item.sectorId || branches.length === 0 || !item.marketingChannelId) {
+                toast.error(`Tutti i campi nella voce di spesa #${index + 1} sono obbligatori.`);
+                hasError = true;
+                return;
+            }
+
+            const amount = parseFloat(String(item.amount).replace(',', '.')) || 0;
 
             if (branches.length > 1) {
                 const amountPerBranch = amount / branches.length;
@@ -214,10 +227,10 @@ export default function ExpenseFormModal({
                         description: item.description,
                         amount: amountPerBranch,
                         sectorId: item.sectorId,
-                        assignmentId: branchId, // Campo corretto per Firebase
+                        assignmentId: branchId,
                         marketingChannelId: item.marketingChannelId,
-                        relatedContractId: item.relatedContractId,
-                        splitGroupId: splitGroupId
+                        relatedContractId: formData.contractLinkType === 'line' ? (item.relatedContractId || null) : null,
+                        splitGroupId: splitGroupId,
                     });
                 });
             } else {
@@ -227,10 +240,12 @@ export default function ExpenseFormModal({
                     sectorId: item.sectorId,
                     assignmentId: branches[0] || null,
                     marketingChannelId: item.marketingChannelId,
-                    relatedContractId: item.relatedContractId,
+                    relatedContractId: formData.contractLinkType === 'line' ? (item.relatedContractId || null) : null,
                 });
             }
         });
+
+        if (hasError) return;
 
         let finalData = { ...formData, lineItems: finalLineItems };
         
@@ -239,7 +254,7 @@ export default function ExpenseFormModal({
             finalData.branchId = finalData.lineItems[0].assignmentId;
         }
 
-        finalData.isMultiBranch = finalData.lineItems.length > 1;
+        finalData.isMultiBranch = finalData.lineItems.some(item => item.splitGroupId);
 
         if (finalData.contractLinkType === 'single') {
             finalData.lineItems = finalData.lineItems.map(li => {
