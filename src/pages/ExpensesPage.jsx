@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { db } from '../firebase/config';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { collection, query, orderBy, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { PlusCircle, Search, XCircle, Wallet, Car, Sailboat, Caravan, Building2, Layers, DollarSign, FileText, Link2, FileSignature, Paperclip, Copy, Pencil, Trash2, AlertTriangle, CheckCircle2, Clock, Calendar, Filter, SlidersHorizontal, ChevronDown, X, Group, TrendingUp, Activity, Zap } from 'lucide-react';
+import { PlusCircle, Search, XCircle, Wallet, Car, Sailboat, Caravan, Building2, Layers, DollarSign, FileText, Paperclip, Copy, Pencil, Trash2, AlertTriangle, CheckCircle2, Clock, Calendar, Filter, SlidersHorizontal, ChevronDown, X, TrendingUp, Activity, Zap, FileSignature } from 'lucide-react';
 import ExpenseFormModal from '../components/ExpenseFormModal';
 import toast from 'react-hot-toast';
 import EmptyState from '../components/EmptyState';
@@ -27,43 +27,71 @@ const formatCurrency = (number) => {
     return number.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 };
 
-// --- COMPONENTI UI MODERNI ---
+// --- COMPONENTI UI RIDISEGNATI ---
 const KpiCard = ({ title, value, icon, gradient, subtitle, trend }) => (
-    <div className="group relative bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-6 hover:shadow-2xl transition-all duration-300 overflow-hidden">
-        <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-5 group-hover:opacity-10 transition-opacity duration-500`}></div>
-        
-        <div className="relative flex items-center justify-between">
-            <div className="flex-1">
-                <p className="text-xs lg:text-sm font-bold text-gray-600 uppercase tracking-wide mb-2">{title}</p>
-                <p className="text-xl lg:text-2xl font-black text-gray-900 mb-1">{value}</p>
-                {subtitle && <p className="text-xs lg:text-sm text-gray-500 font-medium">{subtitle}</p>}
-                {trend && (
-                    <div className="flex items-center gap-1 mt-2">
-                        <TrendingUp className="w-3 h-3 text-emerald-600" />
-                        <span className="text-xs font-bold text-emerald-600">{trend}</span>
-                    </div>
-                )}
+    <div className="group relative bg-white/90 backdrop-blur-2xl rounded-2xl lg:rounded-3xl shadow-lg border border-white/30 p-5 lg:p-6 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+        <div className="absolute -right-4 -top-4 text-gray-200/50 opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500">
+            {React.cloneElement(icon, { className: "w-20 h-20 lg:w-24 lg:h-24" })}
+        </div>
+        <div className="relative z-10">
+            <div className="flex items-center gap-3 mb-3">
+                <div className={`p-2 rounded-lg bg-gradient-to-br ${gradient} text-white shadow-md`}>
+                    {React.cloneElement(icon, { className: "w-5 h-5" })}
+                </div>
+                <p className="text-sm font-bold text-gray-600 tracking-wide uppercase">{title}</p>
             </div>
-            <div className={`p-3 lg:p-4 rounded-2xl bg-gradient-to-br ${gradient} text-white shadow-lg`}>
-                {icon}
-            </div>
+            <p className="text-2xl lg:text-3xl font-black text-gray-900 leading-tight">{value}</p>
+            {subtitle && <p className="text-sm text-gray-500 font-medium mt-1">{subtitle}</p>}
+            {trend && (
+                <div className="flex items-center gap-1 mt-2">
+                    <TrendingUp className="w-3 h-3 text-emerald-600" />
+                    <span className="text-xs font-bold text-emerald-600">{trend}</span>
+                </div>
+            )}
         </div>
     </div>
 );
 
 const StatusBadge = ({ type, hasInvoice, hasContract, isAmortized }) => {
+    const baseClass = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-all";
+    
     if (isAmortized) {
-        return <span className="px-2 lg:px-3 py-1 bg-purple-100 text-purple-800 text-xs font-bold rounded-full flex items-center gap-1"><Clock className="w-3 h-3" />COMPETENZA</span>;
+        return (
+            <span className={`${baseClass} bg-purple-50 text-purple-700 border-purple-200`}>
+                <Clock className="w-3.5 h-3.5" />
+                Competenza
+            </span>
+        );
     }
     
     if (!hasInvoice && !hasContract) {
-        return <span className="px-2 lg:px-3 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full flex items-center gap-1"><AlertTriangle className="w-3 h-3" />INCOMPLETA</span>;
+        return (
+            <span className={`${baseClass} bg-red-50 text-red-700 border-red-200`}>
+                <AlertTriangle className="w-3.5 h-3.5" />
+                Incompleta
+            </span>
+        );
     } else if (!hasInvoice) {
-        return <span className="px-2 lg:px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold rounded-full flex items-center gap-1"><FileText className="w-3 h-3" />SENZA FATTURA</span>;
+        return (
+            <span className={`${baseClass} bg-amber-50 text-amber-700 border-amber-200`}>
+                <FileText className="w-3.5 h-3.5" />
+                No Fattura
+            </span>
+        );
     } else if (!hasContract) {
-        return <span className="px-2 lg:px-3 py-1 bg-blue-100 text-blue-800 text-xs font-bold rounded-full flex items-center gap-1"><FileSignature className="w-3 h-3" />SENZA CONTRATTO</span>;
+        return (
+            <span className={`${baseClass} bg-blue-50 text-blue-700 border-blue-200`}>
+                <FileSignature className="w-3.5 h-3.5" />
+                No Contratto
+            </span>
+        );
     } else {
-        return <span className="px-2 lg:px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />COMPLETA</span>;
+        return (
+            <span className={`${baseClass} bg-emerald-50 text-emerald-700 border-emerald-200`}>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Completa
+            </span>
+        );
     }
 };
 
@@ -73,77 +101,98 @@ const ExpenseCard = ({ expense, sectorMap, supplierMap, branchMap, marketingChan
             ? expense.lineItems.filter(li => li.splitGroupId === item.splitGroupId).map(li => li.assignmentId)
             : [item.assignmentId]
     ) || [])].map(id => ({ name: branchMap.get(id), id })).filter(tag => tag.name);
+    
     const relatedContract = contractMap.get(expense.relatedContractId);
     const hasInvoice = !!expense.invoicePdfUrl;
     const hasContract = !!expense.contractPdfUrl || !!expense.relatedContractId;
-    
+    const sectorName = sectorMap.get(expense.sectorId);
 
     return (
-        <div className="group bg-white/80 backdrop-blur-xl rounded-2xl lg:rounded-3xl shadow-xl border border-white/20 overflow-hidden hover:shadow-2xl transition-all duration-300">
+        <div className="group bg-white/90 backdrop-blur-2xl rounded-2xl lg:rounded-3xl shadow-lg border border-white/30 overflow-hidden hover:shadow-2xl transition-all duration-300">
+            {/* Header Card */}
             <div className="p-4 lg:p-6">
-                {/* Contenitore Principale Flex con allineamento verticale */}
-                <div className="flex items-center justify-between gap-4">
-
-                    {/* COLONNA SINISTRA (flessibile) */}
-                    <div className="flex items-center gap-3 lg:gap-4 flex-1 min-w-0">
-                        <div className="p-2 lg:p-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg flex-shrink-0">
-                            {getSectorIcon(sectorMap.get(expense.sectorId), "w-4 h-4 lg:w-5 lg:h-5")}
+                <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+                    {/* Colonna Sinistra - Info Principale */}
+                    <div className="flex items-start gap-3 lg:gap-4 flex-1 min-w-0">
+                        <div className="p-2.5 lg:p-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg flex-shrink-0">
+                            {getSectorIcon(sectorName, "w-5 h-5 lg:w-6 lg:h-6")}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 lg:gap-3 mb-1">
-                                <h3 className="text-lg lg:text-xl font-bold text-gray-900 truncate">
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                                <h3 className="text-lg lg:text-xl font-bold text-gray-900">
                                     {supplierMap.get(expense.supplierId) || 'N/D'}
                                 </h3>
                                 <StatusBadge hasInvoice={hasInvoice} hasContract={hasContract} isAmortized={expense.isAmortized} />
                             </div>
-                            <p className="text-sm text-gray-600 truncate">{expense.description}</p>
-                            <div className="mt-2 flex items-center flex-wrap gap-1 lg:gap-2">
-                                {locationTags.map(tag => (
-                                    <span key={tag.id} className="text-xs font-semibold px-2 py-1 bg-amber-100 text-amber-800 rounded-full">
-                                        {tag.name}
-                                    </span>
-                                ))}
-                            </div>
+                            <p className="text-sm text-gray-600 mb-3">{expense.description}</p>
+                            
+                            {/* Tags Filiali */}
+                            {locationTags.length > 0 && (
+                                <div className="flex items-center flex-wrap gap-2">
+                                    {locationTags.map(tag => (
+                                        <span key={tag.id} className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full border border-amber-200">
+                                            <Building2 className="w-3 h-3" />
+                                            {tag.name}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    {/* COLONNA DESTRA (fissa) */}
-                    <div className="flex flex-col items-end gap-3 flex-shrink-0">
+                    {/* Colonna Destra - Importo e Azioni */}
+                    <div className="flex flex-col gap-3 lg:items-end">
                         {/* Importo e Data */}
-                        <div className="text-right">
-                            <div className="text-2xl lg:text-3xl font-black bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
-                                {formatCurrency(expense.amount)}
-                            </div>
-                            <div className="text-sm text-gray-500 font-medium">
-                                {expense.date ? new Date(expense.date + 'T00:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Data non specificata'}
+                        <div className="flex lg:flex-col items-start lg:items-end justify-between lg:justify-start gap-2">
+                            <div>
+                                <div className="text-2xl lg:text-3xl font-black bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
+                                    {formatCurrency(expense.amount)}
+                                </div>
+                                <div className="flex items-center gap-1.5 text-sm text-gray-500 font-medium mt-1">
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    {expense.date ? new Date(expense.date + 'T00:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/D'}
+                                </div>
                             </div>
                         </div>
-                        {/* Icone e Azioni */}
-                        <div className="flex items-center gap-2">
+                        
+                        {/* Azioni */}
+                        <div className="flex items-center gap-2 flex-wrap">
                             {hasInvoice && (
-                                <a href={expense.invoicePdfUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200 transition-colors" title="Visualizza fattura" onClick={e => e.stopPropagation()}>
+                                <a href={expense.invoicePdfUrl} target="_blank" rel="noopener noreferrer" 
+                                   className="p-2 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200 transition-all" 
+                                   title="Visualizza fattura" onClick={e => e.stopPropagation()}>
                                     <Paperclip className="w-4 h-4" />
                                 </a>
                             )}
                             {relatedContract?.contractPdfUrl && (
-                                <a href={relatedContract.contractPdfUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors" title={`Contratto: ${relatedContract.description}`} onClick={e => e.stopPropagation()}>
+                                <a href={relatedContract.contractPdfUrl} target="_blank" rel="noopener noreferrer" 
+                                   className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-all" 
+                                   title={`Contratto: ${relatedContract.description}`} onClick={e => e.stopPropagation()}>
                                     <FileSignature className="w-4 h-4" />
                                 </a>
                             )}
                             {expense.lineItems && expense.lineItems.length > 0 && (
-                                <button onClick={() => onToggleDetails(expense.id)} className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all">
+                                <button onClick={() => onToggleDetails(expense.id)} 
+                                        className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                                        title="Mostra dettagli">
                                     <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                 </button>
                             )}
                             {canEditOrDelete(expense) && (
                                 <>
-                                    <button onClick={() => onDuplicate(expense)} className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Duplica spesa">
+                                    <button onClick={() => onDuplicate(expense)} 
+                                            className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" 
+                                            title="Duplica spesa">
                                         <Copy className="w-4 h-4" />
                                     </button>
-                                    <button onClick={() => onEdit(expense)} className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Modifica spesa">
+                                    <button onClick={() => onEdit(expense)} 
+                                            className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" 
+                                            title="Modifica spesa">
                                         <Pencil className="w-4 h-4" />
                                     </button>
-                                    <button onClick={() => onDelete(expense)} className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Elimina spesa">
+                                    <button onClick={() => onDelete(expense)} 
+                                            className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" 
+                                            title="Elimina spesa">
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </>
@@ -153,35 +202,36 @@ const ExpenseCard = ({ expense, sectorMap, supplierMap, branchMap, marketingChan
                 </div>
             </div>
 
-            {/* Area espandibile (rimane invariata) */}
+            {/* Area Espandibile - Dettagli */}
             {isExpanded && expense.lineItems && expense.lineItems.length > 0 && (
-                <div className="border-t border-gray-100 bg-gray-50/50 p-4 lg:p-6">
-                    <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
-                        <Activity className="w-4 h-4" />
+                <div className="border-t border-gray-100 bg-gradient-to-br from-gray-50/50 to-gray-100/30 p-4 lg:p-6">
+                    <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2 text-base">
+                        <Activity className="w-4 h-4 text-amber-600" />
                         Dettaglio Voci di Spesa
                     </h4>
                     <div className="space-y-3">
                         {expense.groupedLineItems?.map((item) => (
-                            <div key={item._key || item.splitGroupId} className="p-4 bg-white rounded-xl border border-gray-200">
-                                <div className="flex justify-between items-start mb-2">
+                            <div key={item._key || item.splitGroupId} className="p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-amber-300 transition-all">
+                                <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-2">
                                     <div className="flex-1 min-w-0">
                                         <p className="font-semibold text-gray-800 mb-1">{item.description}</p>
                                         <p className="text-sm text-gray-600">
                                             <span className="font-medium">Canale:</span> {marketingChannelMap.get(item.marketingChannelId) || 'N/D'}
                                         </p>
                                     </div>
-                                    <div className="text-lg font-bold text-amber-600 ml-4">
+                                    <div className="text-lg font-bold text-amber-600">
                                         {formatCurrency(item.amount)}
                                     </div>
                                 </div>
                                 {item.isGroup ? (
                                     <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2 text-sm text-gray-600">
-                                        <Group className="w-4 h-4 text-amber-600" />
-                                        <span className="font-medium">Ripartito su {item.branchCount} filiali:</span>
+                                        <Building2 className="w-4 h-4 text-amber-600" />
+                                        <span className="font-medium">Distribuito su {item.branchCount} filiali:</span>
                                         <span className="italic">{item.branchNames}</span>
                                     </div>
                                 ) : (
                                     <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2 text-sm text-gray-600">
+                                        <Building2 className="w-4 h-4 text-amber-600" />
                                         <span className="font-medium">Filiale:</span>
                                         <span className="text-amber-700 font-semibold">{branchMap.get(item.assignmentId) || 'N/D'}</span>
                                     </div>
@@ -247,15 +297,29 @@ export default function ExpensesPage({ user, initialFilters }) {
     }, [initialFilters, location.state]);
 
     useEffect(() => {
-        setIsLoading(true);
+    setIsLoading(true);
 
-        const unsubs = [
-            onSnapshot(query(collection(db, "expenses"), orderBy("date", "desc")), (snap) => {
+    // Query per expenses - filtrata per collaboratori
+    let expensesQuery = query(collection(db, "expenses"), orderBy("date", "desc"));
+    
+    // Se è un collaboratore, filtra per fornitori assegnati
+    if (user.role === 'collaborator' && user.assignedChannels && user.assignedChannels.length > 0) {
+        // Firestore supporta 'in' per max 10 valori, gestiamo il caso
+        if (user.assignedChannels.length <= 10) {
+            expensesQuery = query(
+                collection(db, "expenses"),
+                where("supplierId", "in", user.assignedChannels),
+                orderBy("date", "desc")
+            );
+        }
+    }
+
+    const unsubs = [
+        onSnapshot(expensesQuery, (snap) => {
                 const cleanedExpenses = snap.docs.map((doc) => {
                     const data = doc.data();
                     const id = doc.id;
                     
-                    // --- LOGICA DI PULIZIA ALLINEATA A QUELLA DELLA DASHBOARD (MANTENENDO COMPATIBILITÀ) ---
                     let supplierId = data.supplierId || data.supplierld || data.channelId || data.channelld;
                     let sectorId = data.sectorId || data.sectorld;
                     
@@ -294,7 +358,6 @@ export default function ExpensesPage({ user, initialFilters }) {
                         }
                     }
 
-                    // Processo le voci raggruppate
                     const groupedLineItems = [];
                     const processedGroupIds = new Set();
                     
@@ -320,11 +383,10 @@ export default function ExpensesPage({ user, initialFilters }) {
                     });
                     
                     return { 
-                        ...data, // Mantiene TUTTI i dati originali per compatibilità con il modal
+                        ...data,
                         id: doc.id, 
-                        supplierId, // Per la visualizzazione nella pagina
-                        sectorId,   // Per la visualizzazione nella pagina
-                        // Mantiene anche i nomi originali per il modal
+                        supplierId,
+                        sectorId,
                         supplierld: supplierId,
                         sectorld: sectorId,
                         lineItems, 
@@ -333,6 +395,9 @@ export default function ExpensesPage({ user, initialFilters }) {
                 });
                 setAllExpenses(cleanedExpenses);
                 setIsLoading(false);
+                if (user.role === 'collaborator' && (!user.assignedChannels || user.assignedChannels.length === 0)) {
+    toast.error("Nessun fornitore assegnato. Contatta un amministratore.", { duration: 5000 });
+}
             }),
             onSnapshot(query(collection(db, "sectors"), orderBy("name")), (snap) => setSectors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "branches"), orderBy("name")), (snap) => setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
@@ -421,12 +486,14 @@ export default function ExpensesPage({ user, initialFilters }) {
         const withInvoice = filteredExpenses.filter(exp => exp.invoicePdfUrl).length;
         const withContract = filteredExpenses.filter(exp => exp.contractPdfUrl || exp.relatedContractId).length;
         const amortized = filteredExpenses.filter(exp => exp.isAmortized).length;
+        const complete = filteredExpenses.filter(exp => exp.invoicePdfUrl && (exp.contractPdfUrl || exp.relatedContractId)).length;
         
         return {
             totalExpenses: total,
             totalSpend: totalFilteredSpend,
             withInvoicePercentage: total > 0 ? ((withInvoice / total) * 100).toFixed(1) : 0,
             withContractPercentage: total > 0 ? ((withContract / total) * 100).toFixed(1) : 0,
+            completePercentage: total > 0 ? ((complete / total) * 100).toFixed(1) : 0,
             amortizedCount: amortized
         };
     }, [filteredExpenses, totalFilteredSpend]);
@@ -535,6 +602,8 @@ export default function ExpensesPage({ user, initialFilters }) {
             return toast.error("Non hai i permessi per eliminare questa spesa.");
         }
         
+        if (!window.confirm(`Sei sicuro di voler eliminare la spesa "${expense.description}"?`)) return;
+        
         const toastId = toast.loading("Eliminazione in corso...");
         
         try {
@@ -598,7 +667,7 @@ export default function ExpensesPage({ user, initialFilters }) {
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative">
             <div className="relative p-4 lg:p-8 space-y-6">
                 {/* Header Moderno */}
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-600 to-orange-700 text-white shadow-lg">
                             <Wallet className="w-7 h-7" />
@@ -786,27 +855,34 @@ export default function ExpensesPage({ user, initialFilters }) {
                 </div>
 
                 {/* KPI Cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
                     <KpiCard 
                         title="Spese Totali" 
                         value={kpiData.totalExpenses.toString()}
-                        subtitle="Spese Filtrate"
-                        icon={<FileText className="w-5 h-5 lg:w-6 lg:h-6" />}
+                        subtitle={`${filteredExpenses.length} spese filtrate`}
+                        icon={<FileText className="w-6 h-6" />}
                         gradient="from-amber-500 to-orange-600"
                     />
                     <KpiCard 
                         title="Importo Totale" 
                         value={formatCurrency(kpiData.totalSpend)}
-                        subtitle="Importo Filtrato"
-                        icon={<DollarSign className="w-5 h-5 lg:w-6 lg:h-6" />}
+                        subtitle="Somma spese filtrate"
+                        icon={<DollarSign className="w-6 h-6" />}
                         gradient="from-emerald-500 to-green-600"
                     />
                     <KpiCard 
                         title="Con Fattura" 
                         value={`${kpiData.withInvoicePercentage}%`}
-                        subtitle="Documenti Completi"
-                        icon={<CheckCircle2 className="w-5 h-5 lg:w-6 lg:h-6" />}
+                        subtitle="Documenti completi"
+                        icon={<CheckCircle2 className="w-6 h-6" />}
                         gradient="from-blue-500 to-indigo-600"
+                    />
+                    <KpiCard 
+                        title="Complete" 
+                        value={`${kpiData.completePercentage}%`}
+                        subtitle="Fattura + Contratto"
+                        icon={<Activity className="w-6 h-6" />}
+                        gradient="from-purple-500 to-pink-600"
                     />
                 </div>
 

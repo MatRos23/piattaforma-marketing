@@ -3,6 +3,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
+import { getStorage } from "firebase/storage"; // AGGIUNGI QUESTA RIGA
 
 // La configurazione del tuo NUOVO progetto Firebase
 const firebaseConfig = {
@@ -20,7 +21,8 @@ const app = initializeApp(firebaseConfig);
 // Inizializza e esporta i singoli servizi di Firebase per poterli usare nel resto dell'app
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const functions = getFunctions(app, 'europe-west1'); // Specifichiamo la regione per le functions
+export const functions = getFunctions(app, 'europe-west1');
+export const storage = getStorage(app); // AGGIUNGI QUESTA RIGA
 
 // Esportiamo anche la config, ci servirà per una delle funzioni
 export { firebaseConfig };

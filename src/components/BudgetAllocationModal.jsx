@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { PlusCircle, Trash2, X, Settings } from 'lucide-react';
+import { PlusCircle, Trash2, X, Settings, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function BudgetAllocationModal({ isOpen, onClose, onSave, supplier, year, initialAllocations, sectors, branches, marketingChannels }) {
@@ -12,17 +12,71 @@ export default function BudgetAllocationModal({ isOpen, onClose, onSave, supplie
         sectorId: '',
         branchId: '',
         budgetAmount: '',
+        isUnexpected: false, // NUOVO: flag per allocazioni singole inattese
     }), []);
 
     useEffect(() => {
         if (isOpen) {
             setIsUnexpected(supplier?.isUnexpected || false);
-            const initialData = initialAllocations && initialAllocations.length > 0
-                ? initialAllocations.map(a => ({ ...a, budgetAmount: a.budgetAmount || '', _key: Math.random() }))
-                : [defaultAllocation];
-            setAllocations(initialData);
+            
+            if (!initialAllocations || initialAllocations.length === 0) {
+                setAllocations([defaultAllocation]);
+                return;
+            }
+            
+            // RAGGRUPPA allocazioni espanse da Frattin Group + Generico
+            const frattinGroupSector = sectors.find(s => s.name === 'Frattin Group');
+            const genericoBranch = branches.find(b => b.name.toLowerCase() === 'generico');
+            
+            const grouped = [];
+            const processed = new Set();
+            
+            initialAllocations.forEach((alloc, index) => {
+                if (processed.has(index)) return;
+                
+                // Cerca siblings (stesso settore + canale, ma branch diverse)
+                const siblings = initialAllocations.filter((a, i) => 
+                    i !== index &&
+                    a.sectorId === alloc.sectorId &&
+                    a.marketingChannelId === alloc.marketingChannelId &&
+                    a.branchId !== alloc.branchId
+                );
+                
+                // Se Frattin Group + ci sono siblings = era un'allocazione "Generico" espansa
+                if (alloc.sectorId === frattinGroupSector?.id && siblings.length > 0) {
+                    const allSiblings = [alloc, ...siblings];
+                    allSiblings.forEach((s, i) => {
+                        const siblingIndex = initialAllocations.indexOf(s);
+                        processed.add(siblingIndex);
+                    });
+                    
+                    // Raggruppa in una sola allocazione con branch = Generico
+                    const totalBudget = allSiblings.reduce((sum, s) => sum + (s.budgetAmount || 0), 0);
+                    const isUnexpectedAny = allSiblings.some(s => s.isUnexpected);
+                    
+                    grouped.push({
+                        marketingChannelId: alloc.marketingChannelId,
+                        sectorId: alloc.sectorId,
+                        branchId: genericoBranch?.id || '', // Forza "Generico"
+                        budgetAmount: totalBudget,
+                        isUnexpected: isUnexpectedAny,
+                        _key: Math.random()
+                    });
+                } else {
+                    // Allocazione normale, lascia così
+                    processed.add(index);
+                    grouped.push({
+                        ...alloc,
+                        budgetAmount: alloc.budgetAmount || '',
+                        isUnexpected: alloc.isUnexpected || false,
+                        _key: Math.random()
+                    });
+                }
+            });
+            
+            setAllocations(grouped.length > 0 ? grouped : [defaultAllocation]);
         }
-    }, [isOpen, initialAllocations, supplier, defaultAllocation]);
+    }, [isOpen, initialAllocations, supplier, defaultAllocation, sectors, branches]);
 
     if (!isOpen) return null;
 
@@ -50,6 +104,7 @@ export default function BudgetAllocationModal({ isOpen, onClose, onSave, supplie
         const allocationsToSave = allocations.map(({ _key, ...rest }) => ({
             ...rest,
             budgetAmount: parseFloat(String(rest.budgetAmount || '0').replace(',', '.')) || 0,
+            isUnexpected: rest.isUnexpected || false, // NUOVO: preserva il flag
         }));
         
         for (const alloc of allocationsToSave) {
@@ -107,7 +162,11 @@ export default function BudgetAllocationModal({ isOpen, onClose, onSave, supplie
                                 const availableChannels = marketingChannels.filter(mc => supplier.offeredMarketingChannels?.includes(mc.id));
                                 const filteredBranches = branches.filter(b => b.associatedSectors?.includes(alloc.sectorId));
                                 return (
-                                    <div key={alloc._key} className="p-4 bg-white/70 rounded-xl border-2 border-white space-y-3 relative">
+                                    <div key={alloc._key} className={`p-4 rounded-xl border-2 space-y-3 relative transition-all ${
+                                        alloc.isUnexpected 
+                                            ? 'bg-amber-50/70 border-amber-300' 
+                                            : 'bg-white/70 border-white'
+                                    }`}>
                                         {allocations.length > 1 && (
                                             <button type="button" onClick={() => removeAllocation(index)} className="absolute -top-2 -right-2 p-1 bg-red-100 text-red-500 hover:bg-red-500 hover:text-white rounded-full transition-all"><Trash2 size={16} /></button>
                                         )}
@@ -137,6 +196,24 @@ export default function BudgetAllocationModal({ isOpen, onClose, onSave, supplie
                                                 <label className="text-xs font-semibold text-gray-600 block mb-1">Budget (€)</label>
                                                 <input type="number" step="0.01" value={alloc.budgetAmount} onChange={e => handleAllocationChange(index, 'budgetAmount', e.target.value)} className="w-full h-10 px-3 border-2 border-gray-200 rounded-lg" placeholder="0.00" />
                                             </div>
+                                        </div>
+                                        
+                                        {/* NUOVO: Checkbox per allocazione inattesa */}
+                                        <div className="pt-3 border-t border-gray-200/50">
+                                            <label className="flex items-center gap-2 cursor-pointer group">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={alloc.isUnexpected || false}
+                                                    onChange={e => handleAllocationChange(index, 'isUnexpected', e.target.checked)}
+                                                    className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                                />
+                                                <div className="flex items-center gap-2">
+                                                    <AlertTriangle className={`w-4 h-4 transition-colors ${alloc.isUnexpected ? 'text-amber-600' : 'text-gray-400 group-hover:text-amber-500'}`} />
+                                                    <span className={`text-sm font-semibold transition-colors ${alloc.isUnexpected ? 'text-amber-700' : 'text-gray-600 group-hover:text-amber-600'}`}>
+                                                        Allocazione inattesa (spesa non prevista nel budget originale)
+                                                    </span>
+                                                </div>
+                                            </label>
                                         </div>
                                     </div>
                                 );

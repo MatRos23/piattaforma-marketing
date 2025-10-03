@@ -14,6 +14,7 @@ import ContractsPage from './pages/ContractsPage';
 export default function App() {
     const [user, setUser] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [pageState, setPageState] = useState({
         currentPage: 'dashboard',
         initialFilters: {},
@@ -21,34 +22,36 @@ export default function App() {
 
     const navigate = (page, filters = {}) => {
         setPageState({ currentPage: page, initialFilters: filters });
+        setIsMobileMenuOpen(false); // Chiudi il menu quando si naviga
     };
 
     const renderPage = (page, user, filters) => {
         const userPermissions = {
-    manager: ['dashboard', 'budget', 'expenses', 'settings', 'contracts'],
-    collaborator: ['dashboard', 'expenses'],
-    admin: ['dashboard', 'expenses', 'budget', 'settings', 'contracts'],
-    };
+            manager: ['dashboard', 'budget', 'expenses', 'settings', 'contracts'],
+            collaborator: ['dashboard', 'expenses'],
+            admin: ['dashboard', 'expenses', 'budget', 'settings', 'contracts'],
+        };
         const allowedPages = userPermissions[user.role] || [];
         if (!allowedPages.includes(page)) {
             return <DashboardPage user={user} navigate={navigate} />;
         }
 
         switch (page) {
-        case 'dashboard':
-            return <DashboardPage user={user} navigate={navigate} />;
-        case 'expenses':
-            return <ExpensesPage user={user} initialFilters={filters} />;
-        case 'budget':
-            return <BudgetPage user={user} />;
-        case 'settings':
-            return <SettingsPage user={user} />;
-        case 'contracts':
-            return <ContractsPage user={user} />;
-        default:
-            return <DashboardPage user={user} navigate={navigate} />;
-    }
-};
+            case 'dashboard':
+                return <DashboardPage user={user} navigate={navigate} />;
+            case 'expenses':
+                return <ExpensesPage user={user} initialFilters={filters} />;
+            case 'budget':
+                return <BudgetPage user={user} />;
+            case 'settings':
+                return <SettingsPage user={user} />;
+            case 'contracts':
+                return <ContractsPage user={user} />;
+            default:
+                return <DashboardPage user={user} navigate={navigate} />;
+        }
+    };
+
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
@@ -85,15 +88,20 @@ export default function App() {
     }
 
     return (
-        <div className="flex h-screen bg-gray-50">
+        <div className="flex h-screen bg-gray-50 overflow-hidden">
             <Sidebar
                 user={user}
                 currentPage={pageState.currentPage}
                 setCurrentPage={(page) => navigate(page)}
                 handleLogout={handleLogout}
+                isMobileMenuOpen={isMobileMenuOpen}
+                setIsMobileMenuOpen={setIsMobileMenuOpen}
             />
             <main className="flex-1 overflow-y-auto">
-                {renderPage(pageState.currentPage, user, pageState.initialFilters)}
+                {/* Padding top su mobile per il menu button */}
+                <div className="lg:pt-0 pt-0">
+                    {renderPage(pageState.currentPage, user, pageState.initialFilters)}
+                </div>
             </main>
         </div>
     );
