@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { db } from '../firebase/config';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { collection, query, orderBy, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { PlusCircle, Search, XCircle, Wallet, Car, Sailboat, Caravan, Building2, Layers, DollarSign, FileText, Paperclip, Copy, Pencil, Trash2, AlertTriangle, CheckCircle2, Clock, Calendar, Filter, SlidersHorizontal, ChevronDown, X, TrendingUp, Activity, Zap, FileSignature } from 'lucide-react';
+import { collection, query, orderBy, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
+import { PlusCircle, Search, XCircle, Wallet, Car, Sailboat, Caravan, Building2, Layers, DollarSign, FileText, Paperclip, Copy, Pencil, Trash2, AlertTriangle, CheckCircle2, Clock, Calendar, Filter, SlidersHorizontal, ChevronDown, X, TrendingUp, Activity, Zap, FileSignature, GitBranch, Info } from 'lucide-react';
 import ExpenseFormModal from '../components/ExpenseFormModal';
 import toast from 'react-hot-toast';
 import EmptyState from '../components/EmptyState';
@@ -23,12 +23,12 @@ const getSectorIcon = (sectorName, className = "w-4 h-4") => {
 };
 
 const formatCurrency = (number) => {
-    if (typeof number !== 'number') return 'N/A';
+    if (typeof number !== 'number' || isNaN(number)) return '€ 0,00';
     return number.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 };
 
-// --- COMPONENTI UI RIDISEGNATI ---
-const KpiCard = ({ title, value, icon, gradient, subtitle, trend }) => (
+// --- COMPONENTI UI MEMOIZZATI ---
+const KpiCard = React.memo(({ title, value, icon, gradient, subtitle, trend }) => (
     <div className="group relative bg-white/90 backdrop-blur-2xl rounded-2xl lg:rounded-3xl shadow-lg border border-white/30 p-5 lg:p-6 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
         <div className="absolute -right-4 -top-4 text-gray-200/50 opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500">
             {React.cloneElement(icon, { className: "w-20 h-20 lg:w-24 lg:h-24" })}
@@ -50,9 +50,9 @@ const KpiCard = ({ title, value, icon, gradient, subtitle, trend }) => (
             )}
         </div>
     </div>
-);
+));
 
-const StatusBadge = ({ type, hasInvoice, hasContract, isAmortized }) => {
+const StatusBadge = React.memo(({ type, hasInvoice, hasContract, isAmortized }) => {
     const baseClass = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-all";
     
     if (isAmortized) {
@@ -93,22 +93,30 @@ const StatusBadge = ({ type, hasInvoice, hasContract, isAmortized }) => {
             </span>
         );
     }
-};
+});
 
-const ExpenseCard = ({ expense, sectorMap, supplierMap, branchMap, marketingChannelMap, contractMap, onEdit, onDelete, onDuplicate, canEditOrDelete, onToggleDetails, isExpanded }) => {
-    const locationTags = [...new Set(expense.lineItems?.flatMap(item => 
+const ExpenseCard = React.memo(({ expense, sectorMap, supplierMap, branchMap, marketingChannelMap, contractMap, onEdit, onDelete, onDuplicate, canEditOrDelete, onToggleDetails, isExpanded, hasDistributedAmount, distributedInfo }) => {
+    const [showDistributedInfo, setShowDistributedInfo] = useState(false);
+    
+    const locationTags = useMemo(() => [...new Set(expense.lineItems?.flatMap(item => 
         item.splitGroupId 
             ? expense.lineItems.filter(li => li.splitGroupId === item.splitGroupId).map(li => li.assignmentId)
             : [item.assignmentId]
-    ) || [])].map(id => ({ name: branchMap.get(id), id })).filter(tag => tag.name);
+    ) || [])].map(id => ({ name: branchMap.get(id), id })).filter(tag => tag.name), [expense.lineItems, branchMap]);
     
     const relatedContract = contractMap.get(expense.relatedContractId);
     const hasInvoice = !!expense.invoicePdfUrl;
     const hasContract = !!expense.contractPdfUrl || !!expense.relatedContractId;
     const sectorName = sectorMap.get(expense.sectorId);
 
+    // Callback per evitare propagazione eventi
+    const handleToggle = useCallback((e) => {
+        e.stopPropagation();
+        onToggleDetails(expense.id);
+    }, [expense.id, onToggleDetails]);
+
     return (
-        <div className="group bg-white/90 backdrop-blur-2xl rounded-2xl lg:rounded-3xl shadow-lg border border-white/30 overflow-hidden hover:shadow-2xl transition-all duration-300">
+        <div className="group bg-white/90 backdrop-blur-2xl rounded-2xl lg:rounded-3xl shadow-lg border border-white/30 hover:shadow-2xl transition-all duration-300">
             {/* Header Card */}
             <div className="p-4 lg:p-6">
                 <div className="flex flex-col lg:flex-row lg:items-start gap-4">
@@ -123,8 +131,29 @@ const ExpenseCard = ({ expense, sectorMap, supplierMap, branchMap, marketingChan
                                     {supplierMap.get(expense.supplierId) || 'N/D'}
                                 </h3>
                                 <StatusBadge hasInvoice={hasInvoice} hasContract={hasContract} isAmortized={expense.isAmortized} />
+                                {hasDistributedAmount && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowDistributedInfo(!showDistributedInfo);
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer"
+                                    >
+                                        <GitBranch className="w-3 h-3" />
+                                        Distribuito
+                                        <Info className="w-3 h-3" />
+                                    </button>
+                                )}
                             </div>
                             <p className="text-sm text-gray-600 mb-3">{expense.description}</p>
+                            
+                            {/* Mostra info distribuzione se cliccato */}
+                            {hasDistributedAmount && showDistributedInfo && distributedInfo && (
+                                <div className="mb-3 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                                    <div className="text-xs font-bold text-indigo-800 mb-1">Quote distribuite:</div>
+                                    <div className="text-xs text-indigo-700">{distributedInfo.details}</div>
+                                </div>
+                            )}
                             
                             {/* Tags Filiali */}
                             {locationTags.length > 0 && (
@@ -146,8 +175,13 @@ const ExpenseCard = ({ expense, sectorMap, supplierMap, branchMap, marketingChan
                         <div className="flex lg:flex-col items-start lg:items-end justify-between lg:justify-start gap-2">
                             <div>
                                 <div className="text-2xl lg:text-3xl font-black bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
-                                    {formatCurrency(expense.amount)}
+                                    {formatCurrency(expense.displayAmount || expense.amount)}
                                 </div>
+                                {hasDistributedAmount && expense.amount !== expense.displayAmount && (
+                                    <p className="text-xs text-gray-500 font-medium">
+                                        Totale: {formatCurrency(expense.amount)}
+                                    </p>
+                                )}
                                 <div className="flex items-center gap-1.5 text-sm text-gray-500 font-medium mt-1">
                                     <Calendar className="w-3.5 h-3.5" />
                                     {expense.date ? new Date(expense.date + 'T00:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/D'}
@@ -160,19 +194,19 @@ const ExpenseCard = ({ expense, sectorMap, supplierMap, branchMap, marketingChan
                             {hasInvoice && (
                                 <a href={expense.invoicePdfUrl} target="_blank" rel="noopener noreferrer" 
                                    className="p-2 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200 transition-all" 
-                                   title="Visualizza fattura" onClick={e => e.stopPropagation()}>
+                                   title="Visualizza fattura">
                                     <Paperclip className="w-4 h-4" />
                                 </a>
                             )}
                             {relatedContract?.contractPdfUrl && (
                                 <a href={relatedContract.contractPdfUrl} target="_blank" rel="noopener noreferrer" 
                                    className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-all" 
-                                   title={`Contratto: ${relatedContract.description}`} onClick={e => e.stopPropagation()}>
+                                   title={`Contratto: ${relatedContract.description}`}>
                                     <FileSignature className="w-4 h-4" />
                                 </a>
                             )}
                             {expense.lineItems && expense.lineItems.length > 0 && (
-                                <button onClick={() => onToggleDetails(expense.id)} 
+                                <button onClick={handleToggle} 
                                         className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
                                         title="Mostra dettagli">
                                     <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
@@ -210,7 +244,7 @@ const ExpenseCard = ({ expense, sectorMap, supplierMap, branchMap, marketingChan
                         Dettaglio Voci di Spesa
                     </h4>
                     <div className="space-y-3">
-                        {expense.groupedLineItems?.map((item) => (
+                        {expense.processedLineItems?.map((item) => (
                             <div key={item._key || item.splitGroupId} className="p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-amber-300 transition-all">
                                 <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-2">
                                     <div className="flex-1 min-w-0">
@@ -220,7 +254,7 @@ const ExpenseCard = ({ expense, sectorMap, supplierMap, branchMap, marketingChan
                                         </p>
                                     </div>
                                     <div className="text-lg font-bold text-amber-600">
-                                        {formatCurrency(item.amount)}
+                                        {formatCurrency(item.displayAmount || item.amount)}
                                     </div>
                                 </div>
                                 {item.isGroup ? (
@@ -228,6 +262,16 @@ const ExpenseCard = ({ expense, sectorMap, supplierMap, branchMap, marketingChan
                                         <Building2 className="w-4 h-4 text-amber-600" />
                                         <span className="font-medium">Distribuito su {item.branchCount} filiali:</span>
                                         <span className="italic">{item.branchNames}</span>
+                                    </div>
+                                ) : item.isGenerico ? (
+                                    <div className="mt-2 pt-2 border-t border-gray-100">
+                                        <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
+                                            <GitBranch className="w-4 h-4 text-indigo-600" />
+                                            <span className="font-medium">Distribuito automaticamente su:</span>
+                                        </div>
+                                        <div className="ml-6 text-xs text-gray-500">
+                                            {item.distributedTo}
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2 text-sm text-gray-600">
@@ -243,11 +287,14 @@ const ExpenseCard = ({ expense, sectorMap, supplierMap, branchMap, marketingChan
             )}
         </div>
     );
-};
+});
 
 export default function ExpensesPage({ user, initialFilters }) {
     const location = useLocation();
+    
+    // Stati di base
     const [allExpenses, setAllExpenses] = useState([]);
+    const [normalizedExpenses, setNormalizedExpenses] = useState([]);
     const [branches, setBranches] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [marketingChannels, setMarketingChannels] = useState([]);
@@ -257,6 +304,8 @@ export default function ExpensesPage({ user, initialFilters }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingExpense, setEditingExpense] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    
+    // Stati filtri
     const [searchTerm, setSearchTerm] = useState('');
     const [supplierFilter, setSupplierFilter] = useState('');
     const [dateFilter, setDateFilter] = useState({ startDate: '', endDate: '' });
@@ -269,13 +318,34 @@ export default function ExpensesPage({ user, initialFilters }) {
     const [areaFilter, setAreaFilter] = useState('');
     const [specialFilter, setSpecialFilter] = useState(null);
 
+    // Map memoizzate
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
     const branchMap = useMemo(() => new Map(branches.map(b => [b.id, b.name])), [branches]);
     const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers]);
     const marketingChannelMap = useMemo(() => new Map(marketingChannels.map(mc => [mc.id, mc.name])), [marketingChannels]);
     const geoAreaMap = useMemo(() => new Map(geographicAreas.map(a => [a.id, a.name])), [geographicAreas]);
     const contractMap = useMemo(() => new Map(contracts.map(c => [c.id, c])), [contracts]);
+    
+    // Trova ID della filiale "Generico"
+    const genericoBranchId = useMemo(() => 
+        branches.find(b => b.name.toLowerCase() === 'generico')?.id, 
+        [branches]
+    );
+    
+    // Cache per le filiali per settore
+    const branchesPerSector = useMemo(() => {
+        const cache = new Map();
+        sectors.forEach(sector => {
+            const sectorBranches = branches.filter(b => 
+                b.associatedSectors?.includes(sector.id) && 
+                b.id !== genericoBranchId
+            );
+            cache.set(sector.id, sectorBranches);
+        });
+        return cache;
+    }, [sectors, branches, genericoBranchId]);
 
+    // Inizializzazione filtri
     useEffect(() => {
         const filters = initialFilters || location.state;
         if (filters && Object.keys(filters).length > 0) {
@@ -296,123 +366,158 @@ export default function ExpensesPage({ user, initialFilters }) {
         }
     }, [initialFilters, location.state]);
 
+    // Caricamento dati iniziale
     useEffect(() => {
-    setIsLoading(true);
+        setIsLoading(true);
 
-    // Query per expenses - filtrata per collaboratori
-    let expensesQuery = query(collection(db, "expenses"), orderBy("date", "desc"));
-    
-    // Se è un collaboratore, filtra per fornitori assegnati
-    if (user.role === 'collaborator' && user.assignedChannels && user.assignedChannels.length > 0) {
-        // Firestore supporta 'in' per max 10 valori, gestiamo il caso
-        if (user.assignedChannels.length <= 10) {
-            expensesQuery = query(
-                collection(db, "expenses"),
-                where("supplierId", "in", user.assignedChannels),
-                orderBy("date", "desc")
-            );
+        let expensesQuery = query(collection(db, "expenses"), orderBy("date", "desc"));
+        
+        if (user.role === 'collaborator' && user.assignedChannels && user.assignedChannels.length > 0) {
+            if (user.assignedChannels.length <= 10) {
+                expensesQuery = query(
+                    collection(db, "expenses"),
+                    where("supplierId", "in", user.assignedChannels),
+                    orderBy("date", "desc")
+                );
+            }
         }
-    }
 
-    const unsubs = [
-        onSnapshot(expensesQuery, (snap) => {
-                const cleanedExpenses = snap.docs.map((doc) => {
-                    const data = doc.data();
-                    const id = doc.id;
-                    
-                    let supplierId = data.supplierId || data.supplierld || data.channelId || data.channelld;
-                    let sectorId = data.sectorId || data.sectorld;
-                    
-                    let lineItems = [];
-                    if (Array.isArray(data.lineItems) && data.lineItems.length > 0) {
-                        lineItems = data.lineItems.map((item, index) => ({
-                            ...item,
-                            assignmentId: item.assignmentId || item.assignmentid || item.branchld || data.branchId || data.branchld || "",
-                            marketingChannelId: item.marketingChannelId || item.marketingChannelld || "",
-                            _key: `${doc.id}-${index}`
-                        }));
-                    } else {
-                        lineItems.push({
-                            description: data.description || 'Voce principale',
-                            amount: data.amount || 0,
-                            marketingChannelId: data.marketingChannelId || data.marketingChannelld || "",
-                            assignmentId: data.branchId || data.branchld || "",
-                            _key: `${doc.id}-0`
-                        });
-                    }
-
-                    if (!supplierId && lineItems.length > 0) {
-                        for (const item of lineItems) {
-                            if (item.supplierId || item.supplierld) {
-                                supplierId = item.supplierId || item.supplierld;
-                                break;
-                            }
-                        }
-                    }
-                    if (!sectorId && lineItems.length > 0) {
-                        for (const item of lineItems) {
-                            if (item.sectorId || item.sectorld) {
-                                sectorId = item.sectorId || item.sectorld;
-                                break;
-                            }
-                        }
-                    }
-
-                    const groupedLineItems = [];
-                    const processedGroupIds = new Set();
-                    
-                    lineItems.forEach(item => {
-                        if (item.splitGroupId) {
-                            if (processedGroupIds.has(item.splitGroupId)) return;
-                            const groupItems = lineItems.filter(li => li.splitGroupId === item.splitGroupId);
-                            const totalGroupAmount = groupItems.reduce((sum, gi) => sum + gi.amount, 0);
-                            const branchNames = groupItems.map(gi => branchMap.get(gi.assignmentId) || 'N/D').join(', ');
-                            groupedLineItems.push({
-                                _key: item.splitGroupId, 
-                                isGroup: true, 
-                                description: item.description, 
-                                amount: totalGroupAmount,
-                                marketingChannelId: item.marketingChannelId, 
-                                branchNames: branchNames, 
-                                branchCount: groupItems.length,
-                            });
-                            processedGroupIds.add(item.splitGroupId);
-                        } else {
-                            groupedLineItems.push({ ...item, isGroup: false });
-                        }
-                    });
-                    
-                    return { 
-                        ...data,
-                        id: doc.id, 
-                        supplierId,
-                        sectorId,
-                        supplierld: supplierId,
-                        sectorld: sectorId,
-                        lineItems, 
-                        groupedLineItems 
-                    };
-                });
-                setAllExpenses(cleanedExpenses);
-                setIsLoading(false);
-                if (user.role === 'collaborator' && (!user.assignedChannels || user.assignedChannels.length === 0)) {
-    toast.error("Nessun fornitore assegnato. Contatta un amministratore.", { duration: 5000 });
-}
+        const unsubs = [
+            onSnapshot(expensesQuery, (snap) => {
+                setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             }),
             onSnapshot(query(collection(db, "sectors"), orderBy("name")), (snap) => setSectors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "branches"), orderBy("name")), (snap) => setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "channels"), orderBy("name")), (snap) => setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "marketing_channels"), orderBy("name")), (snap) => setMarketingChannels(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "geographic_areas"), orderBy("name")), (snap) => setGeographicAreas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "contracts"), orderBy("description")), (snap) => setContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))))
+            onSnapshot(query(collection(db, "contracts"), orderBy("description")), (snap) => {
+                setContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                setIsLoading(false);
+            })
         ];
 
         return () => unsubs.forEach(unsub => unsub());
-    }, [initialFilters, location.state]);
+    }, [user]);
 
-    const filteredExpenses = useMemo(() => {
-        let expensesToFilter = [...allExpenses];
+    // Normalizzazione spese separata
+    useEffect(() => {
+        const normalized = allExpenses.map((data) => {
+            const id = data.id;
+            
+            // Normalizza supplier e sector IDs
+            let supplierId = data.supplierId || data.supplierld || data.channelId || data.channelld;
+            let sectorId = data.sectorId || data.sectorld;
+            
+            // Normalizza lineItems
+            let lineItems = [];
+            if (Array.isArray(data.lineItems) && data.lineItems.length > 0) {
+                lineItems = data.lineItems.map((item, index) => ({
+                    ...item,
+                    assignmentId: item.assignmentId || item.assignmentid || item.branchld || data.branchId || data.branchld || "",
+                    marketingChannelId: item.marketingChannelId || item.marketingChannelld || "",
+                    sectorId: item.sectorId || item.sectorld || sectorId,
+                    amount: parseFloat(item.amount) || 0,
+                    _key: `${id}-${index}`
+                }));
+            } else {
+                lineItems.push({
+                    description: data.description || 'Voce principale',
+                    amount: parseFloat(data.amount) || 0,
+                    marketingChannelId: data.marketingChannelId || data.marketingChannelld || "",
+                    assignmentId: data.branchId || data.branchld || "",
+                    sectorId: sectorId,
+                    _key: `${id}-0`
+                });
+            }
 
+            // Recupera supplier e sector dai lineItems se mancanti
+            if (!supplierId && lineItems.length > 0) {
+                for (const item of lineItems) {
+                    if (item.supplierId || item.supplierld) {
+                        supplierId = item.supplierId || item.supplierld;
+                        break;
+                    }
+                }
+            }
+            if (!sectorId && lineItems.length > 0) {
+                for (const item of lineItems) {
+                    if (item.sectorId || item.sectorld) {
+                        sectorId = item.sectorId || item.sectorld;
+                        break;
+                    }
+                }
+            }
+            
+            // Calcola il totale dall'insieme dei lineItems
+            const totalAmount = lineItems.reduce((sum, item) => sum + item.amount, 0);
+
+            // Processa lineItems per visualizzazione (raggruppa splitGroupId)
+            const processedLineItems = [];
+            const processedGroupIds = new Set();
+            
+            lineItems.forEach(item => {
+                if (item.splitGroupId) {
+                    if (processedGroupIds.has(item.splitGroupId)) return;
+                    const groupItems = lineItems.filter(li => li.splitGroupId === item.splitGroupId);
+                    const totalGroupAmount = groupItems.reduce((sum, gi) => sum + gi.amount, 0);
+                    const branchNames = groupItems.map(gi => branchMap.get(gi.assignmentId) || 'N/D').join(', ');
+                    processedLineItems.push({
+                        _key: item.splitGroupId, 
+                        isGroup: true, 
+                        description: item.description, 
+                        amount: totalGroupAmount,
+                        displayAmount: totalGroupAmount,
+                        marketingChannelId: item.marketingChannelId, 
+                        branchNames: branchNames, 
+                        branchCount: groupItems.length,
+                    });
+                    processedGroupIds.add(item.splitGroupId);
+                } else if (item.assignmentId === genericoBranchId) {
+                    // Gestisce lineItem "Generico"
+                    const sectorBranches = branchesPerSector.get(item.sectorId) || [];
+                    const branchNames = sectorBranches.map(b => b.name).join(', ');
+                    processedLineItems.push({ 
+                        ...item, 
+                        isGroup: false,
+                        isGenerico: true,
+                        displayAmount: item.amount,
+                        distributedTo: sectorBranches.length > 0 
+                            ? `${sectorBranches.length} filiali: ${branchNames}` 
+                            : 'Nessuna filiale associata'
+                    });
+                } else {
+                    processedLineItems.push({ 
+                        ...item, 
+                        isGroup: false,
+                        isGenerico: false,
+                        displayAmount: item.amount
+                    });
+                }
+            });
+            
+            return { 
+                ...data,
+                id, 
+                supplierId,
+                sectorId,
+                supplierld: supplierId,
+                sectorld: sectorId,
+                amount: totalAmount,
+                lineItems, 
+                processedLineItems,
+                displayAmount: totalAmount
+            };
+        });
+        
+        setNormalizedExpenses(normalized);
+    }, [allExpenses, branchMap, genericoBranchId, branchesPerSector]);
+
+    // Filtra e processa le spese con calcolo distribuito
+    const { filteredExpenses, totalFilteredSpend } = useMemo(() => {
+        let expensesToFilter = [...normalizedExpenses];
+
+        // Applica filtri
         if (specialFilter === 'unassigned') {
             expensesToFilter = expensesToFilter.filter(exp => {
                 if (exp.lineItems && exp.lineItems.length > 0) {
@@ -458,10 +563,59 @@ export default function ExpensesPage({ user, initialFilters }) {
             );
         }
         
+        // Filtro per filiale con calcolo distribuito
         if (branchFilter.length > 0) {
             expensesToFilter = expensesToFilter.filter(exp => 
-                exp.lineItems?.some(item => branchFilter.includes(item.assignmentId))
+                exp.lineItems?.some(item => {
+                    // Include se è direttamente assegnato
+                    if (branchFilter.includes(item.assignmentId)) return true;
+                    
+                    // Include se è "Generico" e la filiale filtrata appartiene al settore
+                    if (item.assignmentId === genericoBranchId) {
+                        const sectorBranches = branchesPerSector.get(item.sectorId || exp.sectorId) || [];
+                        return sectorBranches.some(b => branchFilter.includes(b.id));
+                    }
+                    
+                    return false;
+                })
             );
+            
+            // Calcola displayAmount per ogni spesa basato sul filtro filiale
+            expensesToFilter = expensesToFilter.map(exp => {
+                let displayAmount = 0;
+                let hasDistributedAmount = false;
+                const distributedDetails = [];
+                
+                (exp.lineItems || []).forEach(item => {
+                    const itemAmount = item.amount || 0;
+                    
+                    if (branchFilter.includes(item.assignmentId)) {
+                        displayAmount += itemAmount;
+                    } else if (item.assignmentId === genericoBranchId) {
+                        const itemSectorId = item.sectorId || exp.sectorId;
+                        const sectorBranches = branchesPerSector.get(itemSectorId) || [];
+                        const filteredBranchesInSector = sectorBranches.filter(b => branchFilter.includes(b.id));
+                        
+                        if (filteredBranchesInSector.length > 0 && sectorBranches.length > 0) {
+                            const quotaPerBranch = itemAmount / sectorBranches.length;
+                            const quotaForFiltered = quotaPerBranch * filteredBranchesInSector.length;
+                            displayAmount += quotaForFiltered;
+                            hasDistributedAmount = true;
+                            
+                            distributedDetails.push(`${formatCurrency(quotaPerBranch)} x ${filteredBranchesInSector.length} filiali`);
+                        }
+                    }
+                });
+                
+                return {
+                    ...exp,
+                    displayAmount,
+                    hasDistributedAmount,
+                    distributedInfo: hasDistributedAmount ? {
+                        details: distributedDetails.join(' + ')
+                    } : null
+                };
+            });
         }
 
         if (searchTerm.trim() !== '') {
@@ -476,10 +630,22 @@ export default function ExpensesPage({ user, initialFilters }) {
             });
         }
         
-        return expensesToFilter;
-    }, [allExpenses, searchTerm, supplierFilter, invoiceFilter, contractFilter, dateFilter, selectedSector, branchFilter, areaFilter, specialFilter, supplierMap, marketingChannelMap, geographicAreas, branchMap]);
-
-    const totalFilteredSpend = useMemo(() => filteredExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0), [filteredExpenses]);
+        // Calcola il totale con logica distribuita
+        let totalSpend = 0;
+        
+        if (branchFilter.length > 0) {
+            // Usa displayAmount che include le quote distribuite
+            totalSpend = expensesToFilter.reduce((sum, exp) => sum + (exp.displayAmount || 0), 0);
+        } else {
+            // Usa il totale normale
+            totalSpend = expensesToFilter.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+        }
+        
+        return { 
+            filteredExpenses: expensesToFilter, 
+            totalFilteredSpend: totalSpend 
+        };
+    }, [normalizedExpenses, searchTerm, supplierFilter, invoiceFilter, contractFilter, dateFilter, selectedSector, branchFilter, areaFilter, specialFilter, supplierMap, marketingChannelMap, geographicAreas, branchMap, genericoBranchId, branchesPerSector]);
     
     const kpiData = useMemo(() => {
         const total = filteredExpenses.length;
@@ -498,33 +664,34 @@ export default function ExpensesPage({ user, initialFilters }) {
         };
     }, [filteredExpenses, totalFilteredSpend]);
 
-    const toggleExpense = (expenseId) => {
+    // Callbacks ottimizzate
+    const toggleExpense = useCallback((expenseId) => {
         setExpandedExpenses(prev => ({ ...prev, [expenseId]: !prev[expenseId] }));
-    };
+    }, []);
 
-    const canEditOrDelete = (expense) => {
+    const canEditOrDelete = useCallback((expense) => {
         return user.role === 'manager' || user.role === 'admin' || expense.authorId === user.uid;
-    };
+    }, [user.role, user.uid]);
 
-    const handleOpenAddModal = () => { 
+    const handleOpenAddModal = useCallback(() => { 
         setEditingExpense(null); 
         setIsModalOpen(true); 
-    };
+    }, []);
 
-    const handleCloseModal = () => { 
+    const handleCloseModal = useCallback(() => { 
         setIsModalOpen(false); 
         setEditingExpense(null); 
-    };
+    }, []);
 
-    const handleOpenEditModal = (expense) => {
+    const handleOpenEditModal = useCallback((expense) => {
         if (!canEditOrDelete(expense)) {
             return toast.error("Non hai i permessi per modificare questa spesa.");
         }
         setEditingExpense(expense);
         setIsModalOpen(true);
-    };
+    }, [canEditOrDelete]);
     
-    const handleSaveExpense = async (expenseData, invoiceFile, contractFile) => {
+    const handleSaveExpense = useCallback(async (expenseData, invoiceFile, contractFile) => {
         const isEditing = !!expenseData.id;
         const toastId = toast.loading(isEditing ? 'Aggiornamento...' : 'Salvataggio...');
         
@@ -595,9 +762,9 @@ export default function ExpensesPage({ user, initialFilters }) {
             console.error("Errore nel salvare la spesa:", error);
             toast.error(error.message || 'Errore imprevisto.', { id: toastId });
         }
-    };
+    }, [user.uid, user.name, handleCloseModal]);
     
-    const handleDeleteExpense = async (expense) => {
+    const handleDeleteExpense = useCallback(async (expense) => {
         if (!canEditOrDelete(expense)) {
             return toast.error("Non hai i permessi per eliminare questa spesa.");
         }
@@ -623,9 +790,9 @@ export default function ExpensesPage({ user, initialFilters }) {
             console.error("Errore durante l'eliminazione:", error);
             toast.error("Errore durante l'eliminazione.", { id: toastId });
         }
-    };
+    }, [canEditOrDelete]);
     
-    const handleDuplicateExpense = (expenseToDuplicate) => {
+    const handleDuplicateExpense = useCallback((expenseToDuplicate) => {
         const { id, invoicePdfUrl, contractPdfUrl, createdAt, updatedAt, authorId, authorName, ...restOfExpense } = expenseToDuplicate;
         const newExpenseData = { 
             ...restOfExpense, 
@@ -634,9 +801,9 @@ export default function ExpensesPage({ user, initialFilters }) {
         };
         setEditingExpense(newExpenseData);
         setIsModalOpen(true);
-    };
+    }, []);
     
-    const resetFilters = () => {
+    const resetFilters = useCallback(() => {
         setSearchTerm(''); 
         setSupplierFilter(''); 
         setDateFilter({ startDate: '', endDate: '' }); 
@@ -647,7 +814,7 @@ export default function ExpensesPage({ user, initialFilters }) {
         setAreaFilter(''); 
         setSpecialFilter(null);
         toast.success("Filtri resettati!");
-    };
+    }, []);
 
     const areAdvancedFiltersActive = invoiceFilter || contractFilter || branchFilter.length > 0 || areaFilter;
     const hasActiveFilters = searchTerm || supplierFilter || dateFilter.startDate || dateFilter.endDate || selectedSector !== 'all' || areAdvancedFiltersActive || specialFilter;
@@ -666,7 +833,7 @@ export default function ExpensesPage({ user, initialFilters }) {
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative">
             <div className="relative p-4 lg:p-8 space-y-6">
-                {/* Header Moderno */}
+                {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-600 to-orange-700 text-white shadow-lg">
@@ -687,7 +854,7 @@ export default function ExpensesPage({ user, initialFilters }) {
                     </button>
                 </div>
 
-                {/* Filtri Moderni */}
+                {/* Filtri */}
                 <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-6">
                     <div className="space-y-4">
                         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -709,7 +876,6 @@ export default function ExpensesPage({ user, initialFilters }) {
                                     value={dateFilter.startDate} 
                                     onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))} 
                                     className="w-full h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all"
-                                    placeholder="Data inizio"
                                 />
                             </div>
                             <div>
@@ -718,7 +884,6 @@ export default function ExpensesPage({ user, initialFilters }) {
                                     value={dateFilter.endDate} 
                                     onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))} 
                                     className="w-full h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all"
-                                    placeholder="Data fine"
                                 />
                             </div>
                         </div>
@@ -830,14 +995,6 @@ export default function ExpensesPage({ user, initialFilters }) {
                                         </button>
                                     </span>
                                 )}
-                                {areaFilter && (
-                                    <span className="flex items-center gap-1 bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-xs font-semibold">
-                                        Area: {geoAreaMap.get(areaFilter)}
-                                        <button onClick={() => setAreaFilter('')} className="ml-1 hover:bg-gray-300 rounded-full p-0.5">
-                                            <XCircle className="w-3 h-3"/>
-                                        </button>
-                                    </span>
-                                )}
                                 {branchFilter.map(id => (
                                     <span key={id} className="flex items-center gap-1 bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-xs font-semibold">
                                         Filiale: {branchMap.get(id)}
@@ -866,7 +1023,7 @@ export default function ExpensesPage({ user, initialFilters }) {
                     <KpiCard 
                         title="Importo Totale" 
                         value={formatCurrency(kpiData.totalSpend)}
-                        subtitle="Somma spese filtrate"
+                        subtitle={branchFilter.length > 0 ? "Con quote distribuite" : "Somma spese filtrate"}
                         icon={<DollarSign className="w-6 h-6" />}
                         gradient="from-emerald-500 to-green-600"
                     />
@@ -904,6 +1061,8 @@ export default function ExpensesPage({ user, initialFilters }) {
                                 canEditOrDelete={canEditOrDelete}
                                 onToggleDetails={toggleExpense}
                                 isExpanded={expandedExpenses[expense.id]}
+                                hasDistributedAmount={expense.hasDistributedAmount}
+                                distributedInfo={expense.distributedInfo}
                             />
                         ))}
                     </div>

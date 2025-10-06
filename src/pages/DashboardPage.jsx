@@ -285,181 +285,258 @@ export default function DashboardPage({ navigate, user }) {
         return () => unsubs.forEach(unsub => unsub());
     }, [dateFilter.endDate, user]);
 
-    const metrics = useMemo(() => {
-        if (isLoading) return { 
-            spesaSostenuta: 0, spesaPrevista: 0, budgetTotale: 0, 
-            monthlyData: [], sectorData: [], topSuppliers: [], allBranches: [] 
-        };
+const metrics = useMemo(() => {
+    if (isLoading) return { 
+        spesaSostenuta: 0, spesaPrevista: 0, budgetTotale: 0, 
+        monthlyData: [], sectorData: [], topSuppliers: [], allBranches: [] 
+    };
 
-        const filterStartDate = new Date(dateFilter.startDate);
-        const filterEndDate = new Date(dateFilter.endDate);
-        const year = filterEndDate.getFullYear();
-        
-        const totals = { bySupplier: {}, bySector: {}, byBranch: {} };
-        const supplierProjections = {};
-        const monthlyTotals = Array.from({ length: 12 }, () => ({ real: 0, projected: 0 }));
-        
-        let spesaSostenuta = 0;
-        let spesaPrevista = 0;
-        
-        const genericoBranchId = branches.find(b => b.name.toLowerCase() === 'generico')?.id;
+    const filterStartDate = new Date(dateFilter.startDate);
+    const filterEndDate = new Date(dateFilter.endDate);
+    const year = filterEndDate.getFullYear();
+    
+    const totals = { bySupplier: {}, bySector: {}, byBranch: {} };
+    const supplierProjections = {};
+    const monthlyTotals = Array.from({ length: 12 }, () => ({ real: 0, projected: 0 }));
+    
+    let spesaSostenuta = 0;
+    let spesaPrevista = 0;
+    
+    // Trova l'ID della filiale "Generico"
+    const genericoBranchId = branches.find(b => b.name.toLowerCase() === 'generico')?.id;
+    
+    // Cache per le filiali per settore (per ottimizzare)
+    const branchesPerSector = new Map();
+    sectors.forEach(sector => {
+        const sectorBranches = branches.filter(b => 
+            b.associatedSectors?.includes(sector.id) && 
+            b.id !== genericoBranchId
+        );
+        branchesPerSector.set(sector.id, sectorBranches);
+    });
 
-        // Funzione di distribuzione SEMPLIFICATA - allineata a ExpensesPage
-        const distributeAmount = (amount, item) => {
-            // Totali per fornitore (uso l'ID come chiave per evitare problemi di matching)
-            const supplierId = item.supplierld || 'unknown';
-            totals.bySupplier[supplierId] = (totals.bySupplier[supplierId] || 0) + amount;
+    // Processa le spese
+    allExpenses.forEach((expense) => {
+        // Normalizza i dati principali dell'expense
+        let supplierId = expense.supplierId || expense.supplierld || expense.channelId || expense.channelld;
+        let sectorId = expense.sectorId || expense.sectorld;
+        
+        // Verifica data
+        const expenseDate = expense.date ? new Date(expense.date) : null;
+        if (!expenseDate) return;
+        
+        // Prepara lineItems normalizzati
+        let lineItems = [];
+        if (Array.isArray(expense.lineItems) && expense.lineItems.length > 0) {
+            lineItems = expense.lineItems.map(item => ({
+                ...item,
+                amount: parseFloat(item.amount) || 0,
+                assignmentId: item.assignmentId || item.assignmentid || item.branchld || expense.branchId || expense.branchld || "",
+                sectorId: item.sectorId || item.sectorld || sectorId,
+                supplierId: item.supplierId || item.supplierld || supplierId
+            }));
+        } else {
+            // Se non ci sono lineItems, crea uno singolo
+            lineItems = [{
+                amount: parseFloat(expense.amount) || 0,
+                assignmentId: expense.branchId || expense.branchld || "",
+                sectorId: sectorId,
+                supplierId: supplierId
+            }];
+        }
+        
+        // Recupera supplier e sector dai lineItems se mancanti
+        if (!supplierId) {
+            supplierId = lineItems.find(item => item.supplierId)?.supplierId || 'unknown';
+        }
+        if (!sectorId) {
+            sectorId = lineItems.find(item => item.sectorId)?.sectorId;
+        }
+        
+        // Applica filtro settore se necessario
+        if (selectedSector !== 'all' && sectorId !== selectedSector) return;
+        
+        // Processa ogni lineItem
+        lineItems.forEach(item => {
+            const itemAmount = item.amount;
+            const itemSectorId = item.sectorId;
             
-            // Totali per settore
-            const sectorName = sectorMap.get(item.sectorld) || 'Non Assegnato';
-            totals.bySector[sectorName] = (totals.bySector[sectorName] || 0) + amount;
+            if (itemAmount <= 0) return;
             
-            // Totali per filiale - SENZA DISTRIBUZIONE
-            const branchId = item.branchld || item.assignmentId;
-            if (branchId && branchId !== genericoBranchId) {
-                totals.byBranch[branchId] = (totals.byBranch[branchId] || 0) + amount;
-            }
-        };
-
-        // Calcolo spese
-        allExpenses.forEach(expense => {
-            const lineItems = (expense.lineItems && expense.lineItems.length > 0) ? expense.lineItems : [{}];
-            lineItems.forEach(li => {
-                const item = { 
-                    ...expense, 
-                    ...li, 
-                    amount: li.amount || expense.amount,
-                    sectorld: li.sectorld || expense.sectorld || expense.sectorId,
-                    supplierld: li.supplierld || expense.supplierld || expense.supplierId,
-                    branchld: li.branchld || li.assignmentId || expense.branchld || expense.assignmentId
-                };
-                
-                if (selectedSector !== 'all' && item.sectorld !== selectedSector) return;
-
-                if (item.isAmortized && item.amortizationStartDate && item.amortizationEndDate) {
-                    const expenseStart = new Date(item.amortizationStartDate);
-                    const expenseEnd = new Date(item.amortizationEndDate);
-                    const durationDays = (expenseEnd - expenseStart) / (1000 * 60 * 60 * 24) + 1;
-                    if (durationDays <= 0) return;
-                    const dailyCost = (item.amount || 0) / durationDays;
-
-                    for (let d = new Date(expenseStart); d <= expenseEnd; d.setDate(d.getDate() + 1)) {
-                        if (d >= filterStartDate && d <= filterEndDate) {
-                            spesaSostenuta += dailyCost;
-                            distributeAmount(dailyCost, item);
-                            monthlyTotals[d.getMonth()].real += dailyCost;
-                        }
+            // Funzione per processare un importo per una data specifica
+            const processAmount = (amount, date) => {
+                if (date >= filterStartDate && date <= filterEndDate) {
+                    spesaSostenuta += amount;
+                    
+                    // Per fornitore
+                    if (supplierId && supplierId !== 'unknown') {
+                        totals.bySupplier[supplierId] = (totals.bySupplier[supplierId] || 0) + amount;
                     }
-                } else if (item.date) {
-                    const expenseDate = new Date(item.date);
-                    if (expenseDate >= filterStartDate && expenseDate <= filterEndDate) {
-                        const amount = item.amount || 0;
-                        spesaSostenuta += amount;
-                        distributeAmount(amount, item);
-                        monthlyTotals[expenseDate.getMonth()].real += amount;
+                    
+                    // Per settore
+                    const sectorName = sectorMap.get(itemSectorId) || 'Non Assegnato';
+                    totals.bySector[sectorName] = (totals.bySector[sectorName] || 0) + amount;
+                    
+                    // Per mese
+                    const monthIndex = date.getMonth();
+                    if (monthIndex >= 0 && monthIndex < 12) {
+                        monthlyTotals[monthIndex].real += amount;
                     }
                 }
-            });
-        });
-        
-        // Calcolo proiezioni da contratti (per settore e per fornitore ID)
-        allContracts.forEach(c => {
-            (c.lineItems || []).forEach(li => {
-                const item = { ...li, supplierld: li.supplierld || c.supplierld, sectorld: li.sectorld };
-                
-                if (selectedSector !== 'all' && item.sectorld !== selectedSector) return;
-                
-                const contractStart = new Date(li.startDate);
-                const contractEnd = new Date(li.endDate);
-                const durationDays = (contractEnd - contractStart) / (1000 * 60 * 60 * 24) + 1;
-                if(durationDays <= 0) return;
-                const dailyCost = (li.totalAmount || 0) / durationDays;
-
-                for (let d = new Date(contractStart); d <= contractEnd; d.setDate(d.getDate() + 1)) {
-                    if (d >= filterStartDate && d <= filterEndDate) {
-                        spesaPrevista += dailyCost;
-                        monthlyTotals[d.getMonth()].projected += dailyCost;
+            };
+            
+            // Funzione per processare l'importo per filiale
+            const processBranchAmount = (amount, date) => {
+                if (date >= filterStartDate && date <= filterEndDate) {
+                    // Se è "Generico", distribuisci tra le filiali del settore
+                    if (item.assignmentId === genericoBranchId && itemSectorId) {
+                        const sectorBranches = branchesPerSector.get(itemSectorId) || [];
                         
-                        // Accumula proiezioni per fornitore (usando ID)
-                        const supplierId = item.supplierld || 'unknown';
+                        if (sectorBranches.length > 0) {
+                            const amountPerBranch = amount / sectorBranches.length;
+                            sectorBranches.forEach(branch => {
+                                totals.byBranch[branch.id] = (totals.byBranch[branch.id] || 0) + amountPerBranch;
+                            });
+                        }
+                    } 
+                    // Altrimenti assegna alla filiale specifica
+                    else if (item.assignmentId && branchMap.has(item.assignmentId)) {
+                        totals.byBranch[item.assignmentId] = (totals.byBranch[item.assignmentId] || 0) + amount;
+                    }
+                }
+            };
+            
+            // Gestisci ammortamento vs spesa normale
+            if (expense.isAmortized && expense.amortizationStartDate && expense.amortizationEndDate) {
+                const startDate = new Date(expense.amortizationStartDate);
+                const endDate = new Date(expense.amortizationEndDate);
+                const durationDays = Math.max(1, (endDate - startDate) / (1000 * 60 * 60 * 24) + 1);
+                const dailyAmount = itemAmount / durationDays;
+                
+                for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                    const currentDate = new Date(d);
+                    processAmount(dailyAmount, currentDate);
+                    processBranchAmount(dailyAmount, currentDate);
+                }
+            } else {
+                processAmount(itemAmount, expenseDate);
+                processBranchAmount(itemAmount, expenseDate);
+            }
+        });
+    });
+    
+    // Calcolo proiezioni da contratti
+    allContracts.forEach(contract => {
+        (contract.lineItems || []).forEach(lineItem => {
+            const supplierId = lineItem.supplierld || contract.supplierld;
+            const sectorId = lineItem.sectorld;
+            
+            if (selectedSector !== 'all' && sectorId !== selectedSector) return;
+            if (!lineItem.startDate || !lineItem.endDate) return;
+            
+            const startDate = new Date(lineItem.startDate);
+            const endDate = new Date(lineItem.endDate);
+            const durationDays = Math.max(1, (endDate - startDate) / (1000 * 60 * 60 * 24) + 1);
+            const dailyCost = (parseFloat(lineItem.totalAmount) || 0) / durationDays;
+            
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                if (d >= filterStartDate && d <= filterEndDate) {
+                    spesaPrevista += dailyCost;
+                    
+                    const monthIndex = d.getMonth();
+                    if (monthIndex >= 0 && monthIndex < 12) {
+                        monthlyTotals[monthIndex].projected += dailyCost;
+                    }
+                    
+                    if (supplierId && supplierId !== 'unknown') {
                         supplierProjections[supplierId] = (supplierProjections[supplierId] || 0) + dailyCost;
                     }
                 }
-            });
-        });
-
-        // Calcolo budget totale
-        let budgetTotale = 0;
-        if (selectedSector === 'all') {
-            budgetTotale = sectorBudgets.reduce((sum, sb) => sum + (sb.maxAmount || 0), 0);
-        } else {
-            const selectedSectorBudget = sectorBudgets.find(sb => sb.sectorId === selectedSector);
-            budgetTotale = selectedSectorBudget?.maxAmount || 0;
-        }
-        
-        const monthlyBudget = budgetTotale > 0 ? budgetTotale / 12 : 0;
-        
-        const monthlyData = monthlyTotals.map((data, i) => ({
-            mese: new Date(year, i).toLocaleString('it-IT', { month: 'short' }),
-            real: data.real,
-            projected: data.projected,
-            budget: monthlyBudget,
-        }));
-        
-        // Calcolo dati settori (include Frattin Group)
-        const sectorData = (selectedSector === 'all' ? sectors : sectors.filter(s => s.id === selectedSector))
-            .map(sector => {
-                const budgetInfo = sectorBudgets.find(sb => sb.sectorId === sector.id);
-                const spent = totals.bySector[sector.name] || 0;
-                const budget = budgetInfo?.maxAmount || 0;
-                return { id: sector.id, name: sector.name, spent, budget };
-            })
-            .filter(s => s.budget > 0 || s.spent > 0);
-        
-        // Calcolo top suppliers con budget e proiezioni (usando ID)
-        const supplierBudgets = new Map();
-        allBudgets.forEach(budget => {
-            if (budget.supplierId && budget.allocations) {
-                const totalBudget = budget.allocations.reduce((sum, alloc) => {
-                    if (selectedSector === 'all' || alloc.sectorId === selectedSector) {
-                        return sum + (alloc.amount || 0);
-                    }
-                    return sum;
-                }, 0);
-                if (totalBudget > 0) {
-                    supplierBudgets.set(budget.supplierId, totalBudget);
-                }
             }
         });
-        
-        const topSuppliers = Object.entries(totals.bySupplier)
-            .map(([supplierId, spent]) => {
-                const supplierName = supplierMap.get(supplierId) || 'Non definito';
-                const budget = supplierBudgets.get(supplierId) || 0;
-                const projections = supplierProjections[supplierId] || 0;
-                return { name: supplierName, spent, budget, projections };
-            })
-            .sort((a, b) => b.spent - a.spent)
-            .slice(0, 5); // Top 5
-        
-        // Tutte le filiali (usando ID come chiave)
-        const allBranches = Object.entries(totals.byBranch)
-            .map(([branchId, spent]) => {
-                const branchName = branchMap.get(branchId) || 'N/D';
-                return { name: branchName, spent, id: branchId };
-            })
-            .sort((a, b) => b.spent - a.spent);
-        
-        return { 
-            spesaSostenuta, 
-            spesaPrevista,
-            budgetTotale, 
-            monthlyData, 
-            sectorData,
-            topSuppliers,
-            allBranches
-        };
-    }, [isLoading, allExpenses, allContracts, allBudgets, sectorBudgets, dateFilter, selectedSector, suppliers, sectors, branches, supplierMap, sectorMap, branchMap]);
+    });
+    
+    // Calcolo budget totale
+    let budgetTotale = 0;
+    if (selectedSector === 'all') {
+        budgetTotale = sectorBudgets.reduce((sum, sb) => sum + (sb.maxAmount || 0), 0);
+    } else {
+        const selectedSectorBudget = sectorBudgets.find(sb => sb.sectorId === selectedSector);
+        budgetTotale = selectedSectorBudget?.maxAmount || 0;
+    }
+    
+    const monthlyBudget = budgetTotale > 0 ? budgetTotale / 12 : 0;
+    
+    // Prepara dati finali
+    const monthlyData = monthlyTotals.map((data, i) => ({
+        mese: new Date(year, i).toLocaleString('it-IT', { month: 'short' }),
+        real: data.real,
+        projected: data.projected,
+        budget: monthlyBudget,
+    }));
+    
+    const sectorData = (selectedSector === 'all' ? sectors : sectors.filter(s => s.id === selectedSector))
+        .map(sector => {
+            const budgetInfo = sectorBudgets.find(sb => sb.sectorId === sector.id);
+            const spent = totals.bySector[sector.name] || 0;
+            const budget = budgetInfo?.maxAmount || 0;
+            return { id: sector.id, name: sector.name, spent, budget };
+        })
+        .filter(s => s.budget > 0 || s.spent > 0);
+    
+    // Calcolo budget fornitori
+    const supplierBudgets = new Map();
+    allBudgets.forEach(budget => {
+        if (budget.supplierId && budget.allocations) {
+            const totalBudget = budget.allocations.reduce((sum, alloc) => {
+                if (selectedSector === 'all' || alloc.sectorId === selectedSector) {
+                    return sum + (alloc.budgetAmount || alloc.amount || 0);
+                }
+                return sum;
+            }, 0);
+            if (totalBudget > 0) {
+                supplierBudgets.set(budget.supplierId, totalBudget);
+            }
+        }
+    });
+    
+    const topSuppliers = Object.entries(totals.bySupplier)
+        .map(([supplierId, spent]) => ({
+            id: supplierId,
+            name: supplierMap.get(supplierId) || 'Non definito',
+            spent,
+            budget: supplierBudgets.get(supplierId) || 0,
+            projections: supplierProjections[supplierId] || 0
+        }))
+        .filter(s => s.name !== 'Non definito' && s.id !== 'unknown')
+        .sort((a, b) => b.spent - a.spent)
+        .slice(0, 5);
+    
+    const allBranches = Object.entries(totals.byBranch)
+        .map(([branchId, spent]) => ({
+            id: branchId,
+            name: branchMap.get(branchId) || 'N/D',
+            spent
+        }))
+        .filter(b => b.name !== 'N/D')
+        .sort((a, b) => b.spent - a.spent);
+    
+    // Debug log per Cittadella
+    const cittadellaId = branches.find(b => b.name === 'Cittadella')?.id;
+    if (cittadellaId && totals.byBranch[cittadellaId]) {
+        console.log('Dashboard - Cittadella totale:', totals.byBranch[cittadellaId]);
+    }
+    
+    return { 
+        spesaSostenuta, 
+        spesaPrevista,
+        budgetTotale, 
+        monthlyData, 
+        sectorData,
+        topSuppliers,
+        allBranches
+    };
+}, [isLoading, allExpenses, allContracts, allBudgets, sectorBudgets, dateFilter, selectedSector, suppliers, sectors, branches, supplierMap, sectorMap, branchMap]);
 
     const totalForecast = metrics.spesaSostenuta + metrics.spesaPrevista;
     const utilizationRate = metrics.budgetTotale > 0 ? (totalForecast / metrics.budgetTotale) * 100 : 0;
