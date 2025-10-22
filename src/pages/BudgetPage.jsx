@@ -1,9 +1,116 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDocs, orderBy } from 'firebase/firestore';
-import { PlusCircle, X, DollarSign, Target, SlidersHorizontal, ChevronDown, Layers, Search, XCircle, Car, Sailboat, Caravan, Building2, Settings, Percent, TrendingUp, AlertTriangle, CheckCircle, Activity, Zap } from 'lucide-react';
+import { PlusCircle, X, DollarSign, Target, SlidersHorizontal, ChevronDown, Layers, Search, XCircle, Car, Sailboat, Caravan, Building2, Settings, Percent, TrendingUp, AlertTriangle, CheckCircle, Activity, Zap, LayoutGrid, List, ArrowUpDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import BudgetAllocationModal from '../components/BudgetAllocationModal';
+import { KpiCard } from '../components/SharedComponents';
+
+const SupplierTableView = ({ suppliers, onManage, sectorMap }) => {
+    return (
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl overflow-hidden">
+            <div className="overflow-x-auto">
+                <table className="w-full">
+                    <thead className="bg-gradient-to-r from-emerald-600 to-green-700 text-white">
+                        <tr>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase">Fornitore</th>
+                            <th className="px-4 py-3 text-center text-xs font-bold uppercase">Stato</th>
+                            <th className="px-4 py-3 text-right text-xs font-bold uppercase">Speso</th>
+                            <th className="px-4 py-3 text-right text-xs font-bold uppercase">Budget</th>
+                            <th className="px-4 py-3 text-center text-xs font-bold uppercase">Utilizzo</th>
+                            <th className="px-4 py-3 text-center text-xs font-bold uppercase">Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    {suppliers.map((supplier, index) => {
+        const utilizationPercentage = supplier.displayBudget > 0 ? (supplier.displaySpend / supplier.displayBudget) * 100 : 0;
+        const supplierIcon = (supplier.associatedSectors?.length || 0) > 1 ? 'default' : sectorMap.get(supplier.associatedSectors?.[0]);
+
+        return (
+            <tr key={supplier.id} className={`hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+
+                {/* Fornitore */}
+                <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-gray-100">
+                            {getSectorIcon(supplierIcon, "w-5 h-5 text-gray-600")}
+                        </div>
+                        <div>
+                            <div className="font-bold text-gray-900">{supplier.name}</div>
+                            <div className="text-xs text-gray-500">
+                                {supplier.associatedSectors?.map(id => sectorMap.get(id)).join(', ')}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+
+                {/* Stato */}
+                <td className="px-4 py-3">
+                    <div className="flex justify-center">
+                        <StatusBadge
+                            spend={supplier.displaySpend}
+                            budget={supplier.displayBudget}
+                            isUnexpected={supplier.isUnexpected || supplier.totalBudget === 0}
+                        />
+                    </div>
+                </td>
+
+                {/* Speso */}
+                <td className="px-4 py-3 text-right font-bold text-gray-900">
+                    {formatCurrency(supplier.displaySpend)}
+                </td>
+
+                {/* Budget */}
+                <td className="px-4 py-3 text-right font-medium text-gray-700">
+                    {formatCurrency(supplier.displayBudget)}
+                </td>
+
+                {/* Utilizzo */}
+                <td className="px-4 py-3">
+                    {supplier.displayBudget > 0 ? (
+                        <div className="flex items-center justify-center gap-2">
+    <div className="w-full max-w-[80px] bg-gray-200 rounded-full h-2">
+        <div 
+            className={`h-full rounded-full bg-gradient-to-r ${
+                utilizationPercentage > 100 ? 'from-red-500 to-rose-600' :
+                utilizationPercentage > 85 ? 'from-amber-500 to-orange-600' :
+                'from-emerald-500 to-green-600'
+            }`}
+            style={{ width: `${Math.min(utilizationPercentage, 100)}%` }}
+        />
+    </div>
+    <span className={`text-xs font-bold w-10 text-right ${
+        utilizationPercentage > 100 ? 'text-red-600' : 'text-gray-900'
+    }`}>
+        {utilizationPercentage.toFixed(0)}%
+    </span>
+</div>
+                    ) : (
+                        <span className="text-xs text-gray-500 flex justify-center">-</span>
+                    )}
+                </td>
+
+                {/* Azioni */}
+                <td className="px-4 py-3">
+                    <div className="flex items-center justify-center">
+                        <button
+                            onClick={() => onManage(supplier)}
+                            className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                            title="Gestisci"
+                        >
+                            <Settings className="w-4 h-4" />
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        );
+    })}
+</tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
 
 const formatCurrency = (value) => (value || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 
@@ -19,29 +126,6 @@ const getSectorIcon = (sectorName, className = "w-4 h-4") => {
 };
 
 // --- COMPONENTI UI MODERNI ---
-const KpiCard = ({ title, value, icon, gradient, subtitle, trend }) => (
-    <div className="group relative bg-white/90 backdrop-blur-2xl rounded-2xl lg:rounded-3xl shadow-lg border border-white/30 p-5 lg:p-6 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-        <div className="absolute -right-4 -top-4 text-gray-200/50 opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500">
-            {React.cloneElement(icon, { className: "w-20 h-20 lg:w-24 lg:h-24" })}
-        </div>
-        <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-3">
-                <div className={`p-2 rounded-lg bg-gradient-to-br ${gradient} text-white shadow-md`}>
-                    {React.cloneElement(icon, { className: "w-5 h-5" })}
-                </div>
-                <p className="text-sm font-bold text-gray-600 tracking-wide uppercase">{title}</p>
-            </div>
-            <p className="text-2xl lg:text-3xl font-black text-gray-900 leading-tight">{value}</p>
-            {subtitle && <p className="text-sm text-gray-500 font-medium mt-1">{subtitle}</p>}
-            {trend && (
-                <div className="flex items-center gap-1 mt-2">
-                    <TrendingUp className="w-3 h-3 text-emerald-600" />
-                    <span className="text-xs font-bold text-emerald-600">{trend}</span>
-                </div>
-            )}
-        </div>
-    </div>
-);
 
 const ProgressBar = ({ spend, budget, isUnexpected, projections = 0, showProjections = true }) => {
     const budgetValue = budget || 0;
@@ -145,97 +229,93 @@ const StatusBadge = ({ spend, budget, isUnexpected }) => {
 const SupplierCard = ({ supplier, sectorMap, branchMap, marketingChannelMap, onManage, onToggle, isExpanded }) => {
     const supplierIcon = (supplier.associatedSectors?.length || 0) > 1 ? 'default' : sectorMap.get(supplier.associatedSectors?.[0]);
     const utilizationPercentage = supplier.displayBudget > 0 ? (supplier.displaySpend / supplier.displayBudget) * 100 : 0;
-    
+
     return (
         <div className="group bg-white/80 backdrop-blur-xl rounded-2xl lg:rounded-3xl shadow-xl border border-white/20 overflow-hidden hover:shadow-2xl transition-all duration-300">
-            <div className="p-4 lg:p-6">
-                {/* Header Card */}
-                <div className="flex items-center justify-between gap-4 mb-4">
-                    {/* Colonna Sinistra */}
-                    <div className="flex items-center gap-3 lg:gap-4 flex-1 min-w-0">
+            <div className="p-4 lg:p-5">
+                {/* STRUTTURA A GRIGLIA DEFINITIVA */}
+                <div className="grid grid-cols-[1fr_auto] lg:grid-cols-[1fr_384px_180px] items-center gap-4">
+
+                    {/* Colonna 1: Info Base */}
+                    <div className="flex items-center gap-3 lg:gap-4 min-w-0">
                         <div className="p-2 lg:p-3 rounded-xl bg-gradient-to-br from-emerald-600 to-green-700 text-white shadow-lg flex-shrink-0">
                             {getSectorIcon(supplierIcon, "w-5 h-5")}
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div className="min-w-0">
                             <h3 className="text-xl font-bold text-gray-900 truncate">{supplier.name}</h3>
                             <div className="flex items-center gap-2 mt-2">
-                                <StatusBadge 
-                                    spend={supplier.displaySpend} 
-                                    budget={supplier.displayBudget} 
-                                    isUnexpected={supplier.isUnexpected || supplier.totalBudget === 0} 
+                                <StatusBadge
+                                    spend={supplier.displaySpend}
+                                    budget={supplier.displayBudget}
+                                    isUnexpected={supplier.isUnexpected || supplier.totalBudget === 0}
                                 />
                             </div>
                         </div>
                     </div>
-                    
-                    {/* Colonna Destra */}
-                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                        <div className="text-right">
-                            <p className="text-2xl lg:text-3xl font-black bg-gradient-to-r from-emerald-600 to-green-700 bg-clip-text text-transparent">
-                                {formatCurrency(supplier.displaySpend)}
-                            </p>
-                            <p className="text-sm text-gray-500 font-medium">
-                                su {formatCurrency(supplier.displayBudget)}
-                            </p>
-                        </div>
-                        
-                        {supplier.displayBudget > 0 && (
-                            <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-1">
-                                <Percent className="w-3 h-3 text-gray-600" />
-                                <span className={`text-sm font-bold ${
-                                    utilizationPercentage > 100 ? 'text-red-600' :
-                                    utilizationPercentage > 85 ? 'text-amber-600' :
-                                    'text-emerald-600'
-                                }`}>
-                                    {utilizationPercentage.toFixed(1)}%
-                                </span>
+
+                    {/* Colonna 2: Metriche */}
+                    <div className="hidden lg:flex items-center justify-end gap-6">
+                        {(supplier.displayBudget > 0) ? (
+                            <div className="relative w-14 h-14 flex-shrink-0">
+                                <svg className="transform -rotate-90 w-14 h-14">
+                                    <circle cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="4" fill="none" className="text-gray-200" />
+                                    <circle
+                                        cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="4" fill="none"
+                                        strokeDasharray={`${Math.min(utilizationPercentage, 100) * 1.51} 151`}
+                                        className={`transition-all duration-700 ${utilizationPercentage > 100 ? 'text-red-500' :
+                                            utilizationPercentage > 85 ? 'text-amber-500' :
+                                                'text-emerald-500'
+                                            }`}
+                                    />
+                                </svg>
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <span className={`text-xs font-bold ${utilizationPercentage > 100 ? 'text-red-600' : 'text-gray-900'}`}>
+                                        {Math.round(utilizationPercentage)}%
+                                    </span>
+                                </div>
                             </div>
+                        ) : (
+                            <div className="w-14 h-14 flex-shrink-0 flex flex-col items-center justify-center bg-amber-100 text-amber-700 rounded-full border-2 border-amber-200" title="Spesa Extra Budget">
+                                <AlertTriangle className="w-5 h-5" />
+                                <span className="text-[10px] font-bold mt-0.5">Extra</span>
+                            </div>
+                        )}
+                        <div className="text-right w-32">
+                            <div className="text-xs text-gray-500 font-medium">Speso</div>
+                            <div className="text-lg font-black bg-gradient-to-r from-emerald-600 to-green-700 bg-clip-text text-transparent">
+                                {formatCurrency(supplier.displaySpend)}
+                            </div>
+                        </div>
+                        <div className="text-right w-32">
+                            <div className="text-xs text-gray-500 font-medium">Budget</div>
+                            <div className="text-lg font-black text-gray-900">
+                                {formatCurrency(supplier.displayBudget)}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Colonna 3: Azioni */}
+                    <div className="flex items-center justify-end gap-2">
+                        <button
+                            onClick={() => onManage(supplier)}
+                            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-green-700 text-white font-semibold text-sm rounded-xl hover:shadow-lg transition-all hover:scale-105"
+                        >
+                            <Settings className="w-4 h-4" />
+                            Gestisci
+                        </button>
+                        {supplier.displayDetails && supplier.displayDetails.length > 0 && (
+                            <button
+                                onClick={() => onToggle(supplier.id)}
+                                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-white rounded-lg transition-all"
+                            >
+                                <ChevronDown className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
                         )}
                     </div>
                 </div>
-                
-                {/* Progress Bar */}
-                <div className="mt-4">
-                    <ProgressBar 
-                        spend={supplier.displaySpend} 
-                        budget={supplier.displayBudget} 
-                        isUnexpected={supplier.isUnexpected || supplier.totalBudget === 0} 
-                    />
-                </div>
             </div>
-            
-            {/* Footer Azioni */}
-            <div className="border-t border-gray-100 bg-gradient-to-r from-gray-50/50 to-gray-100/50 px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    {supplier.associatedSectors?.map(sectorId => (
-                        <div key={sectorId} className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-full text-xs font-semibold text-gray-700 shadow-sm border border-gray-200">
-                            {getSectorIcon(sectorMap.get(sectorId), "w-3 h-3 text-gray-600")}
-                            {sectorMap.get(sectorId) || '...'}
-                        </div>
-                    ))}
-                </div>
-                
-                <div className="flex items-center gap-2">
-                    <button 
-                        onClick={() => onManage(supplier)} 
-                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-green-700 text-white font-semibold text-sm rounded-xl hover:shadow-lg transition-all hover:scale-105"
-                    >
-                        <Settings className="w-4 h-4" />
-                        Gestisci
-                    </button>
-                    
-                    {supplier.displayDetails && supplier.displayDetails.length > 0 && (
-                        <button 
-                            onClick={() => onToggle(supplier.id)} 
-                            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-white rounded-lg transition-all"
-                        >
-                            <ChevronDown className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                        </button>
-                    )}
-                </div>
-            </div>
-            
-            {/* Area Espandibile - Dettagli Allocazioni */}
+
+            {/* Area Espandibile */}
             {isExpanded && supplier.displayDetails && supplier.displayDetails.length > 0 && (
                 <div className="border-t border-gray-200/80 bg-gradient-to-br from-gray-50/50 to-gray-100/30 p-4 lg:p-6">
                     <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2 text-base">
@@ -244,56 +324,29 @@ const SupplierCard = ({ supplier, sectorMap, branchMap, marketingChannelMap, onM
                     </h4>
                     <div className="space-y-4">
                         {(() => {
-                            // Raggruppa allocazioni Frattin Group distribuite su più filiali
                             const processedDetails = [];
                             const processed = new Set();
-                            
                             supplier.displayDetails.forEach((detail, index) => {
                                 if (processed.has(index)) return;
-                                
                                 const sectorName = sectorMap.get(detail.sectorId);
-                                const channelName = marketingChannelMap.get(detail.marketingChannelId);
-                                
-                                // Cerca se ci sono altre allocazioni con stesso settore+canale
-                                const siblings = supplier.displayDetails.filter((d, i) => 
-                                    i !== index &&
-                                    d.sectorId === detail.sectorId &&
-                                    d.marketingChannelId === detail.marketingChannelId &&
-                                    d.branchId !== detail.branchId
-                                );
-                                
-                                // Se Frattin Group + multiple branch = raggruppa
+                                const siblings = supplier.displayDetails.filter((d, i) => i !== index && d.sectorId === detail.sectorId && d.marketingChannelId === detail.marketingChannelId && d.branchId !== detail.branchId);
                                 if (sectorName === 'Frattin Group' && siblings.length > 0) {
                                     const allSiblings = [detail, ...siblings];
-                                    allSiblings.forEach((s, i) => {
-                                        const siblingIndex = supplier.displayDetails.indexOf(s);
-                                        processed.add(siblingIndex);
-                                    });
-                                    
+                                    allSiblings.forEach(s => processed.add(supplier.displayDetails.indexOf(s)));
                                     const totalSpend = allSiblings.reduce((sum, s) => sum + (s.detailedSpend || 0), 0);
                                     const totalBudget = allSiblings.reduce((sum, s) => sum + (s.budgetAmount || 0), 0);
-                                    
-                                    processedDetails.push({
-                                        ...detail,
-                                        detailedSpend: totalSpend,
-                                        budgetAmount: totalBudget,
-                                        isGrouped: true,
-                                        groupCount: allSiblings.length,
-                                        branchId: 'generic' // Marker per mostrare "Distribuzione automatica"
-                                    });
+                                    processedDetails.push({ ...detail, detailedSpend: totalSpend, budgetAmount: totalBudget, isGrouped: true, groupCount: allSiblings.length, branchId: 'generic' });
                                 } else {
                                     processed.add(index);
                                     processedDetails.push(detail);
                                 }
                             });
-                            
                             return processedDetails.map((detail, index) => {
                                 const percentage = (detail.budgetAmount || 0) > 0 ? ((detail.detailedSpend || 0) / (detail.budgetAmount || 0)) * 100 : 0;
                                 const branchName = detail.isGrouped ? 'Generico (distribuito)' : (branchMap.get(detail.branchId) || 'N/D');
                                 const channelName = marketingChannelMap.get(detail.marketingChannelId) || 'N/D';
                                 const sectorName = sectorMap.get(detail.sectorId) || 'N/D';
                                 const allocationName = `${sectorName} → ${channelName} → ${branchName}`;
-                                
                                 return (
                                     <div key={index} className="p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-emerald-300 transition-all">
                                         <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
@@ -301,41 +354,19 @@ const SupplierCard = ({ supplier, sectorMap, branchMap, marketingChannelMap, onM
                                                 <div className="flex items-center gap-2 mb-2">
                                                     {getSectorIcon(sectorName, "w-4 h-4 text-emerald-600")}
                                                     <p className="font-semibold text-gray-800">{allocationName}</p>
-                                                    {detail.isGrouped && (
-                                                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">
-                                                            {detail.groupCount} filiali
-                                                        </span>
-                                                    )}
+                                                    {detail.isGrouped && (<span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">{detail.groupCount} filiali</span>)}
                                                 </div>
                                                 <div className="flex items-center gap-4 text-sm text-gray-600">
-                                                    <span className="flex items-center gap-1">
-                                                        <span className="font-medium">Speso:</span>
-                                                        <span className="font-bold text-gray-900">{formatCurrency(detail.detailedSpend)}</span>
-                                                    </span>
-                                                    <span className="flex items-center gap-1">
-                                                        <span className="font-medium">Budget:</span>
-                                                        <span className="font-bold text-gray-900">{formatCurrency(detail.budgetAmount)}</span>
-                                                    </span>
+                                                    <span className="flex items-center gap-1"><span className="font-medium">Speso:</span><span className="font-bold text-gray-900">{formatCurrency(detail.detailedSpend)}</span></span>
+                                                    <span className="flex items-center gap-1"><span className="font-medium">Budget:</span><span className="font-bold text-gray-900">{formatCurrency(detail.budgetAmount)}</span></span>
                                                 </div>
                                             </div>
-                                            
                                             <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-1.5 flex-shrink-0">
                                                 <Percent className="w-3 h-3 text-gray-600" />
-                                                <span className={`text-sm font-bold ${
-                                                    percentage > 100 ? 'text-red-600' :
-                                                    percentage > 85 ? 'text-amber-600' :
-                                                    'text-emerald-600'
-                                                }`}>
-                                                    {detail.budgetAmount > 0 ? `${percentage.toFixed(1)}%` : 'N/A'}
-                                                </span>
+                                                <span className={`text-sm font-bold ${percentage > 100 ? 'text-red-600' : percentage > 85 ? 'text-amber-600' : 'text-emerald-600'}`}>{detail.budgetAmount > 0 ? `${percentage.toFixed(1)}%` : 'N/A'}</span>
                                             </div>
                                         </div>
-                                        
-                                        <ProgressBar 
-                                            spend={detail.detailedSpend} 
-                                            budget={detail.budgetAmount} 
-                                            isUnexpected={detail.isUnexpected || (detail.budgetAmount === 0 && detail.detailedSpend > 0)}
-                                        />
+                                        <ProgressBar spend={detail.detailedSpend} budget={detail.budgetAmount} isUnexpected={detail.isUnexpected || (detail.budgetAmount === 0 && detail.detailedSpend > 0)} />
                                     </div>
                                 );
                             });
@@ -350,7 +381,8 @@ const SupplierCard = ({ supplier, sectorMap, branchMap, marketingChannelMap, onM
 export default function BudgetPage() {
     const [year, setYear] = useState(new Date().getFullYear());
     const [summaries, setSummaries] = useState([]);
-    const [contracts, setContracts] = useState([]); // NUOVO: contratti per proiezioni
+    const [contracts, setContracts] = useState([]);
+    const [allExpenses, setAllExpenses] = useState([]); // NUOVO: per calcolare contractSpentMap
     const [suppliers, setSuppliers] = useState([]);
     const [sectors, setSectors] = useState([]);
     const [branches, setBranches] = useState([]);
@@ -364,7 +396,8 @@ export default function BudgetPage() {
     const [expandedSuppliers, setExpandedSuppliers] = useState({});
     const [sortOrder, setSortOrder] = useState('spend_desc');
     const [unexpectedFilter, setUnexpectedFilter] = useState('all');
-    const [includeProjections, setIncludeProjections] = useState(true); // NUOVO: toggle proiezioni
+    const [includeProjections, setIncludeProjections] = useState(true);
+    const [viewMode, setViewMode] = useState('table');
 
     const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s])), [suppliers]);
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
@@ -392,7 +425,8 @@ export default function BudgetPage() {
         };
         
         const unsubSummaries = onSnapshot(query(collection(db, "budget_summaries"), where("year", "==", year)), snap => setSummaries(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-        const unsubContracts = onSnapshot(query(collection(db, "contracts")), snap => setContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))); // NUOVO
+        const unsubContracts = onSnapshot(query(collection(db, "contracts")), snap => setContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+        const unsubExpenses = onSnapshot(query(collection(db, "expenses")), snap => setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))); // NUOVO
         const unsubSectors = onSnapshot(query(collection(db, "sectors")), snap => { setSectors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))); onStaticDataLoad(); });
         const unsubSuppliers = onSnapshot(query(collection(db, "channels")), snap => { setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))); onStaticDataLoad(); });
         const unsubBranches = onSnapshot(collection(db, "branches"), snap => setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
@@ -401,7 +435,8 @@ export default function BudgetPage() {
         
         return () => { 
             unsubSummaries(); 
-            unsubContracts(); // NUOVO
+            unsubContracts();
+            unsubExpenses(); // NUOVO
             unsubSuppliers(); 
             unsubSectors(); 
             unsubBranches(); 
@@ -410,48 +445,78 @@ export default function BudgetPage() {
         };
     }, [year]);
 
-    // NUOVO: Calcolo proiezioni da contratti per fornitore e settore
+    // LOGICA CORRETTA: Calcolo proiezioni come nella Dashboard
     const contractProjections = useMemo(() => {
-        if (contracts.length === 0) return {};
+        if (contracts.length === 0 || allExpenses.length === 0) return { bySupplierId: {}, bySectorId: {} };
         
         const filterStartDate = new Date(year, 0, 1);
         const filterEndDate = new Date(year, 11, 31, 23, 59, 59);
+        
+        // STEP 1: Calcola quanto speso per ogni contratto (come nella Dashboard)
+        const contractSpentMap = new Map();
+        allExpenses.forEach(expense => {
+            (expense.lineItems || []).forEach(item => {
+                if (item.relatedContractId) {
+                    const currentSpent = contractSpentMap.get(item.relatedContractId) || 0;
+                    contractSpentMap.set(item.relatedContractId, currentSpent + (parseFloat(item.amount) || 0));
+                }
+            });
+            if (expense.relatedContractId) {
+                const currentSpent = contractSpentMap.get(expense.relatedContractId) || 0;
+                contractSpentMap.set(expense.relatedContractId, currentSpent + (parseFloat(expense.amount) || 0));
+            }
+        });
+        
         const projectionsBySupplierId = {};
         const projectionsBySectorId = {};
         
+        // STEP 2: Calcola proiezioni basate sul RESIDUO (come nella Dashboard)
         contracts.forEach(contract => {
+            const totalContractValue = (contract.lineItems || []).reduce((sum, li) => sum + (parseFloat(li.totalAmount) || 0), 0);
+            const totalSpentOnContract = contractSpentMap.get(contract.id) || 0;
+            const remainingContractValue = Math.max(0, totalContractValue - totalSpentOnContract);
+            
+            // Se il contratto è completamente speso, skip
+            if (remainingContractValue <= 0) return;
+            
             (contract.lineItems || []).forEach(lineItem => {
                 const supplierId = lineItem.supplierld || contract.supplierld;
                 const sectorId = lineItem.sectorld;
                 
                 if (!supplierId) return;
                 
-                const contractStart = new Date(lineItem.startDate);
-                const contractEnd = new Date(lineItem.endDate);
-                const durationDays = (contractEnd - contractStart) / (1000 * 60 * 60 * 24) + 1;
+                const lineItemTotal = parseFloat(lineItem.totalAmount) || 0;
+                if (lineItemTotal <= 0 || !lineItem.startDate || !lineItem.endDate) return;
                 
-                if (durationDays <= 0) return;
+                // Calcola la proporzione di questo lineItem sul totale del contratto
+                const lineItemProportion = totalContractValue > 0 ? lineItemTotal / totalContractValue : 0;
+                const remainingLineItemValue = remainingContractValue * lineItemProportion;
                 
-                const dailyCost = (lineItem.totalAmount || 0) / durationDays;
-                let projectionAmount = 0;
+                const startDate = new Date(lineItem.startDate);
+                const endDate = new Date(lineItem.endDate);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
                 
-                for (let d = new Date(contractStart); d <= contractEnd; d.setDate(d.getDate() + 1)) {
-                    if (d >= filterStartDate && d <= filterEndDate) {
-                        projectionAmount += dailyCost;
-                    }
-                }
-                
-                if (projectionAmount > 0) {
-                    projectionsBySupplierId[supplierId] = (projectionsBySupplierId[supplierId] || 0) + projectionAmount;
-                    if (sectorId) {
-                        projectionsBySectorId[sectorId] = (projectionsBySectorId[sectorId] || 0) + projectionAmount;
+                // Proietta solo da oggi in poi
+                const projectionStartDate = today > startDate ? today : startDate;
+                if (projectionStartDate <= endDate) {
+                    const remainingDurationDays = Math.max(1, (endDate - projectionStartDate) / (1000 * 60 * 60 * 24) + 1);
+                    const futureDailyCost = remainingLineItemValue / remainingDurationDays;
+                    
+                    for (let d = new Date(projectionStartDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                        if (d >= filterStartDate && d <= filterEndDate) {
+                            projectionsBySupplierId[supplierId] = (projectionsBySupplierId[supplierId] || 0) + futureDailyCost;
+                            if (sectorId) {
+                                projectionsBySectorId[sectorId] = (projectionsBySectorId[sectorId] || 0) + futureDailyCost;
+                            }
+                        }
                     }
                 }
             });
         });
         
         return { bySupplierId: projectionsBySupplierId, bySectorId: projectionsBySectorId };
-    }, [contracts, year]);
+    }, [contracts, allExpenses, year]);
 
     const displayData = useMemo(() => {
         let enriched = summaries.map(summary => {
@@ -460,7 +525,7 @@ export default function BudgetPage() {
             let displaySpend = 0;
             let displayBudget = 0;
             let displayDetails = [];
-            const projections = contractProjections.bySupplierId[summary.supplierId] || 0; // NUOVO
+            const projections = contractProjections.bySupplierId[summary.supplierId] || 0;
 
             if (selectedSector === 'all') {
                 displaySpend = summary.totalSpend;
@@ -478,7 +543,7 @@ export default function BudgetPage() {
                 displaySpend, 
                 displayBudget, 
                 displayDetails,
-                projections // NUOVO
+                projections
             };
         });
 
@@ -502,7 +567,6 @@ export default function BudgetPage() {
             if (sortOrder === 'name_asc') {
                 return (a.name || '').localeCompare(b.name || '');
             }
-            // 'spend_desc': ordina per spesa + proiezioni decrescente
             const aTotal = a.displaySpend + (includeProjections ? a.projections : 0);
             const bTotal = b.displaySpend + (includeProjections ? b.projections : 0);
             return bTotal - aTotal;
@@ -511,7 +575,7 @@ export default function BudgetPage() {
     
     const globalKpis = useMemo(() => {
         const totalSpend = displayData.reduce((sum, item) => sum + item.displaySpend, 0);
-        const totalProjections = displayData.reduce((sum, item) => sum + (item.projections || 0), 0); // NUOVO
+        const totalProjections = displayData.reduce((sum, item) => sum + (item.projections || 0), 0);
         
         let totalMasterBudget = 0;
         if (selectedSector === 'all') {
@@ -522,9 +586,9 @@ export default function BudgetPage() {
         }
         
         const totalAllocatedBudget = displayData.reduce((sum, item) => sum + item.displayBudget, 0);
-        const totalForecast = totalSpend + (includeProjections ? totalProjections : 0); // NUOVO
-        const utilizationPercentage = totalMasterBudget > 0 ? (totalForecast / totalMasterBudget) * 100 : 0; // MODIFICATO
-        const hasOverrunRisk = includeProjections && totalForecast > totalMasterBudget; // NUOVO
+        const totalForecast = totalSpend + (includeProjections ? totalProjections : 0);
+        const utilizationPercentage = totalMasterBudget > 0 ? (totalForecast / totalMasterBudget) * 100 : 0;
+        const hasOverrunRisk = includeProjections && totalForecast > totalMasterBudget;
         
         return { totalSpend, totalProjections, totalMasterBudget, totalAllocatedBudget, utilizationPercentage, totalForecast, hasOverrunRisk };
     }, [displayData, sectorBudgets, selectedSector, includeProjections]);
@@ -537,7 +601,6 @@ export default function BudgetPage() {
             return acc;
         }, {});
         
-        // NUOVO: calcola proiezioni per settore
         const projectionsBySector = contractProjections.bySectorId || {};
         
         return orderedSectors.map(sector => {
@@ -648,194 +711,94 @@ export default function BudgetPage() {
                 
                 {/* Filtri */}
                 <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-6">
-                    <div className="space-y-4">
-                        <div className="relative">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                            <input 
-                                type="text" 
-                                placeholder="Cerca fornitore..." 
-                                value={searchTerm} 
-                                onChange={(e) => setSearchTerm(e.target.value)} 
-                                className="w-full h-12 pl-12 pr-4 bg-white border-2 border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 transition-all"
-                            />
-                        </div>
-                        
-                        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
-                            <div className="flex items-center gap-2 lg:gap-3 flex-wrap w-full xl:w-auto">
-                                <button 
-                                    onClick={() => setSelectedSector('all')} 
-                                    className={`px-3 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-bold transition-all duration-300 flex items-center gap-1 lg:gap-2 ${
-                                        selectedSector === 'all' 
-                                            ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg' 
-                                            : 'bg-white/80 border-2 border-gray-200 text-gray-700 hover:bg-gray-50 hover:scale-105'
-                                    }`}
-                                >
-                                    <Layers className="w-3 h-3 lg:w-4 lg:h-4" /> 
-                                    <span className="hidden sm:inline">Tutti i Settori</span>
-                                    <span className="sm:hidden">Tutti</span>
-                                </button>
-                                
-                                {orderedSectors.map(sector => {
-                                    const isActive = selectedSector === sector.id;
-                                    const iconClassName = `w-3 h-3 lg:w-4 lg:h-4 ${isActive ? 'text-white' : 'text-gray-400'}`;
-                                    return (
-                                        <button 
-                                            key={sector.id} 
-                                            onClick={() => setSelectedSector(sector.id)} 
-                                            className={`px-3 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-bold transition-all duration-300 flex items-center gap-1 lg:gap-2 hover:scale-105 ${
-                                                isActive 
-                                                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg' 
-                                                    : 'bg-white/80 border-2 border-gray-200 text-gray-700 hover:bg-gray-50'
-                                            }`}
-                                        >
-                                            {getSectorIcon(sector.name, iconClassName)}
-                                            <span className="hidden sm:inline">{sector.name}</span>
-                                            <span className="sm:hidden">{sector.name.includes('&') ? sector.name.split('&')[0] : sector.name}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                        
-                        <div className="border-t border-gray-200/80 pt-4">
-                            <div className="space-y-4">
-                                {/* Toggle Proiezioni - RESPONSIVE */}
-                                <div className="flex items-center justify-center sm:justify-start">
-                                    <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl border-2 border-indigo-200 w-full sm:w-auto">
-                                        <label className="flex items-center gap-3 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={includeProjections}
-                                                onChange={e => setIncludeProjections(e.target.checked)}
-                                                className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                            />
-                                            <div className="flex items-center gap-2">
-                                                <TrendingUp className="w-4 h-4 text-indigo-600" />
-                                                <span className="font-bold text-indigo-900 text-sm sm:text-base">Includi Proiezioni Contratti</span>
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-                                
-                                {/* Filtri - RESPONSIVE MIGLIORATO */}
-                                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                                    {/* Filtro Tipo */}
-                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                                        <span className="text-sm font-bold text-gray-600">Tipo:</span>
-                                        <div className="flex flex-wrap gap-2">
-                                            <button
-                                                onClick={() => setUnexpectedFilter('all')}
-                                                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 ${
-                                                    unexpectedFilter === 'all'
-                                                        ? 'bg-gradient-to-r from-emerald-600 to-green-700 text-white shadow-lg'
-                                                        : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-emerald-300 hover:bg-emerald-50'
-                                                }`}
-                                            >
-                                                Tutti
-                                            </button>
-                                            <button
-                                                onClick={() => setUnexpectedFilter('planned')}
-                                                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 ${
-                                                    unexpectedFilter === 'planned'
-                                                        ? 'bg-gradient-to-r from-emerald-600 to-green-700 text-white shadow-lg'
-                                                        : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-emerald-300 hover:bg-emerald-50'
-                                                }`}
-                                            >
-                                                Previsti
-                                            </button>
-                                            <button
-                                                onClick={() => setUnexpectedFilter('unexpected')}
-                                                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
-                                                    unexpectedFilter === 'unexpected'
-                                                        ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-lg'
-                                                        : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-amber-300 hover:bg-amber-50'
-                                                }`}
-                                            >
-                                                <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4" />
-                                                <span className="hidden xs:inline">Extra Budget</span>
-                                                <span className="xs:hidden">Extra</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Ordinamento */}
-                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                                        <span className="text-sm font-bold text-gray-600">Ordina:</span>
-                                        <div className="flex flex-wrap gap-2">
-                                            <button
-                                                onClick={() => setSortOrder('spend_desc')}
-                                                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
-                                                    sortOrder === 'spend_desc'
-                                                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg'
-                                                        : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-indigo-300 hover:bg-indigo-50'
-                                                }`}
-                                            >
-                                                <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
-                                                Spesa ↓
-                                            </button>
-                                            <button
-                                                onClick={() => setSortOrder('name_asc')}
-                                                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 ${
-                                                    sortOrder === 'name_asc'
-                                                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg'
-                                                        : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-indigo-300 hover:bg-indigo-50'
-                                                }`}
-                                            >
-                                                A-Z
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <div className="space-y-4">
 
-                {/* KPI Cards Unificata - RESPONSIVE MIGLIORATO */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 lg:gap-6">
-                    {/* KPI Principali */}
-                    <KpiCard 
-                        title="Spesa Effettiva" 
-                        value={formatCurrency(globalKpis.totalSpend)} 
-                        icon={<DollarSign className="w-6 h-6" />} 
-                        gradient="from-emerald-500 to-green-600" 
-                        subtitle="Costi sostenuti" 
+        {/* --- RIGA 1: RICERCA E VISTA --- */}
+        <div className="flex items-center gap-4">
+            <div className="relative flex-grow">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input 
+                    type="text" 
+                    placeholder="Cerca fornitore..." 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
+                    className="w-full h-12 pl-12 pr-4 bg-white border-2 border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 transition-all"
+                />
+            </div>
+            <div className="flex items-center gap-2">
+                <button onClick={() => setViewMode('cards')} className={`p-2 rounded-lg transition-all ${viewMode === 'cards' ? 'bg-emerald-100 text-emerald-600' : 'text-gray-400 hover:bg-gray-100'}`} title="Vista Card">
+                    <LayoutGrid className="w-5 h-5" />
+                </button>
+                <button onClick={() => setViewMode('table')} className={`p-2 rounded-lg transition-all ${viewMode === 'table' ? 'bg-emerald-100 text-emerald-600' : 'text-gray-400 hover:bg-gray-100'}`} title="Vista Tabella">
+                    <List className="w-5 h-5" />
+                </button>
+            </div>
+        </div>
+
+       {/* --- RIGA 2: FILTRI SETTORE --- */}
+<div className="flex items-center gap-2 lg:gap-3 flex-wrap w-full xl:w-auto">
+    <button onClick={() => setSelectedSector('all')} className={`px-3 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-bold transition-all duration-300 flex items-center gap-2 ${selectedSector === 'all' ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg' : 'bg-white/80 border-2 border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+        <Layers className="w-3 h-3 lg:w-4 lg:h-4" /> 
+        <span className="hidden sm:inline">Tutti i Settori</span>
+        <span className="sm:hidden">Tutti</span>
+    </button>
+    {orderedSectors.map(sector => {
+        const isActive = selectedSector === sector.id;
+        const iconClassName = `w-3 h-3 lg:w-4 lg:h-4 ${isActive ? 'text-white' : 'text-gray-400'}`;
+        return (
+            <button key={sector.id} onClick={() => setSelectedSector(sector.id)} className={`px-3 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-bold transition-all duration-300 flex items-center gap-1 lg:gap-2 hover:scale-105 ${isActive ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg' : 'bg-white/80 border-2 border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                {getSectorIcon(sector.name, iconClassName)}
+                <span className="hidden sm:inline">{sector.name}</span>
+                <span className="sm:hidden">{sector.name.includes('&') ? sector.name.split('&')[0] : sector.name}</span>
+            </button>
+        );
+    })}
+            <div className="flex items-center gap-3 p-2 bg-indigo-50 rounded-xl border-2 border-indigo-200">
+                <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={includeProjections}
+                        onChange={e => setIncludeProjections(e.target.checked)}
+                        className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                     />
-                    <KpiCard 
-                        title="Proiezioni" 
-                        value={formatCurrency(globalKpis.totalProjections)} 
-                        icon={<TrendingUp className="w-6 h-6" />} 
-                        gradient="from-indigo-500 to-purple-600" 
-                        subtitle="Da contratti firmati" 
-                    />
-                    <KpiCard 
-                        title="Budget Totale" 
-                        value={formatCurrency(globalKpis.totalMasterBudget)} 
-                        icon={<Target className="w-6 h-6" />} 
-                        gradient="from-blue-500 to-indigo-600" 
-                        subtitle={`Assegnati ${formatCurrency(globalKpis.totalAllocatedBudget)}`} 
-                    />
-                    <KpiCard 
-                        title="Utilizzo" 
-                        value={`${globalKpis.utilizationPercentage.toFixed(1)}%`} 
-                        subtitle={includeProjections ? "con proiezioni" : "solo spesa effettiva"} 
-                        icon={<Percent className="w-6 h-6" />} 
-                        gradient={
-                            globalKpis.utilizationPercentage > 100 ? "from-red-500 to-red-600" : 
-                            globalKpis.utilizationPercentage > 85 ? "from-amber-500 to-orange-600" : 
-                            "from-emerald-500 to-green-600"
-                        } 
-                    />
-                    <KpiCard 
-                        title="Budget Residuo" 
-                        value={formatCurrency(globalKpis.totalMasterBudget - globalKpis.totalForecast)} 
-                        icon={<Activity className="w-6 h-6" />} 
-                        gradient={globalKpis.hasOverrunRisk ? "from-red-500 to-red-600" : "from-purple-500 to-pink-600"} 
-                        subtitle={globalKpis.hasOverrunRisk ? "⚠️ Sforamento previsto!" : "disponibile"} 
-                    />
-                </div>
+                    <div className="flex items-center gap-1.5">
+                        <TrendingUp className="w-4 h-4 text-indigo-600" />
+                        <span className="font-semibold text-indigo-900 text-sm">Includi Proiezioni</span>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        {/* --- RIGA 3: FILTRI AVANZATI --- */}
+        <div className="border-t border-gray-200/80 pt-4">
+    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => setUnexpectedFilter('all')} className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${unexpectedFilter === 'all' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-gray-100 hover:bg-gray-200'}`}>Tutti</button>
+            <button onClick={() => setUnexpectedFilter('planned')} className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${unexpectedFilter === 'planned' ? 'bg-gradient-to-r from-emerald-600 to-green-700 text-white shadow-lg' : 'bg-gray-100 hover:bg-gray-200'}`}>Previsti</button>
+            <button onClick={() => setUnexpectedFilter('unexpected')} className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-1.5 transition-all ${unexpectedFilter === 'unexpected' ? 'bg-amber-600 text-white shadow-lg' : 'bg-gray-100 hover:bg-gray-200'}`}><AlertTriangle className="w-4 h-4" />Extra</button>
+        </div>
+
+        <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-gray-600 flex items-center gap-1.5">
+                <ArrowUpDown className="w-4 h-4" />
+                Ordina:
+            </span>
+            <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+                className="h-10 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 transition-all text-sm font-semibold"
+            >
+                <option value="spend_desc">Spesa ↓</option>
+                <option value="name_asc">A-Z</option>
+            </select>
+        </div>
+
+    </div>
+</div>
+    </div>
+</div>
                 
-                {/* Alert Sforamento Globale - RESPONSIVE MIGLIORATO */}
+                {/* Alert Sforamento Globale */}
                 {globalKpis.hasOverrunRisk && (
                     <div className="bg-gradient-to-r from-red-50 to-rose-50 border-2 border-red-300 rounded-2xl p-4 lg:p-6 flex flex-col sm:flex-row items-start gap-3">
                         <div className="p-2 bg-red-100 rounded-lg flex-shrink-0">
@@ -852,90 +815,34 @@ export default function BudgetPage() {
                     </div>
                 )}
 
-                {/* Distribuzione Spesa per Settore */}
-                {selectedSector === 'all' && (
-                    <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-6">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
-                                <Layers className="w-5 h-5" />
-                            </div>
-                            <div className="flex-1">
-                                <h2 className="text-xl font-bold text-gray-800">Distribuzione Spesa per Settore</h2>
-                                {includeProjections && (
-                                    <p className="text-sm text-indigo-600 font-medium">Include proiezioni da contratti</p>
-                                )}
-                            </div>
-                            {/* Legenda Progress Bar */}
-                            {includeProjections && (
-                                <div className="flex items-center gap-4 text-xs">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-4 h-2 bg-gradient-to-r from-emerald-500 to-green-600 rounded"></div>
-                                        <span className="text-gray-600 font-medium">Spesa effettiva</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-4 h-2 bg-gradient-to-r from-emerald-500 to-green-600 opacity-40 rounded"></div>
-                                        <span className="text-gray-600 font-medium">Proiezioni</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {sectorKpis.filter(s => s.budget > 0 || s.spend > 0 || s.projections > 0).map(kpi => {
-                                const totalForecast = kpi.spend + (includeProjections ? kpi.projections : 0);
-                                const percentage = kpi.budget > 0 ? (totalForecast / kpi.budget) * 100 : 0;
-                                return (
-                                    <div key={kpi.id} className="p-4 bg-gradient-to-br from-gray-50 to-white rounded-xl border-2 border-gray-200 hover:border-indigo-300 transition-all">
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-600">
-                                                {React.cloneElement(getSectorIcon(kpi.name), { className: "w-4 h-4" })}
-                                            </div>
-                                            <p className="text-xs font-bold text-gray-600 uppercase">{kpi.name}</p>
-                                        </div>
-                                        <p className="text-xl font-black text-gray-900">{formatCurrency(kpi.spend)}</p>
-                                        {includeProjections && kpi.projections > 0 && (
-                                            <p className="text-xs text-indigo-600 font-semibold">+ {formatCurrency(kpi.projections)} proiezioni</p>
-                                        )}
-                                        {kpi.budget > 0 && (
-                                            <>
-                                                <p className="text-xs text-gray-500 font-medium mt-1">
-                                                    su {formatCurrency(kpi.budget)} ({percentage.toFixed(0)}%)
-                                                </p>
-                                                <div className="mt-3">
-                                                    <ProgressBar 
-                                                        spend={kpi.spend} 
-                                                        budget={kpi.budget} 
-                                                        isUnexpected={false}
-                                                        projections={kpi.projections}
-                                                        showProjections={includeProjections}
-                                                    />
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
                 {/* Lista Fornitori */}
                 {displayData.length > 0 ? (
-                    <div className="space-y-4 mt-6">
-                        {displayData.map(supplier => (
-                            <SupplierCard
-                                key={supplier.id}
-                                supplier={supplier}
-                                sectorMap={sectorMap}
-                                branchMap={branchMap}
-                                marketingChannelMap={marketingChannelMap}
-                                onManage={handleOpenModal}
-                                onToggle={toggleSupplier}
-                                isExpanded={expandedSuppliers[supplier.id]}
-                                includeProjections={includeProjections}
-                            />
-                        ))}
-                    </div>
-                ) : (
+    viewMode === 'cards' ? (
+        <div className="space-y-4 mt-6">
+            {displayData.map(supplier => (
+                <SupplierCard
+                    key={supplier.id}
+                    supplier={supplier}
+                    sectorMap={sectorMap}
+                    branchMap={branchMap}
+                    marketingChannelMap={marketingChannelMap}
+                    onManage={handleOpenModal}
+                    onToggle={toggleSupplier}
+                    isExpanded={expandedSuppliers[supplier.id]}
+                    includeProjections={includeProjections}
+                />
+            ))}
+        </div>
+    ) : (
+        <div className="mt-6">
+            <SupplierTableView 
+                suppliers={displayData}
+                onManage={handleOpenModal}
+                sectorMap={sectorMap}
+            />
+        </div>
+    )
+) : (
                     <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center mt-6">
                         <div className="p-4 rounded-2xl bg-gray-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
                             <Search className="w-8 h-8 text-gray-400" />

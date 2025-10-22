@@ -1,20 +1,20 @@
 import React from 'react';
-import { LayoutDashboard, ShoppingCart, Target, Settings, LogOut, FileSignature, BarChart3, X, Menu } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Target, Settings, LogOut, FileSignature, BarChart3} from 'lucide-react';
 
 const NavItem = ({ icon, label, isActive, onClick }) => (
     <li>
         <button
             onClick={onClick}
-            className={`flex items-center w-full p-3 lg:p-3.5 rounded-xl transition-all duration-300 relative group ${
+            className={`flex items-center w-full p-3 lg:p-3.5 rounded-xl transition-all duration-300 group ${
                 isActive
-                    ? 'bg-gradient-to-r from-indigo-500/90 to-purple-600/90 text-white shadow-lg shadow-indigo-500/30'
-                    : 'text-gray-300 hover:bg-white/10 hover:text-white hover:scale-[1.02]'
+                    ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30'
+                    : 'text-gray-400 hover:bg-white/20 hover:text-white'
             }`}
         >
             {isActive && (
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-pink-500 to-purple-500 rounded-r-full"></div>
+                <div className="absolute -left-2 top-1/2 -translate-y-1/2 h-5 w-1.5 bg-white rounded-r-full shadow-lg" />
             )}
-            <span className={`transition-transform group-hover:scale-110 ${isActive ? 'scale-110' : ''}`}>
+            <span className="group-hover:scale-110 transition-transform">
                 {icon}
             </span>
             <span className="ml-3 lg:ml-4 font-semibold text-sm lg:text-base">{label}</span>
@@ -32,15 +32,6 @@ export default function Sidebar({ user, currentPage, setCurrentPage, handleLogou
 
     return (
         <>
-            {/* Mobile Menu Button - Fixed in top-left corner */}
-            <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="lg:hidden fixed top-4 left-4 z-50 p-3 bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-xl shadow-2xl hover:scale-110 transition-all duration-300"
-                aria-label="Toggle menu"
-            >
-                {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
-
             {/* Backdrop - Only on mobile */}
             {isMobileMenuOpen && (
                 <div
@@ -54,12 +45,12 @@ export default function Sidebar({ user, currentPage, setCurrentPage, handleLogou
                 className={`
                     fixed lg:static inset-y-0 left-0 z-40
                     w-72 lg:w-64 xl:w-72
-                    bg-gradient-to-b from-gray-900 via-slate-900 to-slate-800
+                    bg-gray-900/80 backdrop-blur-xl border-r border-white/10
                     flex flex-col p-4 lg:p-5
                     shadow-2xl
                     transition-transform duration-300 ease-out
-                    ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-                `}
+                ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+`               }
             >
                 {/* Header */}
                 <div className="flex items-center gap-3 px-3 mb-8 lg:mb-10 mt-2 lg:mt-0">
@@ -115,37 +106,27 @@ export default function Sidebar({ user, currentPage, setCurrentPage, handleLogou
                 </nav>
 
                 {/* User Section */}
-                <div className="mt-auto pt-4 border-t border-white/10">
-                    <div className="p-3 lg:p-4 mb-3 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 lg:w-11 lg:h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-lg">
-                                {user.name?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || 'U'}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="font-bold text-white text-sm lg:text-base truncate">
-                                    {user.name || user.email}
-                                </p>
-                                <p className="text-xs text-gray-400 truncate">{user.email}</p>
-                            </div>
-                        </div>
-                        <div className="mt-2 pt-2 border-t border-white/10">
-                            <span className="inline-block px-2.5 py-1 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-full text-xs font-bold text-amber-300 uppercase">
-                                {user.role}
-                            </span>
-                        </div>
-                    </div>
-                    
-                    <button
-                        onClick={() => {
-                            handleLogout();
-                            closeMobileMenu();
-                        }}
-                        className="flex items-center justify-center w-full p-3 lg:p-3.5 rounded-xl bg-gradient-to-r from-red-500/10 to-pink-500/10 text-red-400 hover:from-red-500 hover:to-pink-600 hover:text-white border border-red-500/20 hover:border-red-500 font-semibold transition-all duration-300 hover:shadow-lg hover:scale-[1.02] group"
-                    >
-                        <LogOut size={20} className="group-hover:rotate-12 transition-transform" />
-                        <span className="ml-3">Logout</span>
-                    </button>
-                </div>
+<div className="mt-auto pt-4 border-t border-white/10">
+    <div className="flex items-center gap-3 p-2">
+        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+            {user.name?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || 'U'}
+        </div>
+        <div className="min-w-0 flex-1">
+            <p className="font-bold text-white text-sm truncate">{user.name || user.email}</p>
+            <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider">{user.role}</span>
+        </div>
+        <button
+            onClick={() => {
+                handleLogout();
+                closeMobileMenu();
+            }}
+            className="p-2 text-gray-400 hover:text-red-400 hover:bg-white/10 rounded-lg transition-colors"
+            title="Logout"
+        >
+            <LogOut size={20} />
+        </button>
+    </div>
+</div>
             </aside>
         </>
     );

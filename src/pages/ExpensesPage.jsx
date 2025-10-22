@@ -1,16 +1,24 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { db } from '../firebase/config';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { collection, query, orderBy, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
-import { PlusCircle, Search, XCircle, Wallet, Car, Sailboat, Caravan, Building2, Layers, DollarSign, FileText, Paperclip, Copy, Pencil, Trash2, AlertTriangle, CheckCircle2, Clock, Calendar, Filter, SlidersHorizontal, ChevronDown, X, TrendingUp, Activity, Zap, FileSignature, GitBranch, Info } from 'lucide-react';
+import { 
+    PlusCircle, Search, XCircle, Wallet, Car, Sailboat, Caravan, Building2, Layers, 
+    DollarSign, FileText, Paperclip, Copy, Pencil, Trash2, AlertTriangle, CheckCircle2, 
+    Clock, Calendar, SlidersHorizontal, ChevronDown, TrendingUp, Activity, Zap, 
+    FileSignature, GitBranch, Info, LayoutGrid, List, Percent, Eye, ArrowUpDown,
+    Download, RefreshCw, Filter, TrendingDown, X, Check
+} from 'lucide-react';
 import ExpenseFormModal from '../components/ExpenseFormModal';
 import toast from 'react-hot-toast';
-import EmptyState from '../components/EmptyState';
 import AdvancedFiltersModal from '../components/AdvancedFiltersModal';
+import { MultiSelect } from '../components/SharedComponents';
+import { KpiCard } from '../components/SharedComponents';
 
 const storage = getStorage();
 
+// ===== SHARED COMPONENTS =====
 const getSectorIcon = (sectorName, className = "w-4 h-4") => {
     const icons = { 
         'Auto': <Car className={className} />, 
@@ -27,225 +35,361 @@ const formatCurrency = (number) => {
     return number.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 };
 
-// --- COMPONENTI UI MEMOIZZATI ---
-const KpiCard = React.memo(({ title, value, icon, gradient, subtitle, trend }) => (
-    <div className="group relative bg-white/90 backdrop-blur-2xl rounded-2xl lg:rounded-3xl shadow-lg border border-white/30 p-5 lg:p-6 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-        <div className="absolute -right-4 -top-4 text-gray-200/50 opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500">
-            {React.cloneElement(icon, { className: "w-20 h-20 lg:w-24 lg:h-24" })}
-        </div>
-        <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-3">
-                <div className={`p-2 rounded-lg bg-gradient-to-br ${gradient} text-white shadow-md`}>
-                    {React.cloneElement(icon, { className: "w-5 h-5" })}
-                </div>
-                <p className="text-sm font-bold text-gray-600 tracking-wide uppercase">{title}</p>
+const formatDate = (dateString) => {
+    if (!dateString) return 'N/D';
+    return new Date(dateString + 'T00:00:00').toLocaleDateString('it-IT', {
+        day: '2-digit', month: 'short', year: 'numeric'
+    });
+};
+
+// Progress Bar universale con gestione sforamenti
+const ProgressBar = ({ value, max, showOverrun = true }) => {
+    const percentage = max > 0 ? Math.round((value / max) * 1000) / 10 : 0;
+    const displayPercentage = Math.min(percentage, 100);
+    
+    const getGradient = () => {
+        if (percentage > 100) return 'from-red-500 to-rose-600';
+        if (percentage >= 100) return 'from-green-500 to-emerald-600';
+        if (percentage >= 85) return 'from-amber-500 to-orange-600';
+        if (percentage > 0) return 'from-blue-500 to-indigo-600';
+        return 'from-gray-300 to-gray-400';
+    };
+    
+    return (
+        <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden relative">
+            <div 
+                className={`h-full rounded-full bg-gradient-to-r ${getGradient()} transition-all duration-700 relative overflow-hidden`} 
+                style={{ width: `${displayPercentage}%` }}
+            >
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>
             </div>
-            <p className="text-2xl lg:text-3xl font-black text-gray-900 leading-tight">{value}</p>
-            {subtitle && <p className="text-sm text-gray-500 font-medium mt-1">{subtitle}</p>}
-            {trend && (
-                <div className="flex items-center gap-1 mt-2">
-                    <TrendingUp className="w-3 h-3 text-emerald-600" />
-                    <span className="text-xs font-bold text-emerald-600">{trend}</span>
+            {showOverrun && percentage > 100 && (
+                <div className="absolute inset-0 flex items-center justify-end pr-2">
+                    <span className="text-[10px] font-bold text-red-700 drop-shadow-lg">
+                        +{(percentage - 100).toFixed(0)}%
+                    </span>
                 </div>
             )}
         </div>
-    </div>
-));
+    );
+};
 
-const StatusBadge = React.memo(({ type, hasInvoice, hasContract, isAmortized }) => {
-    const baseClass = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-all";
+// Status Badge aggiornato con supporto requiresContract
+const StatusBadge = ({ hasInvoice, hasContract, isAmortized, requiresContract = true }) => {
+    const baseClass = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-all shadow-sm";
     
     if (isAmortized) {
         return (
-            <span className={`${baseClass} bg-purple-50 text-purple-700 border-purple-200`}>
+            <span className={`${baseClass} bg-gradient-to-r from-purple-50 to-violet-50 text-purple-700 border-purple-200`}>
                 <Clock className="w-3.5 h-3.5" />
                 Competenza
             </span>
         );
     }
     
+    // Se non richiede contratto, verifica solo la fattura
+    if (!requiresContract) {
+        if (!hasInvoice) {
+            return (
+                <span className={`${baseClass} bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 border-amber-200`}>
+                    <FileText className="w-3.5 h-3.5" />
+                    Manca Fattura
+                </span>
+            );
+        } else {
+            return (
+                <span className={`${baseClass} bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-700 border-emerald-200`}>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Completa
+                </span>
+            );
+        }
+    }
+    
+    // Logica originale per spese che richiedono contratto
     if (!hasInvoice && !hasContract) {
         return (
-            <span className={`${baseClass} bg-red-50 text-red-700 border-red-200`}>
+            <span className={`${baseClass} bg-gradient-to-r from-red-50 to-rose-50 text-red-700 border-red-200`}>
                 <AlertTriangle className="w-3.5 h-3.5" />
-                Incompleta
+                Documenti Mancanti
             </span>
         );
     } else if (!hasInvoice) {
         return (
-            <span className={`${baseClass} bg-amber-50 text-amber-700 border-amber-200`}>
+            <span className={`${baseClass} bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 border-amber-200`}>
                 <FileText className="w-3.5 h-3.5" />
-                No Fattura
+                Manca Fattura
             </span>
         );
     } else if (!hasContract) {
         return (
-            <span className={`${baseClass} bg-blue-50 text-blue-700 border-blue-200`}>
+            <span className={`${baseClass} bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border-blue-200`}>
                 <FileSignature className="w-3.5 h-3.5" />
-                No Contratto
+                Manca Contratto
             </span>
         );
     } else {
         return (
-            <span className={`${baseClass} bg-emerald-50 text-emerald-700 border-emerald-200`}>
+            <span className={`${baseClass} bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-700 border-emerald-200`}>
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Completa
             </span>
         );
     }
-});
+};
 
-const ExpenseCard = React.memo(({ expense, sectorMap, supplierMap, branchMap, marketingChannelMap, contractMap, onEdit, onDelete, onDuplicate, canEditOrDelete, onToggleDetails, isExpanded, hasDistributedAmount, distributedInfo }) => {
+// ExpenseCard Compatta Redesign (stile ContractsPage)
+const ExpenseCardCompact = React.memo(({ 
+    expense, 
+    sectorMap, 
+    supplierMap, 
+    branchMap, 
+    marketingChannelMap, 
+    contractMap, 
+    budgetInfo,
+    onEdit, 
+    onDelete, 
+    onDuplicate, 
+    canEditOrDelete, 
+    onToggleDetails, 
+    isExpanded
+}) => {
     const [showDistributedInfo, setShowDistributedInfo] = useState(false);
     
-    const locationTags = useMemo(() => [...new Set(expense.lineItems?.flatMap(item => 
-        item.splitGroupId 
-            ? expense.lineItems.filter(li => li.splitGroupId === item.splitGroupId).map(li => li.assignmentId)
-            : [item.assignmentId]
-    ) || [])].map(id => ({ name: branchMap.get(id), id })).filter(tag => tag.name), [expense.lineItems, branchMap]);
-    
-    const relatedContract = contractMap.get(expense.relatedContractId);
-    const hasInvoice = !!expense.invoicePdfUrl;
-    const hasContract = !!expense.contractPdfUrl || !!expense.relatedContractId;
     const sectorName = sectorMap.get(expense.sectorId);
-
-    // Callback per evitare propagazione eventi
-    const handleToggle = useCallback((e) => {
-        e.stopPropagation();
-        onToggleDetails(expense.id);
-    }, [expense.id, onToggleDetails]);
-
+    const hasInvoice = !!expense.invoicePdfUrl;
+    const hasContract = expense.isContractSatisfied;
+    const requiresContract = expense.requiresContract !== false;
+    const relatedContract = contractMap.get(expense.relatedContractId);
+    
+    // Calcolo utilizzo budget se disponibile
+    const utilizationPercentage = budgetInfo?.budget > 0 
+        ? Math.round((expense.displayAmount / budgetInfo.budget) * 1000) / 10
+        : 0;
+    
+    // Determina stato e colori bordo
+    const getBorderAndBackground = () => {
+        if (!hasInvoice && (requiresContract && !hasContract)) {
+            return 'border-red-300 bg-red-50/20';
+        }
+        if (expense.isAmortized) {
+            return 'border-purple-300 bg-purple-50/20';
+        }
+        if (expense.hasDistributedAmount) {
+            return 'border-indigo-300 bg-indigo-50/20';
+        }
+        if (hasInvoice && (!requiresContract || hasContract)) {
+            return 'border-emerald-300 bg-emerald-50/20';
+        }
+        return 'border-white/30 bg-white/50';
+    };
+    
+    const getIconBackground = () => {
+        if (!hasInvoice || (requiresContract && !hasContract)) return 'bg-gradient-to-br from-amber-500 to-orange-600';
+        if (expense.isAmortized) return 'bg-gradient-to-br from-purple-500 to-violet-600';
+        return 'bg-gradient-to-br from-emerald-500 to-green-600';
+    };
+    
+    // Calcola giorni dalla data
+    const getDaysFromDate = () => {
+        if (!expense.date) return null;
+        const days = Math.ceil((new Date() - new Date(expense.date)) / (1000 * 60 * 60 * 24));
+        return days;
+    };
+    
+    const daysAgo = getDaysFromDate();
+    
     return (
-        <div className="group bg-white/90 backdrop-blur-2xl rounded-2xl lg:rounded-3xl shadow-lg border border-white/30 hover:shadow-2xl transition-all duration-300">
-            {/* Header Card */}
-            <div className="p-4 lg:p-6">
-                <div className="flex flex-col lg:flex-row lg:items-start gap-4">
-                    {/* Colonna Sinistra - Info Principale */}
-                    <div className="flex items-start gap-3 lg:gap-4 flex-1 min-w-0">
-                        <div className="p-2.5 lg:p-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg flex-shrink-0">
-                            {getSectorIcon(sectorName, "w-5 h-5 lg:w-6 lg:h-6")}
+        <div className={`
+            group bg-white/90 backdrop-blur-2xl rounded-2xl shadow-lg 
+            border-2 transition-all duration-300 hover:shadow-2xl
+            ${getBorderAndBackground()}
+        `}>
+            <div className="p-4 lg:p-5">
+                <div className="grid grid-cols-[1fr_auto] lg:grid-cols-[1fr_220px_220px] items-center gap-4">
+                    {/* Colonna 1: Info Base */}
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className={`
+                            p-2.5 rounded-xl text-white shadow-lg flex-shrink-0
+                            ${getIconBackground()}
+                        `}>
+                            {getSectorIcon(sectorName, "w-5 h-5")}
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-2">
-                                <h3 className="text-lg lg:text-xl font-bold text-gray-900">
+                        
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <h3 className="text-lg font-bold text-gray-900 truncate">
                                     {supplierMap.get(expense.supplierId) || 'N/D'}
                                 </h3>
-                                <StatusBadge hasInvoice={hasInvoice} hasContract={hasContract} isAmortized={expense.isAmortized} />
-                                {hasDistributedAmount && (
+                                <StatusBadge 
+                                    hasInvoice={hasInvoice} 
+                                    hasContract={hasContract}
+                                    requiresContract={requiresContract}
+                                    isAmortized={expense.isAmortized} 
+                                />
+                                {expense.hasDistributedAmount && (
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             setShowDistributedInfo(!showDistributedInfo);
                                         }}
-                                        className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer"
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold hover:bg-indigo-200 transition-colors"
                                     >
                                         <GitBranch className="w-3 h-3" />
                                         Distribuito
-                                        <Info className="w-3 h-3" />
                                     </button>
                                 )}
+                                {!requiresContract && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
+                                        <X className="w-3 h-3" />
+                                        No Contratto
+                                    </span>
+                                )}
                             </div>
-                            <p className="text-sm text-gray-600 mb-3">{expense.description}</p>
                             
-                            {/* Mostra info distribuzione se cliccato */}
-                            {hasDistributedAmount && showDistributedInfo && distributedInfo && (
-                                <div className="mb-3 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
-                                    <div className="text-xs font-bold text-indigo-800 mb-1">Quote distribuite:</div>
-                                    <div className="text-xs text-indigo-700">{distributedInfo.details}</div>
-                                </div>
-                            )}
+                            <p className="text-sm text-gray-600 truncate">
+                                {expense.description}
+                            </p>
                             
-                            {/* Tags Filiali */}
-                            {locationTags.length > 0 && (
-                                <div className="flex items-center flex-wrap gap-2">
-                                    {locationTags.map(tag => (
-                                        <span key={tag.id} className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full border border-amber-200">
-                                            <Building2 className="w-3 h-3" />
-                                            {tag.name}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
+                            {/* Data con giorni passati */}
+                            <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                                <Calendar className="w-3 h-3" />
+                                <span>{formatDate(expense.date)}</span>
+                                {daysAgo !== null && (
+                                    <span className="text-gray-400">
+                                        ({daysAgo === 0 ? 'oggi' : `${daysAgo}gg fa`})
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
+                    
+                    {/* Colonna 2: Metriche */}
+<div className="hidden lg:flex items-center justify-end gap-6 w-56">
+    {/* Cerchio di progresso o Placeholder 'Extra' */}
+    {(budgetInfo && budgetInfo.budget > 0) ? (
+        <div className="relative w-14 h-14">
+            <svg className="transform -rotate-90 w-14 h-14">
+                <circle cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="4" fill="none" className="text-gray-200" />
+                <circle
+                    cx="28"
+                    cy="28"
+                    r="24"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    fill="none"
+                    strokeDasharray={`${Math.min(utilizationPercentage, 100) * 1.51} 151`}
+                    className={`transition-all duration-700 ${
+                        utilizationPercentage > 100 ? 'text-red-500' :
+                        utilizationPercentage >= 85 ? 'text-amber-500' :
+                        'text-emerald-500'
+                    }`}
+                />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+                <span className={`text-xs font-bold ${utilizationPercentage > 100 ? 'text-red-600' : 'text-gray-900'}`}>
+                    {Math.round(utilizationPercentage)}%
+                </span>
+            </div>
+        </div>
+    ) : (
+        <div className="w-14 h-14 flex flex-col items-center justify-center bg-amber-100 text-amber-700 rounded-full border-2 border-amber-200" title="Spesa Extra Budget">
+            <AlertTriangle className="w-5 h-5" />
+            <span className="text-[10px] font-bold mt-0.5">Extra</span>
+        </div>
+    )}
 
-                    {/* Colonna Destra - Importo e Azioni */}
-                    <div className="flex flex-col gap-3 lg:items-end">
-                        {/* Importo e Data */}
-                        <div className="flex lg:flex-col items-start lg:items-end justify-between lg:justify-start gap-2">
-                            <div>
-                                <div className="text-2xl lg:text-3xl font-black bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
-                                    {formatCurrency(expense.displayAmount || expense.amount)}
-                                </div>
-                                {hasDistributedAmount && expense.amount !== expense.displayAmount && (
-                                    <p className="text-xs text-gray-500 font-medium">
-                                        Totale: {formatCurrency(expense.amount)}
-                                    </p>
-                                )}
-                                <div className="flex items-center gap-1.5 text-sm text-gray-500 font-medium mt-1">
-                                    <Calendar className="w-3.5 h-3.5" />
-                                    {expense.date ? new Date(expense.date + 'T00:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/D'}
-                                </div>
-                            </div>
-                        </div>
+    {/* Importo */}
+    <div className="text-right w-32">
+        <div className="text-xs text-gray-500 font-medium">Importo</div>
+        <div className="text-lg font-black text-gray-900">
+            {formatCurrency(expense.displayAmount || expense.amount)}
+        </div>
+        {expense.hasDistributedAmount && expense.amount !== expense.displayAmount && (
+            <div className="text-xs text-gray-500">
+                Tot: {formatCurrency(expense.amount)}
+            </div>
+        )}
+    </div>
+</div>
+                    
+                    {/* Colonna 3: Azioni */}
+                    <div className="flex items-center justify-end gap-1">
+                        {hasInvoice && (
+                            <a href={expense.invoicePdfUrl} target="_blank" rel="noopener noreferrer" 
+                               className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all" 
+                               title="Fattura">
+                                <Paperclip className="w-4 h-4" />
+                            </a>
+                        )}
                         
-                        {/* Azioni */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                            {hasInvoice && (
-                                <a href={expense.invoicePdfUrl} target="_blank" rel="noopener noreferrer" 
-                                   className="p-2 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200 transition-all" 
-                                   title="Visualizza fattura">
-                                    <Paperclip className="w-4 h-4" />
-                                </a>
-                            )}
-                            {relatedContract?.contractPdfUrl && (
-                                <a href={relatedContract.contractPdfUrl} target="_blank" rel="noopener noreferrer" 
-                                   className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-all" 
-                                   title={`Contratto: ${relatedContract.description}`}>
-                                    <FileSignature className="w-4 h-4" />
-                                </a>
-                            )}
-                            {expense.lineItems && expense.lineItems.length > 0 && (
-                                <button onClick={handleToggle} 
-                                        className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
-                                        title="Mostra dettagli">
-                                    <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        {relatedContract?.contractPdfUrl && (
+                            <a href={relatedContract.contractPdfUrl} target="_blank" rel="noopener noreferrer" 
+                               className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" 
+                               title="Contratto">
+                                <FileSignature className="w-4 h-4" />
+                            </a>
+                        )}
+                        
+                        {canEditOrDelete(expense) && (
+                            <>
+                                <button 
+                                    onClick={() => onDuplicate(expense)}
+                                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" 
+                                    title="Duplica">
+                                    <Copy className="w-4 h-4" />
                                 </button>
-                            )}
-                            {canEditOrDelete(expense) && (
-                                <>
-                                    <button onClick={() => onDuplicate(expense)} 
-                                            className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" 
-                                            title="Duplica spesa">
-                                        <Copy className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => onEdit(expense)} 
-                                            className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" 
-                                            title="Modifica spesa">
-                                        <Pencil className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => onDelete(expense)} 
-                                            className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" 
-                                            title="Elimina spesa">
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </>
-                            )}
-                        </div>
+                                
+                                <button 
+                                    onClick={() => onEdit(expense)}
+                                    className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all" 
+                                    title="Modifica">
+                                    <Pencil className="w-4 h-4" />
+                                </button>
+                                
+                                <button 
+                                    onClick={() => onDelete(expense)}
+                                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                    title="Elimina">
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </>
+                        )}
+                        
+                        {expense.processedLineItems && expense.processedLineItems.length > 0 && (
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onToggleDetails(expense.id);
+                                }}
+                                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                                title="Dettagli">
+                                <ChevronDown className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                        )}
                     </div>
                 </div>
+                
+                {/* Info distribuzione inline */}
+                {showDistributedInfo && expense.distributedInfo && (
+                    <div className="mt-3 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                        <div className="text-xs font-bold text-indigo-800 mb-1">Quote distribuite:</div>
+                        <div className="text-xs text-indigo-700">{expense.distributedInfo.details}</div>
+                    </div>
+                )}
+                
             </div>
-
+            
             {/* Area Espandibile - Dettagli */}
-            {isExpanded && expense.lineItems && expense.lineItems.length > 0 && (
-                <div className="border-t border-gray-100 bg-gradient-to-br from-gray-50/50 to-gray-100/30 p-4 lg:p-6">
+            {isExpanded && expense.processedLineItems && expense.processedLineItems.length > 0 && (
+                <div className="border-t border-gray-200 bg-gradient-to-br from-gray-50/50 to-gray-100/30 p-4 lg:p-6">
                     <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2 text-base">
                         <Activity className="w-4 h-4 text-amber-600" />
                         Dettaglio Voci di Spesa
                     </h4>
                     <div className="space-y-3">
-                        {expense.processedLineItems?.map((item) => (
-                            <div key={item._key || item.splitGroupId} className="p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-amber-300 transition-all">
+                        {expense.processedLineItems.map((item, index) => (
+                            <div key={item._key || index} className="p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-amber-300 transition-all">
                                 <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-2">
                                     <div className="flex-1 min-w-0">
                                         <p className="font-semibold text-gray-800 mb-1">{item.description}</p>
@@ -289,50 +433,212 @@ const ExpenseCard = React.memo(({ expense, sectorMap, supplierMap, branchMap, ma
     );
 });
 
+// Vista Tabella
+const ExpenseTableView = React.memo(({ 
+    expenses, 
+    sectorMap, 
+    supplierMap, 
+    branchMap,
+    marketingChannelMap,
+    contractMap,
+    onEdit, 
+    onDelete,
+    onDuplicate,
+    canEditOrDelete
+}) => {
+    return (
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl overflow-hidden">
+            <div className="overflow-x-auto">
+                <table className="w-full">
+                    <thead className="bg-gradient-to-r from-amber-600 to-orange-600 text-white">
+                        <tr>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase">Fornitore</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase hidden lg:table-cell">Descrizione</th>
+                            <th className="px-4 py-3 text-center text-xs font-bold uppercase">Stato</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase">Data</th>
+                            <th className="px-4 py-3 text-right text-xs font-bold uppercase">Importo</th>
+                            <th className="px-4 py-3 text-center text-xs font-bold uppercase">Documenti</th>
+                            <th className="px-4 py-3 text-center text-xs font-bold uppercase">Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {expenses.map((expense, index) => {
+                            const sectorName = sectorMap.get(expense.sectorId);
+                            const hasInvoice = !!expense.invoicePdfUrl;
+                            const hasContract = expense.isContractSatisfied;
+                            const requiresContract = expense.requiresContract !== false;
+                            const isComplete = hasInvoice && (!requiresContract || hasContract);
+                            
+                            return (
+                                <tr key={expense.id} className={`
+                                    hover:bg-gray-50 transition-colors
+                                    ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}
+                                `}>
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center gap-2">
+                                            <div className={`w-2 h-8 rounded-full ${
+                                                !isComplete ? 'bg-red-500' :
+                                                expense.isAmortized ? 'bg-purple-500' :
+                                                'bg-emerald-500'
+                                            }`} />
+                                            <div>
+                                                <div className="font-bold text-gray-900">
+                                                    {supplierMap.get(expense.supplierId) || 'N/D'}
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                    {sectorName}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3 hidden lg:table-cell">
+                                        <div className="text-sm text-gray-600 truncate max-w-xs">
+                                            {expense.description}
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex justify-center">
+                                            <StatusBadge 
+                                                hasInvoice={hasInvoice} 
+                                                hasContract={hasContract}
+                                                requiresContract={requiresContract}
+                                                isAmortized={expense.isAmortized}
+                                            />
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-gray-700">
+                                        {formatDate(expense.date)}
+                                    </td>
+                                    <td className="px-4 py-3 text-right font-bold text-gray-900">
+                                        {formatCurrency(expense.displayAmount || expense.amount)}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center justify-center gap-2">
+                                            {hasInvoice && (
+                                                <a href={expense.invoicePdfUrl} target="_blank" rel="noopener noreferrer"
+                                                   className="text-emerald-600 hover:text-emerald-700">
+                                                    <Paperclip className="w-4 h-4" />
+                                                </a>
+                                            )}
+                                            {hasContract && (
+                                                <a href={expense.contractPdfUrl || contractMap.get(expense.relatedContractId)?.contractPdfUrl} 
+                                                   target="_blank" rel="noopener noreferrer"
+                                                   className="text-blue-600 hover:text-blue-700">
+                                                    <FileSignature className="w-4 h-4" />
+                                                </a>
+                                            )}
+                                            {!requiresContract && (
+                                                <span className="text-gray-400" title="Contratto non richiesto">
+                                                    <X className="w-4 h-4" />
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center justify-center gap-1">
+                                            {canEditOrDelete(expense) && (
+                                                <>
+                                                    <button 
+                                                        onClick={() => onDuplicate(expense)}
+                                                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all">
+                                                        <Copy className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => onEdit(expense)}
+                                                        className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-all">
+                                                        <Pencil className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => onDelete(expense)}
+                                                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all">
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+});
+
+// ===== MAIN COMPONENT - EXPENSES PAGE =====
 export default function ExpensesPage({ user, initialFilters }) {
     const location = useLocation();
     
-    // Stati di base
-    const [allExpenses, setAllExpenses] = useState([]);
-    const [normalizedExpenses, setNormalizedExpenses] = useState([]);
+    // Stati principali
+    const [rawExpenses, setRawExpenses] = useState([]);
     const [branches, setBranches] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [marketingChannels, setMarketingChannels] = useState([]);
     const [sectors, setSectors] = useState([]);
     const [geographicAreas, setGeographicAreas] = useState([]);
     const [contracts, setContracts] = useState([]);
+    const [budgets, setBudgets] = useState([]);
+    const [sectorBudgets, setSectorBudgets] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    
+    // Stati UI
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingExpense, setEditingExpense] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [expandedExpenses, setExpandedExpenses] = useState({});
+    const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
+    const [viewMode, setViewMode] = useState('table');
     
     // Stati filtri
     const [searchTerm, setSearchTerm] = useState('');
     const [supplierFilter, setSupplierFilter] = useState('');
     const [dateFilter, setDateFilter] = useState({ startDate: '', endDate: '' });
-    const [expandedExpenses, setExpandedExpenses] = useState({});
     const [selectedSector, setSelectedSector] = useState('all');
-    const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
     const [invoiceFilter, setInvoiceFilter] = useState('');
     const [contractFilter, setContractFilter] = useState('');
     const [branchFilter, setBranchFilter] = useState([]);
     const [areaFilter, setAreaFilter] = useState('');
     const [specialFilter, setSpecialFilter] = useState(null);
-
-    // Map memoizzate
+    const [sortOrder, setSortOrder] = useState('date_desc');
+    const [statusFilter, setStatusFilter] = useState('all');
+    
+    // Debounce search per performance
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+    
+    // Map per lookup rapidi con memoizzazione aggressiva
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
     const branchMap = useMemo(() => new Map(branches.map(b => [b.id, b.name])), [branches]);
     const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers]);
     const marketingChannelMap = useMemo(() => new Map(marketingChannels.map(mc => [mc.id, mc.name])), [marketingChannels]);
-    const geoAreaMap = useMemo(() => new Map(geographicAreas.map(a => [a.id, a.name])), [geographicAreas]);
     const contractMap = useMemo(() => new Map(contracts.map(c => [c.id, c])), [contracts]);
     
-    // Trova ID della filiale "Generico"
+    // Ordinamento settori
+    const orderedSectors = useMemo(() => {
+        const order = ['Auto', 'Camper&Caravan', 'Yachting', 'Frattin Group'];
+        return [...sectors].sort((a, b) => {
+            const indexA = order.indexOf(a.name);
+            const indexB = order.indexOf(b.name);
+            if (indexA === -1 && indexB === -1) return a.name.localeCompare(b.name);
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+        });
+    }, [sectors]);
+    
+    // ID filiale "Generico" memoizzato
     const genericoBranchId = useMemo(() => 
         branches.find(b => b.name.toLowerCase() === 'generico')?.id, 
         [branches]
     );
     
-    // Cache per le filiali per settore
+    // Cache filiali per settore
     const branchesPerSector = useMemo(() => {
         const cache = new Map();
         sectors.forEach(sector => {
@@ -344,233 +650,244 @@ export default function ExpensesPage({ user, initialFilters }) {
         });
         return cache;
     }, [sectors, branches, genericoBranchId]);
-
-    // Inizializzazione filtri
+    
+    // Budget per fornitore/settore
+    const budgetInfoMap = useMemo(() => {
+        const map = new Map();
+        const currentYear = new Date().getFullYear();
+        
+        budgets.forEach(budget => {
+            if (budget.year === currentYear && budget.allocations) {
+                budget.allocations.forEach(allocation => {
+                    const key = `${budget.supplierId}-${allocation.sectorId}`;
+                    map.set(key, {
+                        budget: allocation.budgetAmount || 0,
+                        spent: 0
+                    });
+                });
+            }
+        });
+        
+        return map;
+    }, [budgets]);
+    
+    // Inizializzazione filtri da props/location
     useEffect(() => {
         const filters = initialFilters || location.state;
         if (filters && Object.keys(filters).length > 0) {
             if (filters.branchFilter) { 
                 setBranchFilter(filters.branchFilter); 
                 setIsAdvancedFiltersOpen(true); 
-            } else { 
-                setBranchFilter([]); 
             }
             if (filters.specialFilter) { 
                 setSpecialFilter(filters.specialFilter); 
-            } else { 
-                setSpecialFilter(null); 
             }
-        } else {
-            setBranchFilter([]); 
-            setSpecialFilter(null);
         }
     }, [initialFilters, location.state]);
-
-    // Caricamento dati iniziale
+    
+    // Caricamento dati da Firebase
     useEffect(() => {
         setIsLoading(true);
-
+        
         let expensesQuery = query(collection(db, "expenses"), orderBy("date", "desc"));
         
-        if (user.role === 'collaborator' && user.assignedChannels && user.assignedChannels.length > 0) {
-            if (user.assignedChannels.length <= 10) {
-                expensesQuery = query(
-                    collection(db, "expenses"),
-                    where("supplierId", "in", user.assignedChannels),
-                    orderBy("date", "desc")
-                );
-            }
+        if (user.role === 'collaborator' && user.assignedChannels?.length > 0 && user.assignedChannels.length <= 10) {
+            expensesQuery = query(
+                collection(db, "expenses"),
+                where("supplierId", "in", user.assignedChannels),
+                orderBy("date", "desc")
+            );
         }
-
-        const unsubs = [
+        
+        const currentYear = new Date().getFullYear();
+        
+        const unsubscribes = [
             onSnapshot(expensesQuery, (snap) => {
-                setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                const expenses = snap.docs.map(doc => ({ 
+                    ...doc.data(), 
+                    id: doc.id 
+                }));
+                setRawExpenses(expenses);
             }),
-            onSnapshot(query(collection(db, "sectors"), orderBy("name")), (snap) => setSectors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "branches"), orderBy("name")), (snap) => setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "channels"), orderBy("name")), (snap) => setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "marketing_channels"), orderBy("name")), (snap) => setMarketingChannels(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "geographic_areas"), orderBy("name")), (snap) => setGeographicAreas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "contracts"), orderBy("description")), (snap) => {
-                setContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                setIsLoading(false);
-            })
+            onSnapshot(query(collection(db, "sectors"), orderBy("name")), 
+                snap => setSectors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+            onSnapshot(query(collection(db, "branches"), orderBy("name")), 
+                snap => setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+            onSnapshot(query(collection(db, "channels"), orderBy("name")), 
+                snap => setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+            onSnapshot(query(collection(db, "marketing_channels"), orderBy("name")), 
+                snap => setMarketingChannels(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+            onSnapshot(query(collection(db, "geographic_areas"), orderBy("name")), 
+                snap => setGeographicAreas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+            onSnapshot(query(collection(db, "contracts"), orderBy("description")), 
+                snap => setContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+            onSnapshot(query(collection(db, "budgets"), where("year", "==", currentYear)), 
+                snap => setBudgets(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+            onSnapshot(query(collection(db, "sector_budgets"), where("year", "==", currentYear)), 
+                snap => {
+                    setSectorBudgets(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                    setIsLoading(false);
+                })
         ];
-
-        return () => unsubs.forEach(unsub => unsub());
+        
+        return () => unsubscribes.forEach(unsub => unsub());
     }, [user]);
-
-    // Normalizzazione spese separata
-    useEffect(() => {
-        const normalized = allExpenses.map((data) => {
-            const id = data.id;
+    
+    // PROCESSAMENTO SPESE OTTIMIZZATO con memoizzazione aggressiva
+    const processedExpenses = useMemo(() => {
+        // 1. NORMALIZZAZIONE
+        let normalized = rawExpenses.map(expense => {
+            // Normalizza IDs
+            let supplierId = expense.supplierId || expense.supplierld || expense.channelId || expense.channelld;
+            let sectorId = expense.sectorId || expense.sectorld;
             
-            // Normalizza supplier e sector IDs
-            let supplierId = data.supplierId || data.supplierld || data.channelId || data.channelld;
-            let sectorId = data.sectorId || data.sectorld;
-            
-            // Normalizza lineItems
+            // Prepara lineItems
             let lineItems = [];
-            if (Array.isArray(data.lineItems) && data.lineItems.length > 0) {
-                lineItems = data.lineItems.map((item, index) => ({
+            if (Array.isArray(expense.lineItems) && expense.lineItems.length > 0) {
+                lineItems = expense.lineItems.map((item, index) => ({
                     ...item,
-                    assignmentId: item.assignmentId || item.assignmentid || item.branchld || data.branchId || data.branchld || "",
+                    assignmentId: item.assignmentId || item.assignmentid || item.branchld || expense.branchId || expense.branchld || "",
                     marketingChannelId: item.marketingChannelId || item.marketingChannelld || "",
                     sectorId: item.sectorId || item.sectorld || sectorId,
                     amount: parseFloat(item.amount) || 0,
-                    _key: `${id}-${index}`
+                    _key: `${expense.id}-${index}`
                 }));
             } else {
                 lineItems.push({
-                    description: data.description || 'Voce principale',
-                    amount: parseFloat(data.amount) || 0,
-                    marketingChannelId: data.marketingChannelId || data.marketingChannelld || "",
-                    assignmentId: data.branchId || data.branchld || "",
+                    description: expense.description || 'Voce principale',
+                    amount: parseFloat(expense.amount) || 0,
+                    marketingChannelId: expense.marketingChannelId || expense.marketingChannelld || "",
+                    assignmentId: expense.branchId || expense.branchld || "",
                     sectorId: sectorId,
-                    _key: `${id}-0`
+                    _key: `${expense.id}-0`
                 });
             }
-
-            // Recupera supplier e sector dai lineItems se mancanti
-            if (!supplierId && lineItems.length > 0) {
-                for (const item of lineItems) {
-                    if (item.supplierId || item.supplierld) {
-                        supplierId = item.supplierId || item.supplierld;
-                        break;
-                    }
-                }
-            }
-            if (!sectorId && lineItems.length > 0) {
-                for (const item of lineItems) {
-                    if (item.sectorId || item.sectorld) {
-                        sectorId = item.sectorId || item.sectorld;
-                        break;
-                    }
-                }
-            }
             
-            // Calcola il totale dall'insieme dei lineItems
+            // Calcola totale
             const totalAmount = lineItems.reduce((sum, item) => sum + item.amount, 0);
-
-            // Processa lineItems per visualizzazione (raggruppa splitGroupId)
+            
+            // Processa lineItems per display
             const processedLineItems = [];
             const processedGroupIds = new Set();
             
             lineItems.forEach(item => {
-                if (item.splitGroupId) {
-                    if (processedGroupIds.has(item.splitGroupId)) return;
+                if (item.splitGroupId && !processedGroupIds.has(item.splitGroupId)) {
                     const groupItems = lineItems.filter(li => li.splitGroupId === item.splitGroupId);
                     const totalGroupAmount = groupItems.reduce((sum, gi) => sum + gi.amount, 0);
                     const branchNames = groupItems.map(gi => branchMap.get(gi.assignmentId) || 'N/D').join(', ');
+                    
                     processedLineItems.push({
-                        _key: item.splitGroupId, 
-                        isGroup: true, 
-                        description: item.description, 
+                        _key: item.splitGroupId,
+                        isGroup: true,
+                        description: item.description,
                         amount: totalGroupAmount,
                         displayAmount: totalGroupAmount,
-                        marketingChannelId: item.marketingChannelId, 
-                        branchNames: branchNames, 
+                        marketingChannelId: item.marketingChannelId,
+                        branchNames: branchNames,
                         branchCount: groupItems.length,
                     });
                     processedGroupIds.add(item.splitGroupId);
-                } else if (item.assignmentId === genericoBranchId) {
-                    // Gestisce lineItem "Generico"
-                    const sectorBranches = branchesPerSector.get(item.sectorId) || [];
-                    const branchNames = sectorBranches.map(b => b.name).join(', ');
-                    processedLineItems.push({ 
-                        ...item, 
-                        isGroup: false,
-                        isGenerico: true,
-                        displayAmount: item.amount,
-                        distributedTo: sectorBranches.length > 0 
-                            ? `${sectorBranches.length} filiali: ${branchNames}` 
-                            : 'Nessuna filiale associata'
-                    });
-                } else {
-                    processedLineItems.push({ 
-                        ...item, 
-                        isGroup: false,
-                        isGenerico: false,
-                        displayAmount: item.amount
-                    });
+                } else if (!item.splitGroupId) {
+                    if (item.assignmentId === genericoBranchId) {
+                        const sectorBranches = branchesPerSector.get(item.sectorId) || [];
+                        processedLineItems.push({
+                            ...item,
+                            isGenerico: true,
+                            displayAmount: item.amount,
+                            distributedTo: sectorBranches.length > 0 
+                                ? `${sectorBranches.length} filiali: ${sectorBranches.map(b => b.name).join(', ')}` 
+                                : 'Nessuna filiale associata'
+                        });
+                    } else {
+                        processedLineItems.push({
+                            ...item,
+                            displayAmount: item.amount
+                        });
+                    }
                 }
             });
             
-            return { 
-                ...data,
-                id, 
+            // Aggiungi info budget
+            const budgetKey = `${supplierId}-${sectorId}`;
+            const budgetInfo = budgetInfoMap.get(budgetKey);
+            
+            const hasTopLevelContract = !!expense.contractPdfUrl || !!expense.relatedContractId;
+            const allLineItemsHaveContract = lineItems.length > 0 && lineItems.every(li => !!li.relatedContractId);
+            const isContractSatisfied = hasTopLevelContract || allLineItemsHaveContract;
+            
+            return {
+                ...expense,
+                isContractSatisfied,
                 supplierId,
                 sectorId,
-                supplierld: supplierId,
-                sectorld: sectorId,
                 amount: totalAmount,
-                lineItems, 
+                lineItems,
                 processedLineItems,
-                displayAmount: totalAmount
+                displayAmount: totalAmount,
+                budgetInfo,
+                requiresContract: expense.requiresContract !== undefined ? expense.requiresContract : true
             };
         });
         
-        setNormalizedExpenses(normalized);
-    }, [allExpenses, branchMap, genericoBranchId, branchesPerSector]);
-
-    // Filtra e processa le spese con calcolo distribuito
-    const { filteredExpenses, totalFilteredSpend } = useMemo(() => {
-        let expensesToFilter = [...normalizedExpenses];
-
-        // Applica filtri
-        if (specialFilter === 'unassigned') {
-            expensesToFilter = expensesToFilter.filter(exp => {
-                if (exp.lineItems && exp.lineItems.length > 0) {
-                    return exp.lineItems.some(item => {
-                        const assignmentId = item.assignmentId;
-                        return !assignmentId || !branchMap.has(assignmentId);
-                    });
-                }
-                const branchId = exp.branchId;
-                return !branchId || !branchMap.has(branchId);
-            });
-        }
-
+        // 2. FILTRAGGIO
+        
+        // Filtro per settore
         if (selectedSector !== 'all') {
-            expensesToFilter = expensesToFilter.filter(exp => exp.sectorId === selectedSector);
+            normalized = normalized.filter(exp => exp.sectorId === selectedSector);
         }
         
+        // Filtro per fornitore (multi-selezione)
+if (supplierFilter.length > 0) {
+    normalized = normalized.filter(exp => supplierFilter.includes(exp.supplierId));
+}
+        
+        // Filtro per date
         if (dateFilter.startDate && dateFilter.endDate) {
             const start = new Date(dateFilter.startDate);
             start.setHours(0, 0, 0, 0);
             const end = new Date(dateFilter.endDate);
             end.setHours(23, 59, 59, 999);
-            expensesToFilter = expensesToFilter.filter(exp => {
+            
+            normalized = normalized.filter(exp => {
                 const expDate = exp.date ? new Date(exp.date) : null;
                 return expDate && expDate >= start && expDate <= end;
             });
         }
-
-        if (supplierFilter) {
-            expensesToFilter = expensesToFilter.filter(exp => exp.supplierId === supplierFilter);
+        
+        // Filtro stato
+        if (statusFilter === 'complete') {
+            normalized = normalized.filter(exp => {
+                const requiresContract = exp.requiresContract !== false;
+                return exp.invoicePdfUrl && (!requiresContract || exp.contractPdfUrl || exp.relatedContractId);
+            });
+        } else if (statusFilter === 'incomplete') {
+         normalized = normalized.filter(exp => {
+        const requiresContract = exp.requiresContract !== false;
+        return !exp.invoicePdfUrl || (requiresContract && !exp.isContractSatisfied);
+        });
+        }else if (statusFilter === 'amortized') {
+            normalized = normalized.filter(exp => exp.isAmortized);
         }
         
-        if (contractFilter === 'present') expensesToFilter = expensesToFilter.filter(exp => !!exp.contractPdfUrl || !!exp.relatedContractId);
-        if (contractFilter === 'missing') expensesToFilter = expensesToFilter.filter(exp => !exp.contractPdfUrl && !exp.relatedContractId);
-        if (invoiceFilter === 'present') expensesToFilter = expensesToFilter.filter(exp => !!exp.invoicePdfUrl);
-        if (invoiceFilter === 'missing') expensesToFilter = expensesToFilter.filter(exp => !exp.invoicePdfUrl);
-        
-        if (areaFilter) {
-            const area = geographicAreas.find(a => a.id === areaFilter);
-            const branchesInArea = area?.associatedBranches || [];
-            expensesToFilter = expensesToFilter.filter(exp => 
-                exp.lineItems?.some(item => branchesInArea.includes(item.assignmentId))
-            );
+        // Altri filtri esistenti...
+        if (invoiceFilter === 'present') {
+            normalized = normalized.filter(exp => !!exp.invoicePdfUrl);
+        } else if (invoiceFilter === 'missing') {
+            normalized = normalized.filter(exp => !exp.invoicePdfUrl);
         }
         
-        // Filtro per filiale con calcolo distribuito
+        if (contractFilter === 'present') {
+            normalized = normalized.filter(exp => !!exp.contractPdfUrl || !!exp.relatedContractId);
+        } else if (contractFilter === 'missing') {
+            normalized = normalized.filter(exp => !exp.contractPdfUrl && !exp.relatedContractId);
+        }
+        
+        // Filtro filiale con calcolo distribuito
         if (branchFilter.length > 0) {
-            expensesToFilter = expensesToFilter.filter(exp => 
+            normalized = normalized.filter(exp => 
                 exp.lineItems?.some(item => {
-                    // Include se è direttamente assegnato
                     if (branchFilter.includes(item.assignmentId)) return true;
                     
-                    // Include se è "Generico" e la filiale filtrata appartiene al settore
                     if (item.assignmentId === genericoBranchId) {
                         const sectorBranches = branchesPerSector.get(item.sectorId || exp.sectorId) || [];
                         return sectorBranches.some(b => branchFilter.includes(b.id));
@@ -580,8 +897,8 @@ export default function ExpensesPage({ user, initialFilters }) {
                 })
             );
             
-            // Calcola displayAmount per ogni spesa basato sul filtro filiale
-            expensesToFilter = expensesToFilter.map(exp => {
+            // Ricalcola displayAmount per filiali filtrate
+            normalized = normalized.map(exp => {
                 let displayAmount = 0;
                 let hasDistributedAmount = false;
                 const distributedDetails = [];
@@ -592,8 +909,7 @@ export default function ExpensesPage({ user, initialFilters }) {
                     if (branchFilter.includes(item.assignmentId)) {
                         displayAmount += itemAmount;
                     } else if (item.assignmentId === genericoBranchId) {
-                        const itemSectorId = item.sectorId || exp.sectorId;
-                        const sectorBranches = branchesPerSector.get(itemSectorId) || [];
+                        const sectorBranches = branchesPerSector.get(item.sectorId || exp.sectorId) || [];
                         const filteredBranchesInSector = sectorBranches.filter(b => branchFilter.includes(b.id));
                         
                         if (filteredBranchesInSector.length > 0 && sectorBranches.length > 0) {
@@ -611,78 +927,170 @@ export default function ExpensesPage({ user, initialFilters }) {
                     ...exp,
                     displayAmount,
                     hasDistributedAmount,
-                    distributedInfo: hasDistributedAmount ? {
-                        details: distributedDetails.join(' + ')
-                    } : null
+                    distributedInfo: hasDistributedAmount ? { details: distributedDetails.join(' + ') } : null
                 };
             });
         }
-
-        if (searchTerm.trim() !== '') {
-            const lowerSearchTerm = searchTerm.toLowerCase();
-            expensesToFilter = expensesToFilter.filter(exp => {
-                const channelNames = [...new Set(exp.lineItems?.map(item => item.marketingChannelId).filter(Boolean))]
-                    .map(id => marketingChannelMap.get(id) || "").join(' ');
-                return exp.description?.toLowerCase().includes(lowerSearchTerm) ||
-                    supplierMap.get(exp.supplierId)?.toLowerCase().includes(lowerSearchTerm) ||
-                    exp.lineItems?.some(item => item.description?.toLowerCase().includes(lowerSearchTerm)) ||
-                    channelNames.toLowerCase().includes(lowerSearchTerm);
+        
+        // Filtro ricerca testuale con debounce
+        if (debouncedSearchTerm.trim()) {
+            const lowerSearch = debouncedSearchTerm.toLowerCase();
+            normalized = normalized.filter(exp => {
+                const supplierName = supplierMap.get(exp.supplierId) || '';
+                const channelNames = exp.lineItems?.map(item => 
+                    marketingChannelMap.get(item.marketingChannelId) || ''
+                ).join(' ');
+                
+                return exp.description?.toLowerCase().includes(lowerSearch) ||
+                       supplierName.toLowerCase().includes(lowerSearch) ||
+                       channelNames?.toLowerCase().includes(lowerSearch) ||
+                       exp.lineItems?.some(item => item.description?.toLowerCase().includes(lowerSearch));
             });
         }
         
-        // Calcola il totale con logica distribuita
-        let totalSpend = 0;
-        
-        if (branchFilter.length > 0) {
-            // Usa displayAmount che include le quote distribuite
-            totalSpend = expensesToFilter.reduce((sum, exp) => sum + (exp.displayAmount || 0), 0);
-        } else {
-            // Usa il totale normale
-            totalSpend = expensesToFilter.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+        // Filtri speciali
+        if (specialFilter === 'unassigned') {
+            normalized = normalized.filter(exp => {
+                if (exp.lineItems && exp.lineItems.length > 0) {
+                    return exp.lineItems.some(item => !item.assignmentId || !branchMap.has(item.assignmentId));
+                }
+                return !exp.branchId || !branchMap.has(exp.branchId);
+            });
         }
         
-        return { 
-            filteredExpenses: expensesToFilter, 
-            totalFilteredSpend: totalSpend 
-        };
-    }, [normalizedExpenses, searchTerm, supplierFilter, invoiceFilter, contractFilter, dateFilter, selectedSector, branchFilter, areaFilter, specialFilter, supplierMap, marketingChannelMap, geographicAreas, branchMap, genericoBranchId, branchesPerSector]);
+        // 3. ORDINAMENTO
+        normalized.sort((a, b) => {
+            switch (sortOrder) {
+                case 'amount_desc':
+                    return b.displayAmount - a.displayAmount;
+                case 'amount_asc':
+                    return a.displayAmount - b.displayAmount;
+                case 'date_desc':
+                    return new Date(b.date || 0) - new Date(a.date || 0);
+                case 'date_asc':
+                    return new Date(a.date || 0) - new Date(b.date || 0);
+                case 'name_asc':
+                    return (supplierMap.get(a.supplierId) || '').localeCompare(supplierMap.get(b.supplierId) || '');
+                case 'name_desc':
+                    return (supplierMap.get(b.supplierId) || '').localeCompare(supplierMap.get(a.supplierId) || '');
+                default:
+                    return 0;
+            }
+        });
+        
+        return normalized;
+    }, [
+        rawExpenses, 
+        selectedSector, 
+        supplierFilter, 
+        dateFilter, 
+        statusFilter,
+        invoiceFilter, 
+        contractFilter,
+        areaFilter, 
+        branchFilter, 
+        debouncedSearchTerm, 
+        specialFilter,
+        sortOrder,
+        supplierMap, 
+        marketingChannelMap, 
+        geographicAreas, 
+        branchMap,
+        genericoBranchId, 
+        branchesPerSector,
+        budgetInfoMap
+    ]);
     
+    // Calcolo KPI ottimizzato
     const kpiData = useMemo(() => {
-        const total = filteredExpenses.length;
-        const withInvoice = filteredExpenses.filter(exp => exp.invoicePdfUrl).length;
-        const withContract = filteredExpenses.filter(exp => exp.contractPdfUrl || exp.relatedContractId).length;
-        const amortized = filteredExpenses.filter(exp => exp.isAmortized).length;
-        const complete = filteredExpenses.filter(exp => exp.invoicePdfUrl && (exp.contractPdfUrl || exp.relatedContractId)).length;
+        const total = processedExpenses.length;
+        const totalSpend = branchFilter.length > 0 
+            ? processedExpenses.reduce((sum, exp) => sum + (exp.displayAmount || 0), 0)
+            : processedExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+        
+        const withInvoice = processedExpenses.filter(exp => exp.invoicePdfUrl).length;
+        const withContract = processedExpenses.filter(exp => exp.contractPdfUrl || exp.relatedContractId).length;
+        const complete = processedExpenses.filter(exp => {
+        const requiresContract = exp.requiresContract !== false;
+        return exp.invoicePdfUrl && (!requiresContract || exp.isContractSatisfied);
+        }).length;
+        const incomplete = processedExpenses.filter(exp => {
+        const requiresContract = exp.requiresContract !== false;
+        return !exp.invoicePdfUrl || (requiresContract && !exp.isContractSatisfied);
+        }).length;
+        
+        // Calcola budget totale per spese visualizzate
+        let totalBudget = 0;
+        if (selectedSector === 'all') {
+            totalBudget = sectorBudgets.reduce((sum, sb) => sum + (sb.maxAmount || 0), 0);
+        } else {
+            const sectorBudget = sectorBudgets.find(sb => sb.sectorId === selectedSector);
+            totalBudget = sectorBudget?.maxAmount || 0;
+        }
+        
+        const budgetUtilization = totalBudget > 0 ? (totalSpend / totalBudget) * 100 : 0;
+        
+        // Calcolo trend
+        const currentMonth = new Date().getMonth();
+        const currentMonthSpend = processedExpenses.filter(exp => {
+            const expDate = exp.date ? new Date(exp.date) : null;
+            return expDate && expDate.getMonth() === currentMonth;
+        }).reduce((sum, exp) => sum + exp.displayAmount, 0);
+        
+        const lastMonth = currentMonth - 1;
+        const lastMonthSpend = processedExpenses.filter(exp => {
+            const expDate = exp.date ? new Date(exp.date) : null;
+            return expDate && expDate.getMonth() === lastMonth;
+        }).reduce((sum, exp) => sum + exp.displayAmount, 0);
+        
+        const trend = lastMonthSpend > 0 ? 
+            ((currentMonthSpend - lastMonthSpend) / lastMonthSpend * 100).toFixed(1) : 0;
         
         return {
             totalExpenses: total,
-            totalSpend: totalFilteredSpend,
+            totalSpend,
+            totalBudget,
+            budgetUtilization,
             withInvoicePercentage: total > 0 ? ((withInvoice / total) * 100).toFixed(1) : 0,
             withContractPercentage: total > 0 ? ((withContract / total) * 100).toFixed(1) : 0,
             completePercentage: total > 0 ? ((complete / total) * 100).toFixed(1) : 0,
-            amortizedCount: amortized
+            incomplete,
+            trend: {
+                direction: parseFloat(trend) >= 0 ? 'up' : 'down',
+                value: `${Math.abs(parseFloat(trend))}%`
+            }
         };
-    }, [filteredExpenses, totalFilteredSpend]);
+    }, [processedExpenses, branchFilter, sectorBudgets, selectedSector]);
+    
+    // Check spese con problemi (aggiornato per requiresContract)
+    const expensesWithIssues = useMemo(() => {
+        return processedExpenses.filter(exp => {
+    const requiresContract = exp.requiresContract !== false;
+    const hasInvoice = !!exp.invoicePdfUrl;
 
-    // Callbacks ottimizzate
+    return !hasInvoice || (requiresContract && !exp.isContractSatisfied);
+    });
+    }, [processedExpenses]);
+    
+    // Callbacks ottimizzati
     const toggleExpense = useCallback((expenseId) => {
         setExpandedExpenses(prev => ({ ...prev, [expenseId]: !prev[expenseId] }));
     }, []);
-
+    
     const canEditOrDelete = useCallback((expense) => {
         return user.role === 'manager' || user.role === 'admin' || expense.authorId === user.uid;
     }, [user.role, user.uid]);
-
+    
     const handleOpenAddModal = useCallback(() => { 
         setEditingExpense(null); 
         setIsModalOpen(true); 
     }, []);
-
+    
     const handleCloseModal = useCallback(() => { 
         setIsModalOpen(false); 
         setEditingExpense(null); 
     }, []);
-
+    
     const handleOpenEditModal = useCallback((expense) => {
         if (!canEditOrDelete(expense)) {
             return toast.error("Non hai i permessi per modificare questa spesa.");
@@ -712,33 +1120,17 @@ export default function ExpensesPage({ user, initialFilters }) {
                 contractURL = await getDownloadURL(contractRef);
             }
             
-            if (expenseData.isAmortized && (!expenseData.amortizationStartDate || !expenseData.amortizationEndDate)) {
-                throw new Error("Se la spesa è per competenza, le date di inizio e fine sono obbligatorie.");
-            }
-            
-            if (expenseData.isAmortized && new Date(expenseData.amortizationStartDate) >= new Date(expenseData.amortizationEndDate)) {
-                throw new Error("La data di inizio competenza deve essere precedente alla data di fine.");
-            }
-            
-            const cleanLineItems = expenseData.lineItems;
-            if (cleanLineItems.length === 0) {
-                throw new Error("Aggiungere almeno una voce di spesa valida.");
-            }
-            
-            const finalTotalAmount = cleanLineItems.reduce((sum, item) => sum + item.amount, 0);
-            
             const dataToSave = {
                 date: expenseData.date,
                 description: expenseData.description,
                 sectorId: expenseData.sectorId,
                 supplierId: expenseData.supplierId,
-                isMultiBranch: expenseData.isMultiBranch,
-                branchId: expenseData.branchId,
-                amount: finalTotalAmount,
-                lineItems: cleanLineItems,
+                amount: expenseData.lineItems.reduce((sum, item) => sum + item.amount, 0),
+                lineItems: expenseData.lineItems,
                 invoicePdfUrl: invoiceURL,
                 contractPdfUrl: contractURL,
                 relatedContractId: expenseData.relatedContractId || null,
+                requiresContract: expenseData.requiresContract !== undefined ? expenseData.requiresContract : true,
                 isAmortized: expenseData.isAmortized || false,
                 amortizationStartDate: expenseData.isAmortized ? expenseData.amortizationStartDate : null,
                 amortizationEndDate: expenseData.isAmortized ? expenseData.amortizationEndDate : null,
@@ -785,21 +1177,19 @@ export default function ExpensesPage({ user, initialFilters }) {
             }
             
             await deleteDoc(doc(db, "expenses", expense.id));
-            toast.success("Spesa eliminata con successo!", { id: toastId });
+            toast.success("Spesa eliminata!", { id: toastId });
         } catch (error) {
-            console.error("Errore durante l'eliminazione:", error);
             toast.error("Errore durante l'eliminazione.", { id: toastId });
         }
     }, [canEditOrDelete]);
     
-    const handleDuplicateExpense = useCallback((expenseToDuplicate) => {
-        const { id, invoicePdfUrl, contractPdfUrl, createdAt, updatedAt, authorId, authorName, ...restOfExpense } = expenseToDuplicate;
-        const newExpenseData = { 
-            ...restOfExpense, 
-            description: `${expenseToDuplicate.description || ''} (Copia)`, 
+    const handleDuplicateExpense = useCallback((expense) => {
+        const { id, invoicePdfUrl, contractPdfUrl, createdAt, updatedAt, authorId, authorName, ...rest } = expense;
+        setEditingExpense({ 
+            ...rest, 
+            description: `${expense.description || ''} (Copia)`, 
             date: new Date().toISOString().split('T')[0] 
-        };
-        setEditingExpense(newExpenseData);
+        });
         setIsModalOpen(true);
     }, []);
     
@@ -813,12 +1203,23 @@ export default function ExpensesPage({ user, initialFilters }) {
         setBranchFilter([]); 
         setAreaFilter(''); 
         setSpecialFilter(null);
+        setStatusFilter('all');
+        setSortOrder('date_desc');
         toast.success("Filtri resettati!");
     }, []);
-
+    
+    const handleExportExcel = useCallback(() => {
+        toast.info("Export Excel in sviluppo...");
+    }, [processedExpenses]);
+    
+    // Check filtri attivi
     const areAdvancedFiltersActive = invoiceFilter || contractFilter || branchFilter.length > 0 || areaFilter;
-    const hasActiveFilters = searchTerm || supplierFilter || dateFilter.startDate || dateFilter.endDate || selectedSector !== 'all' || areAdvancedFiltersActive || specialFilter;
-
+    const hasActiveFilters = searchTerm || supplierFilter || dateFilter.startDate || dateFilter.endDate || 
+                           selectedSector !== 'all' || areAdvancedFiltersActive || specialFilter || 
+                           statusFilter !== 'all' || sortOrder !== 'date_desc';
+    
+    const hasOverBudget = kpiData.budgetUtilization > 100;
+    
     if (isLoading) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
@@ -829,11 +1230,11 @@ export default function ExpensesPage({ user, initialFilters }) {
             </div>
         );
     }
-
+    
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative">
             <div className="relative p-4 lg:p-8 space-y-6">
-                {/* Header */}
+                {/* Header migliorato */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-600 to-orange-700 text-white shadow-lg">
@@ -845,63 +1246,93 @@ export default function ExpensesPage({ user, initialFilters }) {
                         </div>
                     </div>
                     
-                    <button 
-                        onClick={handleOpenAddModal} 
-                        className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all hover:scale-105"
-                    >
-                        <PlusCircle className="w-5 h-5" />
-                        Aggiungi Spesa
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button 
+                            onClick={handleExportExcel}
+                            className="hidden lg:flex items-center gap-2 px-4 py-3 bg-white/80 text-gray-700 font-semibold rounded-xl hover:bg-white hover:shadow-lg transition-all"
+                        >
+                            <Download className="w-4 h-4" />
+                            Export
+                        </button>
+                        
+                        <button 
+                            onClick={handleOpenAddModal} 
+                            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all hover:scale-105"
+                        >
+                            <PlusCircle className="w-5 h-5" />
+                            Aggiungi Spesa
+                        </button>
+                    </div>
                 </div>
-
-                {/* Filtri */}
-                <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-6">
+                
+                {/* Filtri migliorati */}
+                <div className="relative z-40 bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-6">
                     <div className="space-y-4">
-                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-                            <div className="lg:col-span-2">
-                                <div className="relative">
-                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                                    <input 
-                                        type="text" 
-                                        placeholder="Cerca per descrizione, fornitore, canale..." 
-                                        value={searchTerm} 
-                                        onChange={(e) => setSearchTerm(e.target.value)} 
-                                        className="w-full h-12 pl-12 pr-4 bg-white border-2 border-gray-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <input 
-                                    type="date" 
-                                    value={dateFilter.startDate} 
-                                    onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))} 
-                                    className="w-full h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all"
-                                />
-                            </div>
-                            <div>
-                                <input 
-                                    type="date" 
-                                    value={dateFilter.endDate} 
-                                    onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))} 
-                                    className="w-full h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all"
-                                />
-                            </div>
-                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-center">
+    {/* Barra di ricerca (occupa 2 colonne) */}
+    <div className="relative lg:col-span-2">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <input 
+            type="text" 
+            placeholder="Cerca per descrizione, fornitore, canale..." 
+            value={searchTerm} 
+            onChange={(e) => setSearchTerm(e.target.value)} 
+            className="w-full h-12 pl-12 pr-4 bg-white border-2 border-gray-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all"
+        />
+    </div>
+
+    {/* Selettore Data Inizio */}
+    <div>
+        <input 
+            type="date" 
+            value={dateFilter.startDate} 
+            onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))} 
+            className="w-full h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all"
+        />
+    </div>
+
+    {/* Selettore Data Fine */}
+    <div>
+        <input 
+            type="date" 
+            value={dateFilter.endDate} 
+            onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))} 
+            className="w-full h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all"
+        />
+    </div>
+
+    {/* Toggle Vista (allineato a destra) */}
+    <div className="flex justify-end">
+        <div className="flex items-center gap-2">
+            <button onClick={() => setViewMode('cards')} className={`p-2 rounded-lg transition-all ${viewMode === 'cards' ? 'bg-amber-100 text-amber-600' : 'text-gray-400 hover:bg-gray-100'}`} title="Vista Card">
+                <LayoutGrid className="w-5 h-5" />
+            </button>
+            <button onClick={() => setViewMode('table')} className={`p-2 rounded-lg transition-all ${viewMode === 'table' ? 'bg-amber-100 text-amber-600' : 'text-gray-400 hover:bg-gray-100'}`} title="Vista Tabella">
+                <List className="w-5 h-5" />
+            </button>
+        </div>
+    </div>
+</div>
                         
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             <div>
-                                <select 
-                                    value={supplierFilter} 
-                                    onChange={(e) => setSupplierFilter(e.target.value)} 
-                                    className="w-full h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all"
-                                >
-                                    <option value="">Tutti i fornitori</option>
-                                    {suppliers.map(s => (
-                                        <option key={s.id} value={s.id}>{s.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+    <MultiSelect
+        options={suppliers}
+        selected={supplierFilter}
+        onChange={(supplierId) => {
+            setSupplierFilter(prev => 
+                prev.includes(supplierId) 
+                    ? prev.filter(id => id !== supplierId) 
+                    : [...prev, supplierId]
+            );
+        }}
+        placeholder="Tutti i fornitori"
+        selectedText={`${supplierFilter.length} fornitore${supplierFilter.length > 1 ? 'i' : ''} selezionat${supplierFilter.length > 1 ? 'i' : 'o'}`}
+        searchPlaceholder="Cerca fornitore..."
+    />
+</div>
                             <div className="flex items-center gap-2">
+                                
                                 <button 
                                     onClick={() => setIsAdvancedFiltersOpen(true)} 
                                     className={`relative flex items-center gap-2 px-4 py-3 text-sm font-semibold rounded-xl border-2 transition-all hover:scale-105 ${
@@ -931,6 +1362,7 @@ export default function ExpensesPage({ user, initialFilters }) {
                         
                         <div className="border-t border-gray-200 pt-4">
                             <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+                                {/* Filtri Settore */}
                                 <div className="flex items-center gap-2 lg:gap-3 flex-wrap w-full xl:w-auto">
                                     <button 
                                         onClick={() => setSelectedSector('all')} 
@@ -944,7 +1376,7 @@ export default function ExpensesPage({ user, initialFilters }) {
                                         <span className="hidden sm:inline">Tutti i Settori</span>
                                         <span className="sm:hidden">Tutti</span>
                                     </button>
-                                    {sectors.map(sector => {
+                                    {orderedSectors.map(sector => {
                                         const isActive = selectedSector === sector.id;
                                         const iconClassName = `w-3 h-3 lg:w-4 lg:h-4 ${isActive ? 'text-white' : 'text-gray-400'}`;
                                         return (
@@ -964,108 +1396,178 @@ export default function ExpensesPage({ user, initialFilters }) {
                                         );
                                     })}
                                 </div>
+                                
+                                {/* Filtri Stato Rapidi e Ordinamento */}
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                    {/* Filtri Stato */}
+                                    <div className="flex flex-wrap gap-2">
+    <button
+        onClick={() => setStatusFilter('all')}
+        className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+            statusFilter === 'all' ? 'bg-amber-600 text-white' : 'bg-gray-100 hover:bg-gray-200'
+        }`}
+    >
+        Tutte ({kpiData.totalExpenses})
+    </button>
+    {kpiData.incomplete > 0 && (
+        <button
+            onClick={() => setStatusFilter('incomplete')}
+            className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-1 transition-all ${
+                statusFilter === 'incomplete' ? 'bg-red-600 text-white' : 'bg-gray-100 hover:bg-gray-200'
+            }`}
+        >
+            <AlertTriangle className="w-3 h-3" />
+            Incomplete ({kpiData.incomplete})
+        </button>
+    )}
+    <button
+        onClick={() => setStatusFilter('complete')}
+        className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-1 transition-all ${
+            statusFilter === 'complete' ? 'bg-emerald-600 text-white' : 'bg-gray-100 hover:bg-gray-200'
+        }`}
+    >
+        <CheckCircle2 className="w-3 h-3" />
+        Complete ({kpiData.complete})
+    </button>
+</div>
+                                    
+                                    {/* Ordinamento */}
+                                    <select
+                                        value={sortOrder}
+                                        onChange={(e) => setSortOrder(e.target.value)}
+                                        className="h-10 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all text-sm font-semibold"
+                                    >
+                                        <option value="date_desc">Data ↓</option>
+                                        <option value="date_asc">Data ↑</option>
+                                        <option value="amount_desc">Importo ↓</option>
+                                        <option value="amount_asc">Importo ↑</option>
+                                        <option value="name_asc">Nome A-Z</option>
+                                        <option value="name_desc">Nome Z-A</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
-
-                        {/* Filtri Attivi */}
-                        {(areAdvancedFiltersActive || specialFilter) && (
-                            <div className="pt-2 flex items-center gap-2 flex-wrap">
-                                {specialFilter === 'unassigned' && (
-                                    <span className="flex items-center gap-1 bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-semibold">
-                                        <AlertTriangle className="w-3 h-3" />
-                                        Spese non assegnate
-                                        <button onClick={() => setSpecialFilter(null)} className="ml-1 hover:bg-amber-200 rounded-full p-0.5">
-                                            <XCircle className="w-3 h-3"/>
-                                        </button>
-                                    </span>
-                                )}
-                                {contractFilter && (
-                                    <span className="flex items-center gap-1 bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-xs font-semibold">
-                                        Contratto: {contractFilter === 'present' ? 'Presente' : 'Mancante'}
-                                        <button onClick={() => setContractFilter('')} className="ml-1 hover:bg-gray-300 rounded-full p-0.5">
-                                            <XCircle className="w-3 h-3"/>
-                                        </button>
-                                    </span>
-                                )}
-                                {invoiceFilter && (
-                                    <span className="flex items-center gap-1 bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-xs font-semibold">
-                                        Fattura: {invoiceFilter === 'present' ? 'Presente' : 'Mancante'}
-                                        <button onClick={() => setInvoiceFilter('')} className="ml-1 hover:bg-gray-300 rounded-full p-0.5">
-                                            <XCircle className="w-3 h-3"/>
-                                        </button>
-                                    </span>
-                                )}
-                                {branchFilter.map(id => (
-                                    <span key={id} className="flex items-center gap-1 bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-xs font-semibold">
-                                        Filiale: {branchMap.get(id)}
-                                        <button 
-                                            onClick={() => setBranchFilter(prev => prev.filter(bId => bId !== id))}
-                                            className="ml-1 hover:bg-gray-300 rounded-full p-0.5"
-                                        >
-                                            <XCircle className="w-3 h-3"/>
-                                        </button>
-                                    </span>
-                                ))}
-                            </div>
-                        )}
                     </div>
                 </div>
-
-                {/* KPI Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+                
+                {/* Alert Sforamento Budget */}
+                {hasOverBudget && (
+                    <div className="bg-gradient-to-r from-red-50 to-rose-50 border-2 border-red-300 rounded-2xl p-4 lg:p-6 flex flex-col sm:flex-row items-start gap-3">
+                        <div className="p-2 bg-red-100 rounded-lg flex-shrink-0">
+                            <AlertTriangle className="w-5 h-5 text-red-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h4 className="font-bold text-red-900 mb-1 text-sm lg:text-base">
+                                Attenzione: Budget Superato
+                            </h4>
+                            <p className="text-xs lg:text-sm text-red-700">
+                                Hai superato il budget previsto per {selectedSector === 'all' ? 'l\'anno' : 'questo settore'}. 
+                                Speso: {formatCurrency(kpiData.totalSpend)} su {formatCurrency(kpiData.totalBudget)} disponibili.
+                                <span className="font-semibold"> Sforamento: {formatCurrency(kpiData.totalSpend - kpiData.totalBudget)}</span>
+                            </p>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Alert Documenti Mancanti */}
+                {expensesWithIssues.length > 0 && (
+                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl p-4 lg:p-6 flex flex-col sm:flex-row items-start gap-3">
+                        <div className="p-2 bg-amber-100 rounded-lg flex-shrink-0">
+                            <AlertTriangle className="w-5 h-5 text-amber-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h4 className="font-bold text-amber-900 mb-1 text-sm lg:text-base">
+                                {expensesWithIssues.length} Spese con Documenti Mancanti
+                            </h4>
+                            <p className="text-xs lg:text-sm text-amber-700">
+                                Alcune spese non hanno fattura o contratto allegato (quando richiesto). 
+                                Completa la documentazione per la conformità fiscale.
+                            </p>
+                        </div>
+                    </div>
+                )}
+                
+                {/* KPI Cards migliorate */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 lg:gap-6">
                     <KpiCard 
                         title="Spese Totali" 
                         value={kpiData.totalExpenses.toString()}
-                        subtitle={`${filteredExpenses.length} spese filtrate`}
+                        subtitle={`${processedExpenses.length} spese filtrate`}
                         icon={<FileText className="w-6 h-6" />}
                         gradient="from-amber-500 to-orange-600"
                     />
                     <KpiCard 
                         title="Importo Totale" 
                         value={formatCurrency(kpiData.totalSpend)}
-                        subtitle={branchFilter.length > 0 ? "Con quote distribuite" : "Somma spese filtrate"}
+                        subtitle={`Budget: ${formatCurrency(kpiData.totalBudget)}`}
                         icon={<DollarSign className="w-6 h-6" />}
                         gradient="from-emerald-500 to-green-600"
+                        trend={kpiData.trend}
+                    />
+                    <KpiCard 
+                        title="Utilizzo Budget" 
+                        value={`${kpiData.budgetUtilization.toFixed(1)}%`}
+                        subtitle={kpiData.budgetUtilization > 100 ? "Sforato!" : "In linea"}
+                        icon={<Percent className="w-6 h-6" />}
+                        gradient={
+                            kpiData.budgetUtilization > 100 ? "from-red-500 to-rose-600" :
+                            kpiData.budgetUtilization > 85 ? "from-amber-500 to-orange-600" :
+                            "from-blue-500 to-indigo-600"
+                        }
                     />
                     <KpiCard 
                         title="Con Fattura" 
                         value={`${kpiData.withInvoicePercentage}%`}
-                        subtitle="Documenti completi"
+                        subtitle="Documenti fiscali"
                         icon={<CheckCircle2 className="w-6 h-6" />}
                         gradient="from-blue-500 to-indigo-600"
                     />
                     <KpiCard 
                         title="Complete" 
                         value={`${kpiData.completePercentage}%`}
-                        subtitle="Fattura + Contratto"
+                        subtitle="Tutti i documenti"
                         icon={<Activity className="w-6 h-6" />}
                         gradient="from-purple-500 to-pink-600"
                     />
                 </div>
-
-                {/* Lista Spese */}
-                {filteredExpenses.length > 0 ? (
-                    <div className="space-y-4 lg:space-y-6">
-                        {filteredExpenses.map(expense => (
-                            <ExpenseCard
-                                key={expense.id}
-                                expense={expense}
-                                sectorMap={sectorMap}
-                                supplierMap={supplierMap}
-                                branchMap={branchMap}
-                                marketingChannelMap={marketingChannelMap}
-                                contractMap={contractMap}
-                                onEdit={handleOpenEditModal}
-                                onDelete={handleDeleteExpense}
-                                onDuplicate={handleDuplicateExpense}
-                                canEditOrDelete={canEditOrDelete}
-                                onToggleDetails={toggleExpense}
-                                isExpanded={expandedExpenses[expense.id]}
-                                hasDistributedAmount={expense.hasDistributedAmount}
-                                distributedInfo={expense.distributedInfo}
-                            />
-                        ))}
-                    </div>
+                
+                {/* Lista Spese con nuovo design o tabella */}
+                {processedExpenses.length > 0 ? (
+                    viewMode === 'cards' ? (
+                        <div className="space-y-4 lg:space-y-4">
+                            {processedExpenses.map(expense => (
+                                <ExpenseCardCompact
+                                    key={expense.id}
+                                    expense={expense}
+                                    sectorMap={sectorMap}
+                                    supplierMap={supplierMap}
+                                    branchMap={branchMap}
+                                    marketingChannelMap={marketingChannelMap}
+                                    contractMap={contractMap}
+                                    budgetInfo={expense.budgetInfo}
+                                    onEdit={handleOpenEditModal}
+                                    onDelete={handleDeleteExpense}
+                                    onDuplicate={handleDuplicateExpense}
+                                    canEditOrDelete={canEditOrDelete}
+                                    onToggleDetails={toggleExpense}
+                                    isExpanded={expandedExpenses[expense.id]}
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <ExpenseTableView
+                            expenses={processedExpenses}
+                            sectorMap={sectorMap}
+                            supplierMap={supplierMap}
+                            branchMap={branchMap}
+                            marketingChannelMap={marketingChannelMap}
+                            contractMap={contractMap}
+                            onEdit={handleOpenEditModal}
+                            onDelete={handleDeleteExpense}
+                            onDuplicate={handleDuplicateExpense}
+                            canEditOrDelete={canEditOrDelete}
+                        />
+                    )
                 ) : (
                     <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center">
                         <div className="p-4 rounded-2xl bg-amber-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
@@ -1084,7 +1586,7 @@ export default function ExpensesPage({ user, initialFilters }) {
                     </div>
                 )}
             </div>
-
+            
             {/* Modali */}
             {isModalOpen && (
                 <ExpenseFormModal 
@@ -1110,10 +1612,7 @@ export default function ExpensesPage({ user, initialFilters }) {
                 setContractFilter={setContractFilter} 
                 branchFilter={branchFilter} 
                 setBranchFilter={setBranchFilter} 
-                areaFilter={areaFilter} 
-                setAreaFilter={setAreaFilter} 
-                branches={branches} 
-                geographicAreas={geographicAreas}
+                branches={branches}
             />
         </div>
     );

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { X, Menu } from 'lucide-react';
 import { auth, db } from './firebase/config';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -97,12 +98,29 @@ export default function App() {
                 isMobileMenuOpen={isMobileMenuOpen}
                 setIsMobileMenuOpen={setIsMobileMenuOpen}
             />
-            <main className="flex-1 overflow-y-auto">
-                {/* Padding top su mobile per il menu button */}
-                <div className="lg:pt-0 pt-0">
-                    {renderPage(pageState.currentPage, user, pageState.initialFilters)}
-                </div>
-            </main>
+            <main className="flex-1 flex flex-col overflow-y-auto">
+    {/* Mobile Header */}
+    <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between h-20 p-4 bg-gray-50/80 backdrop-blur-sm border-b border-gray-200">
+    {/* Mobile Menu Button */}
+    <button
+        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        className="p-3 bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-xl shadow-lg"
+        aria-label="Toggle menu"
+    >
+        {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+    </button>
+
+    {/* User Avatar */}
+    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-md">
+        {user.name?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || 'U'}
+    </div>
+</header>
+
+    {/* Contenuto della pagina */}
+    <div className="flex-1">
+        {renderPage(pageState.currentPage, user, pageState.initialFilters)}
+    </div>
+</main>
         </div>
     );
 }
