@@ -550,111 +550,160 @@ export default function ContractsPage({ user }) {
     }, [user]);
 
     const processedContracts = useMemo(() => {
-        let filtered = allContracts.map(contract => {
-            const totalAmount = (contract.lineItems || []).reduce((sum, item) => sum + (Number(item.totalAmount) || 0), 0);
-            
-            const spentAmount = allExpenses.reduce((sum, expense) => {
-                let expenseContribution = 0;
-                if (expense.relatedContractId === contract.id) {
-                    expenseContribution = expense.amount || 0;
-                } else if (expense.lineItems && expense.lineItems.length > 0) {
-                    expenseContribution = expense.lineItems
-                        .filter(li => li.relatedContractId === contract.id)
-                        .reduce((lineItemSum, li) => lineItemSum + (li.amount || 0), 0);
-                }
-                return sum + expenseContribution;
-            }, 0);
-            
-            const progress = totalAmount > 0 
-                ? Math.round((spentAmount / totalAmount) * 1000) / 10
-                : 0;
-            
-            let sectorsFromSource = [];
-            const lineItemSectors = [...new Set((contract.lineItems || []).map(item => item.sectorld).filter(Boolean))];
-
-            if (lineItemSectors.length > 0) {
-                sectorsFromSource = lineItemSectors;
-            } else if (contract.associatedSectors && contract.associatedSectors.length > 0) {
-                sectorsFromSource = contract.associatedSectors;
-            } else if (contract.sectorld) {
-                sectorsFromSource = [contract.sectorld];
-            }
-            
-            const effectiveSectors = sectorsFromSource;
-
-            return { ...contract, totalAmount, spentAmount, progress, effectiveSectors };
+    let filtered = allContracts.map(contract => {
+        // Calcola valore totale del contratto
+        const totalAmount = (contract.lineItems || []).reduce((sum, item) => sum + (Number(item.totalAmount) || 0), 0);
+        
+        // 🆕 NUOVA LOGICA: Mappa quanto speso per ogni lineItem
+        const lineItemSpentMap = new Map();
+        
+        // Inizializza tutti i lineItems con 0 speso
+        (contract.lineItems || []).forEach(li => {
+            lineItemSpentMap.set(li.id, 0);
         });
-
-        // Filtri
-        if (sectorFilter !== 'all') {
-            filtered = filtered.filter(c => c.effectiveSectors.includes(sectorFilter));
-        }
-
-        if (searchTerm.trim() !== '') {
-            const lowerSearch = searchTerm.toLowerCase();
-            filtered = filtered.filter(c => 
-                c.description.toLowerCase().includes(lowerSearch) ||
-                (supplierMap.get(c.supplierld) || '').toLowerCase().includes(lowerSearch)
-            );
-        }
         
-        // NUOVO: Filtro Fornitore
-        if (supplierFilter) {
-            filtered = filtered.filter(c => c.supplierld === supplierFilter);
-        }
+        // Ordina lineItems per data (per fallback distribuzione temporale)
+        const sortedLineItems = [...(contract.lineItems || [])].sort(
+            (a, b) => new Date(a.startDate) - new Date(b.startDate)
+        );
         
-        // NUOVO: Filtro Date
-        if (dateFilter.startDate || dateFilter.endDate) {
-            filtered = filtered.filter(c => {
-                if (!c.signingDate) return false;
-                const contractDate = new Date(c.signingDate);
-                if (dateFilter.startDate) {
-                    const startDate = new Date(dateFilter.startDate);
-                    if (contractDate < startDate) return false;
+        // Calcola quanto è stato speso per ogni lineItem
+        allExpenses.forEach(expense => {
+            (expense.lineItems || []).forEach(item => {
+                if (item.relatedContractId === contract.id) {
+                    const amount = parseFloat(item.amount) || 0;
+                    
+                    if (item.relatedLineItemId) {
+                        // ✅ NUOVO: Spesa collegata a lineItem specifico
+                        const currentSpent = lineItemSpentMap.get(item.relatedLineItemId) || 0;
+                        lineItemSpentMap.set(item.relatedLineItemId, currentSpent + amount);
+                    } else {
+                        // ⚠️ FALLBACK: Distribuzione temporale per spese vecchie
+                        const expenseDate = new Date(expense.date || new Date());
+                        
+                        // Trova lineItems attivi alla data della spesa
+                        const activeLineItems = sortedLineItems.filter(li => {
+                            const start = new Date(li.startDate);
+                            const end = new Date(li.endDate);
+                            return expenseDate >= start && expenseDate <= end;
+                        });
+                        
+                        if (activeLineItems.length === 0 && sortedLineItems.length > 0) {
+                            // Usa primo lineItem se nessuno attivo
+                            const firstId = sortedLineItems[0].id;
+                            const current = lineItemSpentMap.get(firstId) || 0;
+                            lineItemSpentMap.set(firstId, current + amount);
+                        } else if (activeLineItems.length > 0) {
+                            // Distribuisci proporzionalmente
+                            const totalActive = activeLineItems.reduce((sum, li) => sum + (parseFloat(li.totalAmount) || 0), 0);
+                            activeLineItems.forEach(li => {
+                                const proportion = totalActive > 0 ? (parseFloat(li.totalAmount) || 0) / totalActive : 1 / activeLineItems.length;
+                                const allocatedAmount = amount * proportion;
+                                const current = lineItemSpentMap.get(li.id) || 0;
+                                lineItemSpentMap.set(li.id, current + allocatedAmount);
+                            });
+                        }
+                    }
                 }
-                if (dateFilter.endDate) {
-                    const endDate = new Date(dateFilter.endDate);
-                    if (contractDate > endDate) return false;
-                }
-                return true;
             });
-        }
-        
-        // Filtro stato con categorie specifiche
-        if (statusFilter === 'overrun') {
-            filtered = filtered.filter(c => c.progress > 100);
-        } else if (statusFilter === 'active') {
-            filtered = filtered.filter(c => c.progress > 0 && c.progress < 100);
-        } else if (statusFilter === 'completed') {
-            filtered = filtered.filter(c => c.progress === 100);
-        } else if (statusFilter === 'not_started') {
-            filtered = filtered.filter(c => c.progress === 0);
-        }
-        
-        // Ordinamento
-        return filtered.sort((a, b) => {
-            switch (sortOrder) {
-                case 'progress_desc':
-                    return b.progress - a.progress;
-                case 'progress_asc':
-                    return a.progress - b.progress;
-                case 'date_desc':
-                    return new Date(b.signingDate || 0) - new Date(a.signingDate || 0);
-                case 'date_asc':
-                    return new Date(a.signingDate || 0) - new Date(b.signingDate || 0);
-                case 'amount_desc':
-                    return b.totalAmount - a.totalAmount;
-                case 'amount_asc':
-                    return a.totalAmount - b.totalAmount;
-                case 'name_asc':
-                    return (supplierMap.get(a.supplierld) || '').localeCompare(supplierMap.get(b.supplierld) || '');
-                case 'name_desc':
-                    return (supplierMap.get(b.supplierld) || '').localeCompare(supplierMap.get(a.supplierld) || '');
-                default:
-                    return 0;
+            
+            // Gestisci vecchio formato spese (compatibilità)
+            if (expense.relatedContractId === contract.id && !expense.lineItems) {
+                const amount = parseFloat(expense.amount) || 0;
+                if (sortedLineItems.length > 0) {
+                    const firstId = sortedLineItems[0].id;
+                    const current = lineItemSpentMap.get(firstId) || 0;
+                    lineItemSpentMap.set(firstId, current + amount);
+                }
             }
         });
-    }, [allContracts, allExpenses, sectorFilter, searchTerm, statusFilter, sortOrder, supplierMap]);
+        
+        // Calcola totali e statistiche
+        const spentAmount = Array.from(lineItemSpentMap.values()).reduce((sum, val) => sum + val, 0);
+        const progress = totalAmount > 0 ? (spentAmount / totalAmount) * 100 : 0;
+        
+        // Arricchisci lineItems con dati di utilizzo
+        const enrichedLineItems = (contract.lineItems || []).map(li => {
+            const spent = lineItemSpentMap.get(li.id) || 0;
+            const liTotal = parseFloat(li.totalAmount) || 0;
+            const remaining = Math.max(0, liTotal - spent);
+            const utilization = liTotal > 0 ? (spent / liTotal) * 100 : 0;
+            
+            return {
+                ...li,
+                spent,
+                remaining,
+                utilization
+            };
+        });
+        
+        // Determina settori
+        let sectorsFromSource = [];
+        const lineItemSectors = [...new Set((contract.lineItems || []).map(item => item.sectorld).filter(Boolean))];
+        
+        if (lineItemSectors.length > 0) {
+            sectorsFromSource = lineItemSectors;
+        } else if (contract.associatedSectors && contract.associatedSectors.length > 0) {
+            sectorsFromSource = contract.associatedSectors;
+        } else if (contract.sectorld) {
+            sectorsFromSource = [contract.sectorld];
+        }
+        
+        return { 
+            ...contract, 
+            totalAmount, 
+            spentAmount, 
+            progress, 
+            effectiveSectors: sectorsFromSource,
+            lineItems: enrichedLineItems // ✅ LineItems arricchiti con dati di utilizzo
+        };
+    });
+    
+    // FILTRI (invariati)
+    if (sectorFilter !== 'all') {
+        filtered = filtered.filter(c => c.effectiveSectors.includes(sectorFilter));
+    }
+    
+    if (searchTerm.trim() !== '') {
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter(c => 
+            c.description.toLowerCase().includes(lowerSearch) ||
+            (supplierMap.get(c.supplierld) || '').toLowerCase().includes(lowerSearch)
+        );
+    }
+    
+    if (statusFilter === 'active') {
+        filtered = filtered.filter(c => c.progress > 0 && c.progress < 100);
+    } else if (statusFilter === 'completed') {
+        filtered = filtered.filter(c => c.progress >= 100);
+    } else if (statusFilter === 'not_started') {
+        filtered = filtered.filter(c => c.progress === 0);
+    }
+    
+    // ORDINAMENTO (invariato)
+    return filtered.sort((a, b) => {
+        switch (sortOrder) {
+            case 'progress_desc':
+                return b.progress - a.progress;
+            case 'progress_asc':
+                return a.progress - b.progress;
+            case 'date_desc':
+                return new Date(b.signingDate || 0) - new Date(a.signingDate || 0);
+            case 'date_asc':
+                return new Date(a.signingDate || 0) - new Date(b.signingDate || 0);
+            case 'amount_desc':
+                return b.totalAmount - a.totalAmount;
+            case 'amount_asc':
+                return a.totalAmount - b.totalAmount;
+            case 'name_asc':
+                return (supplierMap.get(a.supplierld) || '').localeCompare(supplierMap.get(b.supplierld) || '');
+            case 'name_desc':
+                return (supplierMap.get(b.supplierld) || '').localeCompare(supplierMap.get(a.supplierld) || '');
+            default:
+                return 0;
+        }
+    });
+}, [allContracts, allExpenses, sectorFilter, searchTerm, statusFilter, sortOrder, supplierMap]);
 
     const contractStats = useMemo(() => {
         const total = processedContracts.length;
