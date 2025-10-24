@@ -570,6 +570,7 @@ const ExpenseTableView = React.memo(({
 // ===== MAIN COMPONENT - EXPENSES PAGE =====
 export default function ExpensesPage({ user, initialFilters }) {
     const location = useLocation();
+    const isSavingRef = useRef(false);  // ⭐ AGGIUNGI QUESTA RIGA
     
     // Stati principali
     const [rawExpenses, setRawExpenses] = useState([]);
@@ -650,6 +651,24 @@ export default function ExpensesPage({ user, initialFilters }) {
         });
         return cache;
     }, [sectors, branches, genericoBranchId]);
+    
+    // NUOVA FUNZIONE: ottieni le filiali per la distribuzione generica
+    const getBranchesForGenericDistribution = useMemo(() => {
+        return (sectorId) => {
+            const sectorName = sectorMap.get(sectorId);
+            
+            // CASO SPECIALE: Frattin Group → TUTTE le filiali
+            if (sectorName === 'Frattin Group') {
+                return branches.filter(b => b.id !== genericoBranchId);
+            }
+            
+            // CASO NORMALE: usa le associazioni già configurate in Impostazioni
+            return branches.filter(b => 
+                b.associatedSectors?.includes(sectorId) && 
+                b.id !== genericoBranchId
+            );
+        };
+    }, [branches, genericoBranchId, sectorMap]);
     
     // Budget per fornitore/settore
     const budgetInfoMap = useMemo(() => {
@@ -789,7 +808,7 @@ export default function ExpensesPage({ user, initialFilters }) {
                     processedGroupIds.add(item.splitGroupId);
                 } else if (!item.splitGroupId) {
                     if (item.assignmentId === genericoBranchId) {
-                        const sectorBranches = branchesPerSector.get(item.sectorId) || [];
+                        const sectorBranches = getBranchesForGenericDistribution(item.sectorId);
                         processedLineItems.push({
                             ...item,
                             isGenerico: true,
@@ -889,7 +908,7 @@ if (supplierFilter.length > 0) {
                     if (branchFilter.includes(item.assignmentId)) return true;
                     
                     if (item.assignmentId === genericoBranchId) {
-                        const sectorBranches = branchesPerSector.get(item.sectorId || exp.sectorId) || [];
+                        const sectorBranches = getBranchesForGenericDistribution(item.sectorId || exp.sectorId);
                         return sectorBranches.some(b => branchFilter.includes(b.id));
                     }
                     
@@ -909,7 +928,7 @@ if (supplierFilter.length > 0) {
                     if (branchFilter.includes(item.assignmentId)) {
                         displayAmount += itemAmount;
                     } else if (item.assignmentId === genericoBranchId) {
-                        const sectorBranches = branchesPerSector.get(item.sectorId || exp.sectorId) || [];
+                        const sectorBranches = getBranchesForGenericDistribution(item.sectorId || exp.sectorId);
                         const filteredBranchesInSector = sectorBranches.filter(b => branchFilter.includes(b.id));
                         
                         if (filteredBranchesInSector.length > 0 && sectorBranches.length > 0) {
@@ -1087,9 +1106,10 @@ if (supplierFilter.length > 0) {
     }, []);
     
     const handleCloseModal = useCallback(() => { 
-        setIsModalOpen(false); 
-        setEditingExpense(null); 
-    }, []);
+    setIsModalOpen(false); 
+    setEditingExpense(null);
+    isSavingRef.current = false;  // ⭐ AGGIUNGI QUESTA RIGA
+}, []);
     
     const handleOpenEditModal = useCallback((expense) => {
         if (!canEditOrDelete(expense)) {
@@ -1099,12 +1119,26 @@ if (supplierFilter.length > 0) {
         setIsModalOpen(true);
     }, [canEditOrDelete]);
     
-    const handleSaveExpense = useCallback(async (expenseData, invoiceFile, contractFile) => {
-        const isEditing = !!expenseData.id;
-        const toastId = toast.loading(isEditing ? 'Aggiornamento...' : 'Salvataggio...');
-        
-        try {
-            const expenseId = isEditing ? expenseData.id : doc(collection(db, 'expenses')).id;
+   const handleSaveExpense = useCallback(async (expenseData, invoiceFile, contractFile) => {
+    console.log("🚀 === INIZIO handleSaveExpense ===");
+    console.log("📄 invoiceFile:", invoiceFile);
+    console.log("📋 expenseData.id:", expenseData.id);
+    console.log("⏰ Timestamp:", new Date().toISOString());
+    
+    // ⭐ PREVIENI DOPPI SUBMIT
+    if (isSavingRef.current) {
+        console.log("⚠️ BLOCCATO: Salvataggio già in corso!");
+        return;
+    }
+    
+    isSavingRef.current = true;  // ⭐ BLOCCA ALTRI SUBMIT
+    
+    const isEditing = !!expenseData.id;
+    const toastId = toast.loading(isEditing ? 'Aggiornamento...' : 'Salvataggio...');
+    
+    try {
+        const expenseId = isEditing ? expenseData.id : doc(collection(db, 'expenses')).id;
+        console.log("🆔 expenseId generato:", expenseId);
             let invoiceURL = expenseData.invoicePdfUrl || "";
             let contractURL = expenseData.contractPdfUrl || "";
             
@@ -1123,7 +1157,6 @@ if (supplierFilter.length > 0) {
             const dataToSave = {
                 date: expenseData.date,
                 description: expenseData.description,
-                sectorId: expenseData.sectorId,
                 supplierId: expenseData.supplierId,
                 amount: expenseData.lineItems.reduce((sum, item) => sum + item.amount, 0),
                 lineItems: expenseData.lineItems,
@@ -1148,13 +1181,17 @@ if (supplierFilter.length > 0) {
                 await setDoc(doc(db, "expenses", expenseId), dataToSave);
             }
             
-            toast.success(isEditing ? 'Spesa aggiornata!' : 'Spesa creata!', { id: toastId });
-            handleCloseModal();
-        } catch (error) {
-            console.error("Errore nel salvare la spesa:", error);
-            toast.error(error.message || 'Errore imprevisto.', { id: toastId });
-        }
-    }, [user.uid, user.name, handleCloseModal]);
+             toast.success(isEditing ? 'Spesa aggiornata!' : 'Spesa creata!', { id: toastId });
+console.log("✅ === FINE handleSaveExpense (SUCCESS) ===");
+isSavingRef.current = false;  // ⭐ SBLOCCA
+handleCloseModal();
+    } catch (error) {
+    console.error("❌ === FINE handleSaveExpense (ERROR) ===");
+    console.error("Errore nel salvare la spesa:", error);
+    toast.error(error.message || 'Errore imprevisto.', { id: toastId });
+    isSavingRef.current = false;  // ⭐ SBLOCCA ANCHE IN CASO DI ERRORE
+}
+}, [user.uid, user.name, handleCloseModal]);
     
     const handleDeleteExpense = useCallback(async (expense) => {
         if (!canEditOrDelete(expense)) {

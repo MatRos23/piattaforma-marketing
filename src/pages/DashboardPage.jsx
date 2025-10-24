@@ -327,8 +327,24 @@ export default function DashboardPage({ navigate, user }) {
             branchesPerSector.set(sector.id, sectorBranches);
         });
 
-        // Processa spese
-        allExpenses.forEach((expense) => {
+        // NUOVA FUNZIONE: ottieni le filiali per la distribuzione generica
+    const getBranchesForGenericDistribution = (sectorId) => {
+    const sectorName = sectorMap.get(sectorId);
+    
+    // CASO SPECIALE: Frattin Group → TUTTE le filiali
+    if (sectorName === 'Frattin Group') {
+        return branches.filter(b => b.id !== genericoBranchId);
+    }
+    
+    // CASO NORMALE: usa le associazioni già configurate in Impostazioni
+    return branches.filter(b => 
+        b.associatedSectors?.includes(sectorId) && 
+        b.id !== genericoBranchId
+    );
+};
+
+// Processa le spese
+allExpenses.forEach((expense) => {
             let supplierId = expense.supplierId || expense.supplierld || expense.channelId || expense.channelld;
             let sectorId = expense.sectorId || expense.sectorld;
             
@@ -341,6 +357,7 @@ export default function DashboardPage({ navigate, user }) {
             
             (expense.lineItems || []).forEach(item => {
                 const itemAmount = item.amount || 0;
+                const itemSectorId = item.sectorId || sectorId;
                 
                 const processAmount = (amount, date) => {
                     if (date >= filterStartDate && date <= filterEndDate) {
@@ -363,8 +380,8 @@ export default function DashboardPage({ navigate, user }) {
                                     totals.byBranch[branchId] = (totals.byBranch[branchId] || 0) + amountPerBranch;
                                 });
                             }
-                        } else if (item.isGenerico && sectorId) {
-                            const sectorBranches = branchesPerSector.get(sectorId) || [];
+                        } else if (item.assignmentId === genericoBranchId && itemSectorId) {
+                            const sectorBranches = getBranchesForGenericDistribution(itemSectorId);
                             if (sectorBranches.length > 0) {
                                 const amountPerBranch = amount / sectorBranches.length;
                                 sectorBranches.forEach(branch => {
@@ -458,10 +475,10 @@ export default function DashboardPage({ navigate, user }) {
                             }
                             
                             if (branchId === genericoBranchId && sectorId) {
-                                const sectorBranches = branchesPerSector.get(sectorId) || [];
-                                if (sectorBranches.length > 0) {
-                                    const costPerBranch = dailyCost / sectorBranches.length;
-                                    sectorBranches.forEach(branch => {
+                                const targetBranches = getBranchesForGenericDistribution(sectorId);
+                                if (targetBranches.length > 0) {
+                                    const costPerBranch = dailyCost / targetBranches.length;
+                                    targetBranches.forEach(branch => {
                                         branchProjections[branch.id] = (branchProjections[branch.id] || 0) + costPerBranch;
                                     });
                                 }

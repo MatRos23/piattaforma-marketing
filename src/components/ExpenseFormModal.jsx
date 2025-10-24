@@ -95,15 +95,15 @@ export default function ExpenseFormModal({
         _key: Math.random(),
         description: '',
         amount: '',
-        sectorId: '',
+        sectorId: '', // CORRETTO
         branchIds: [],
-        marketingChannelId: '',
+        marketingChannelId: '', // CORRETTO
         relatedContractId: '',
-        relatedLineItemId: '', // ⭐ NUOVO CAMPO
+        relatedLineItemId: '',
     }), []);
 
     const defaultFormData = useMemo(() => ({
-        supplierId: '',
+        supplierId: '', // CORRETTO
         date: new Date().toISOString().split('T')[0],
         description: '',
         relatedContractId: '',
@@ -117,23 +117,26 @@ export default function ExpenseFormModal({
 
     const [formData, setFormData] = useState(defaultFormData);
     const [invoiceFile, setInvoiceFile] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);  // ⭐ AGGIUNGI QUESTA RIGA
     
-    // ⭐ NUOVO STATO: Per memorizzare i lineItems del contratto selezionato
     const [contractLineItems, setContractLineItems] = useState([]);
     const [selectedContract, setSelectedContract] = useState(null);
 
     useEffect(() => {
-        if (isOpen) {
-            if (initialData) {
+    if (isOpen) {
+        setIsSaving(false);  // ⭐ AGGIUNGI QUESTA RIGA
+        if (initialData) {
                 const enrichedLineItems = (initialData.lineItems && initialData.lineItems.length > 0)
                     ? initialData.lineItems.map(item => ({
                         ...item,
                         _key: Math.random(),
                         amount: item.amount || '',
-                        sectorId: item.sectorId || item.sectorld || initialData.sectorId || initialData.sectorld,
+                        // CORREZIONE: Cerca tutti i nomi vecchi e nuovi e imposta 'sectorId' (con la I)
+                        sectorId: item.sectorId || item.sectorld || initialData.sectorId || initialData.sectorld || '',
                         branchIds: item.assignmentId ? [item.assignmentId] : [],
-                        marketingChannelId: item.marketingChannelId || item.marketingChannelld,
-                        relatedLineItemId: item.relatedLineItemId || '', // ⭐ NUOVO
+                        // CORREZIONE: Cerca tutti i nomi vecchi e nuovi e imposta 'marketingChannelId' (con la I)
+                        marketingChannelId: item.marketingChannelId || item.marketingChannelld || '',
+                        relatedLineItemId: item.relatedLineItemId || '',
                     }))
                     : [{ ...defaultLineItem, _key: Math.random() }];
 
@@ -141,7 +144,8 @@ export default function ExpenseFormModal({
                 
                 setFormData({ 
                     ...initialData,
-                    supplierId: initialData.supplierId || initialData.supplierld,
+                    // CORREZIONE: Cerca tutti i nomi vecchi e nuovi e imposta 'supplierId' (con la I)
+                    supplierId: initialData.supplierId || initialData.supplierld || '',
                     contractLinkType: linkType,
                     requiresContract: initialData.requiresContract !== undefined ? initialData.requiresContract : true,
                     lineItems: enrichedLineItems,
@@ -155,7 +159,6 @@ export default function ExpenseFormModal({
         }
     }, [isOpen, initialData, defaultFormData, defaultLineItem]);
     
-    // ⭐ NUOVO useEffect: Carica i lineItems quando si seleziona un contratto
     useEffect(() => {
         if (formData.relatedContractId && contracts && formData.requiresContract) {
             const contract = contracts.find(c => c.id === formData.relatedContractId);
@@ -231,7 +234,8 @@ export default function ExpenseFormModal({
     
     const availableContracts = useMemo(() => {
         if (!formData.supplierId || !contracts) return [];
-        return contracts.filter(c => c.supplierld === formData.supplierId);
+        // CORREZIONE: Filtra per 'supplierId' (con la I)
+        return contracts.filter(c => c.supplierId === formData.supplierId);
     }, [formData.supplierId, contracts]);
 
     const filteredMarketingChannels = useMemo(() => {
@@ -246,32 +250,43 @@ export default function ExpenseFormModal({
         return marketingChannels.filter(mc => offeredIds.includes(mc.id));
     }, [formData.supplierId, suppliers, marketingChannels]);
 
-    // ⭐ NUOVA FUNZIONE: Ottieni i lineItems per un contratto specifico (per modalità "Per Singola Voce")
     const getLineItemsForContract = (contractId) => {
         if (!contractId || !contracts) return [];
         const contract = contracts.find(c => c.id === contractId);
         return contract?.lineItems || [];
     };
 
-    // ⭐ FUNZIONE HELPER: Calcola il residuo di un lineItem
     const calculateLineItemRemaining = (lineItem) => {
-        // Questa è una versione semplificata - dovresti passare le spese come prop per calcolare accuratamente
         return lineItem.totalAmount || 0;
     };
 
     const handleSubmit = (e) => {
-        e.preventDefault();
-        if (!formData.supplierId || !formData.date) {
-            toast.error("Fornitore e Data sono campi obbligatori.");
-            return;
-        }
+    e.preventDefault();
+    
+    // ⭐ PREVIENI DOPPI SUBMIT
+    if (isSaving) {
+        console.log("⚠️ Salvataggio già in corso, ignoro il doppio submit");
+        return;
+    }
+    
+    if (!formData.supplierId || !formData.date) {
+        toast.error("Fornitore e Data sono campi obbligatori.");
+        return;
+    }
+    
+    setIsSaving(true);  // ⭐ BLOCCA ALTRI SUBMIT
         
         const finalLineItems = [];
         let hasError = false;
+        
+        // Funzione helper per garantire NULL invece di "" o undefined
+        const nullIfEmpty = (value) => value || null;
 
         formData.lineItems.forEach((item, index) => {
             if (hasError) return;
             const branches = item.branchIds || [];
+            
+            // CORREZIONE: Usa i valori corretti per il controllo
             if (!item.description || !item.amount || !item.sectorId || branches.length === 0 || !item.marketingChannelId) {
                 toast.error(`Tutti i campi nella voce di spesa #${index + 1} sono obbligatori.`);
                 hasError = true;
@@ -287,11 +302,11 @@ export default function ExpenseFormModal({
                     finalLineItems.push({
                         description: item.description,
                         amount: amountPerBranch,
-                        sectorId: item.sectorId,
-                        assignmentId: branchId,
-                        marketingChannelId: item.marketingChannelId,
-                        relatedContractId: formData.contractLinkType === 'line' ? (item.relatedContractId || null) : (formData.relatedContractId || null),
-                        relatedLineItemId: item.relatedLineItemId || null, // ⭐ NUOVO: Salva il lineItem collegato
+                        sectorId: nullIfEmpty(item.sectorId), // CORREZIONE: Applica fallback
+                        assignmentId: nullIfEmpty(branchId), // CORREZIONE: Applica fallback
+                        marketingChannelId: nullIfEmpty(item.marketingChannelId), // CORREZIONE: Applica fallback
+                        relatedContractId: formData.contractLinkType === 'line' ? nullIfEmpty(item.relatedContractId) : nullIfEmpty(formData.relatedContractId),
+                        relatedLineItemId: nullIfEmpty(item.relatedLineItemId),
                         splitGroupId,
                     });
                 });
@@ -299,11 +314,11 @@ export default function ExpenseFormModal({
                 finalLineItems.push({
                     description: item.description,
                     amount,
-                    sectorId: item.sectorId,
-                    assignmentId: branches[0],
-                    marketingChannelId: item.marketingChannelId,
-                    relatedContractId: formData.contractLinkType === 'line' ? (item.relatedContractId || null) : (formData.relatedContractId || null),
-                    relatedLineItemId: item.relatedLineItemId || null, // ⭐ NUOVO: Salva il lineItem collegato
+                    sectorId: nullIfEmpty(item.sectorId), // CORREZIONE: Applica fallback
+                    assignmentId: nullIfEmpty(branches[0]), // CORREZIONE: Applica fallback
+                    marketingChannelId: nullIfEmpty(item.marketingChannelId), // CORREZIONE: Applica fallback
+                    relatedContractId: formData.contractLinkType === 'line' ? nullIfEmpty(item.relatedContractId) : nullIfEmpty(formData.relatedContractId),
+                    relatedLineItemId: nullIfEmpty(item.relatedLineItemId),
                 });
             }
         });
@@ -311,12 +326,21 @@ export default function ExpenseFormModal({
         if (hasError) return;
 
         const finalData = {
-            ...formData,
-            supplierId: formData.supplierId,
-            lineItems: finalLineItems,
-            requiresContract: formData.requiresContract,
-            invoiceFile: invoiceFile || null,
-        };
+    ...formData,
+    supplierId: formData.supplierId,
+    lineItems: finalLineItems,
+    requiresContract: formData.requiresContract,
+    // ✅ invoiceFile rimosso da qui
+};
+
+onSave(finalData, invoiceFile, null);
+setIsSaving(false);  // ⭐ SBLOCCA DOPO IL SALVATAGGIO
+        
+        // Rimuove i campi radice che ora sono solo nei lineItems
+        delete finalData.sectorId;
+        delete finalData.sectorld;
+        delete finalData.supplierld;
+        delete finalData.marketingChannelld;
 
         onSave(finalData);
     };
@@ -367,7 +391,7 @@ export default function ExpenseFormModal({
                                 <div>
                                     <label className="text-sm font-semibold text-gray-700 block mb-2">Fornitore *</label>
                                     <select 
-                                        name="supplierId" 
+                                        name="supplierId" // CORRETTO
                                         value={formData.supplierId || ''} 
                                         onChange={handleInputChange} 
                                         required 
@@ -454,8 +478,8 @@ export default function ExpenseFormModal({
                                             <div>
                                                 <label className="text-xs font-semibold text-gray-600 block mb-1.5">Settore *</label>
                                                 <select 
-                                                    value={item.sectorId || ''} 
-                                                    onChange={e => handleLineItemChange(index, 'sectorId', e.target.value)} 
+                                                    value={item.sectorId || ''} // CORRETTO
+                                                    onChange={e => handleLineItemChange(index, 'sectorId', e.target.value)} // CORRETTO
                                                     className="w-full h-10 px-3 border-2 border-gray-200 rounded-lg hover:border-amber-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all" 
                                                     required
                                                 >
@@ -474,8 +498,8 @@ export default function ExpenseFormModal({
                                             <div>
                                                 <label className="text-xs font-semibold text-gray-600 block mb-1.5">Canale Marketing *</label>
                                                 <select 
-                                                    value={item.marketingChannelId || ''} 
-                                                    onChange={e => handleLineItemChange(index, 'marketingChannelId', e.target.value)} 
+                                                    value={item.marketingChannelId || ''} // CORRETTO
+                                                    onChange={e => handleLineItemChange(index, 'marketingChannelId', e.target.value)} // CORRETTO
                                                     className="w-full h-10 px-3 border-2 border-gray-200 rounded-lg hover:border-amber-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all" 
                                                     required
                                                 >
@@ -487,11 +511,9 @@ export default function ExpenseFormModal({
                                             </div>
                                         </div>
                                         
-                                        {/* ⭐ NUOVO: Dropdown contratto e lineItems per modalità "Per Singola Voce" */}
                                         {formData.contractLinkType === 'line' && formData.requiresContract && (
                                             <div className="col-span-2 pt-3 mt-3 border-t-2 border-gray-200">
                                                 <div className="space-y-3">
-                                                    {/* Dropdown Contratto */}
                                                     <div>
                                                         <label className="text-xs font-semibold text-gray-600 block mb-1.5">
                                                             Collega Contratto (questa voce) *
@@ -500,7 +522,6 @@ export default function ExpenseFormModal({
                                                             value={item.relatedContractId || ''} 
                                                             onChange={e => {
                                                                 handleLineItemChange(index, 'relatedContractId', e.target.value);
-                                                                // Reset lineItem quando cambia contratto
                                                                 handleLineItemChange(index, 'relatedLineItemId', '');
                                                             }} 
                                                             className="w-full h-10 px-3 border-2 border-gray-200 rounded-lg bg-white hover:border-amber-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all" 
@@ -513,7 +534,6 @@ export default function ExpenseFormModal({
                                                         </select>
                                                     </div>
                                                     
-                                                    {/* ⭐ Dropdown LineItems (appare solo se c'è un contratto selezionato) */}
                                                     {item.relatedContractId && getLineItemsForContract(item.relatedContractId).length > 0 && (
                                                         <div className="p-3 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border-2 border-blue-200">
                                                             <label className="text-xs font-bold text-gray-700 flex items-center gap-2 mb-2">
@@ -565,7 +585,6 @@ export default function ExpenseFormModal({
                             </div>
                             
                             <div className="space-y-4">
-                                {/* Toggle Richiede Contratto */}
                                 <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-3">
@@ -593,10 +612,8 @@ export default function ExpenseFormModal({
                                     </div>
                                 </div>
                                 
-                                {/* Selezione contratto */}
                                 {formData.requiresContract && (
                                     <>
-                                        {/* Toggle tipo collegamento */}
                                         <div className="p-3 bg-gray-100 rounded-xl">
                                             <p className="text-xs font-bold text-gray-600 mb-2">Tipo di collegamento:</p>
                                             <div className="flex gap-2">
@@ -627,7 +644,6 @@ export default function ExpenseFormModal({
                                             </div>
                                         </div>
                                         
-                                        {/* Dropdown contratto */}
                                         {formData.contractLinkType === 'single' && (
                                             <div>
                                                 <label className="text-sm font-semibold text-gray-700 block mb-2">
@@ -648,7 +664,6 @@ export default function ExpenseFormModal({
                                             </div>
                                         )}
                                         
-                                        {/* ⭐ NUOVO: Box selezione LineItems quando c'è un contratto selezionato */}
                                         {formData.contractLinkType === 'single' && formData.relatedContractId && contractLineItems.length > 0 && (
                                             <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
                                                 <div className="flex items-start gap-3 mb-3">
@@ -708,7 +723,6 @@ export default function ExpenseFormModal({
                                                                             </span>
                                                                         </div>
                                                                         
-                                                                        {/* Barra progresso */}
                                                                         <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
                                                                             <div 
                                                                                 className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all"
@@ -733,7 +747,6 @@ export default function ExpenseFormModal({
                                     </>
                                 )}
                                 
-                                {/* Upload PDF */}
                                 <div>
                                     <label className="text-sm font-semibold text-gray-700 block mb-2">
                                         <Paperclip className="w-4 h-4 inline mr-1" />
@@ -782,11 +795,12 @@ export default function ExpenseFormModal({
                                 Annulla
                             </button>
                             <button 
-                                type="submit" 
-                                className="px-7 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 text-white font-bold hover:shadow-lg transition-all hover:scale-105 flex items-center gap-2"
-                            >
-                                {formData.id ? 'Salva Modifiche' : 'Crea Spesa'}
-                            </button>
+    type="submit" 
+    disabled={isSaving}  // ⭐ AGGIUNGI QUESTA RIGA
+    className={`px-7 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 text-white font-bold hover:shadow-lg transition-all hover:scale-105 flex items-center gap-2 ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}  // ⭐ AGGIUNGI LA CLASSE CONDIZIONALE
+>
+    {isSaving ? 'Salvataggio...' : (formData.id ? 'Salva Modifiche' : 'Crea Spesa')}
+</button>
                         </div>
                     </div>
                 </form>
