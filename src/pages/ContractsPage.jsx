@@ -671,6 +671,31 @@ export default function ContractsPage({ user }) {
             (supplierMap.get(c.supplierld) || '').toLowerCase().includes(lowerSearch)
         );
     }
+
+    // 🆕 FILTRO FORNITORE
+if (supplierFilter) {
+    filtered = filtered.filter(c => c.supplierld === supplierFilter);
+}
+
+// 🆕 FILTRO DATE
+if (dateFilter.startDate || dateFilter.endDate) {
+    filtered = filtered.filter(c => {
+        if (!c.signingDate) return false;
+        const contractDate = new Date(c.signingDate);
+        
+        if (dateFilter.startDate) {
+            const startDate = new Date(dateFilter.startDate);
+            if (contractDate < startDate) return false;
+        }
+        
+        if (dateFilter.endDate) {
+            const endDate = new Date(dateFilter.endDate);
+            if (contractDate > endDate) return false;
+        }
+        
+        return true;
+    });
+}
     
     if (statusFilter === 'active') {
         filtered = filtered.filter(c => c.progress > 0 && c.progress < 100);
@@ -703,7 +728,7 @@ export default function ContractsPage({ user }) {
                 return 0;
         }
     });
-}, [allContracts, allExpenses, sectorFilter, searchTerm, statusFilter, sortOrder, supplierMap]);
+}, [allContracts, allExpenses, sectorFilter, searchTerm, statusFilter, sortOrder, supplierMap, supplierFilter, dateFilter]);
 
     const contractStats = useMemo(() => {
         const total = processedContracts.length;
