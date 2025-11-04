@@ -14,6 +14,13 @@ const formatCurrency = (number) => {
     return number.toLocaleString('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 };
 
+const formatDate = (value) => {
+    if (!value) return 'N/D';
+    const date = value instanceof Date ? value : new Date(value);
+    if (isNaN(date)) return 'N/D';
+    return date.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
 const getSectorIcon = (sectorName, className = "w-5 h-5") => {
     const icons = {
         'Auto': <Car className={className} />,
@@ -45,15 +52,18 @@ const KpiCard = React.memo(({ title, value, icon, gradient, subtitle }) => (
     </div>
 ));
 
-const SectorCard = React.memo(({ sector, onClick }) => {
-    const totalValue = sector.spent + (sector.projections || 0);
+const SectorCard = React.memo(({ sector, onClick, includeProjections }) => {
+    const futureProjections = sector.futureProjections || 0;
+    const overdueProjections = sector.overdueProjections || 0;
+    const totalProjections = includeProjections ? (futureProjections + overdueProjections) : 0;
+    const totalValue = sector.spent + totalProjections;
     const hasBudget = sector.budget > 0;
     const utilization = hasBudget ? (totalValue / sector.budget) * 100 : (totalValue > 0 ? Infinity : 0);
     const isOverBudget = !hasBudget ? totalValue > 0 : utilization > 100;
     const isWarning = hasBudget && utilization > 85 && !isOverBudget;
     
     const spendPercentage = hasBudget ? (sector.spent / sector.budget) * 100 : 0;
-    const projectionPercentage = hasBudget ? ((sector.projections || 0) / sector.budget) * 100 : 0;
+    const projectionPercentage = hasBudget ? (totalProjections / sector.budget) * 100 : 0;
 
     return (
         <div 
@@ -81,13 +91,26 @@ const SectorCard = React.memo(({ sector, onClick }) => {
                     <p className="text-xs text-gray-500 font-semibold mb-1">SPESA EFFETTIVA</p>
                     <p className="text-2xl font-black text-gray-900">{formatCurrency(sector.spent)}</p>
                 </div>
-                {sector.projections > 0 && (
-                    <div className="flex items-center gap-2 p-2 bg-indigo-50 rounded-lg">
-                        <TrendingUp className="w-4 h-4 text-indigo-600 flex-shrink-0" />
-                        <div>
-                            <p className="text-xs text-indigo-600 font-semibold">Proiezioni</p>
-                            <p className="text-sm font-black text-indigo-900">{formatCurrency(sector.projections)}</p>
-                        </div>
+                {includeProjections && totalProjections > 0 && (
+                    <div className="space-y-2">
+                        {overdueProjections > 0 && (
+                            <div className="flex items-center gap-2 p-2 bg-rose-50 rounded-lg">
+                                <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                                <div>
+                                    <p className="text-xs text-rose-600 font-semibold">Scaduto</p>
+                                    <p className="text-sm font-black text-rose-700">{formatCurrency(overdueProjections)}</p>
+                                </div>
+                            </div>
+                        )}
+                        {futureProjections > 0 && (
+                            <div className="flex items-center gap-2 p-2 bg-indigo-50 rounded-lg">
+                                <TrendingUp className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                                <div>
+                                    <p className="text-xs text-indigo-600 font-semibold">Residuo Futuro</p>
+                                    <p className="text-sm font-black text-indigo-900">{formatCurrency(futureProjections)}</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
                 <div className="pt-2 border-t border-gray-200">
@@ -123,8 +146,12 @@ const SectorCard = React.memo(({ sector, onClick }) => {
     );
 });
 
-const SupplierRankItem = React.memo(({ supplier, rank, totalSpent }) => {
-    const percentage = totalSpent > 0 ? ((supplier.spent + supplier.projections) / totalSpent * 100) : 0;
+const SupplierRankItem = React.memo(({ supplier, rank, totalCommitted, includeProjections }) => {
+    const overdue = includeProjections ? (supplier.overdueProjections || 0) : 0;
+    const future = includeProjections ? (supplier.futureProjections || 0) : 0;
+    const projections = overdue + future;
+    const committed = supplier.spent + projections;
+    const percentage = totalCommitted > 0 ? (committed / totalCommitted) * 100 : 0;
     
     return (
         <div className="group relative p-4 lg:p-5 bg-gradient-to-br from-white to-gray-50/50 rounded-xl border-2 border-gray-200 hover:border-indigo-300 hover:shadow-lg transition-all overflow-hidden">
@@ -146,10 +173,16 @@ const SupplierRankItem = React.memo(({ supplier, rank, totalSpent }) => {
                 </div>
                 <div className="text-right flex-shrink-0 ml-3">
                     <span className="text-lg lg:text-xl font-black text-gray-900 block">{formatCurrency(supplier.spent)}</span>
-                    {supplier.projections > 0 && (
+                    {includeProjections && projections > 0 && (
                         <span className="inline-flex items-center gap-1 bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-1 rounded-full mt-1">
                             <TrendingUp className="w-3 h-3" />
-                            {formatCurrency(supplier.projections)}
+                            {formatCurrency(projections)}
+                        </span>
+                    )}
+                    {includeProjections && overdue > 0 && (
+                        <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-700 text-xs font-bold px-2 py-1 rounded-full mt-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            {formatCurrency(overdue)}
                         </span>
                     )}
                 </div>
@@ -161,9 +194,12 @@ const SupplierRankItem = React.memo(({ supplier, rank, totalSpent }) => {
     );
 });
 
-const BranchItem = React.memo(({ branch, rank, onClick, totalSpent }) => {
-    const branchTotal = branch.spent + (branch.projections || 0);
-    const percentage = totalSpent > 0 ? (branchTotal / totalSpent * 100) : 0;
+const BranchItem = React.memo(({ branch, rank, onClick, totalCommitted, includeProjections }) => {
+    const overdue = includeProjections ? (branch.overdueProjections || 0) : 0;
+    const future = includeProjections ? (branch.futureProjections || 0) : 0;
+    const projections = overdue + future;
+    const branchTotal = branch.spent + projections;
+    const percentage = totalCommitted > 0 ? (branchTotal / totalCommitted * 100) : 0;
     
     return (
         <div onClick={onClick} className="group relative p-4 lg:p-5 bg-gradient-to-br from-white to-blue-50/30 rounded-xl border-2 border-gray-200 hover:border-blue-400 hover:shadow-lg transition-all cursor-pointer overflow-hidden">
@@ -183,10 +219,16 @@ const BranchItem = React.memo(({ branch, rank, onClick, totalSpent }) => {
                 </div>
                 <div className="text-right flex-shrink-0 ml-3">
                     <span className="text-lg lg:text-xl font-black text-gray-900 block">{formatCurrency(branch.spent)}</span>
-                    {branch.projections > 0 && (
+                    {includeProjections && projections > 0 && (
                         <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded-full mt-1">
                             <TrendingUp className="w-3 h-3" />
-                            {formatCurrency(branch.projections)}
+                            {formatCurrency(projections)}
+                        </span>
+                    )}
+                    {includeProjections && overdue > 0 && (
+                        <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-700 text-xs font-bold px-2 py-1 rounded-full mt-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            {formatCurrency(overdue)}
                         </span>
                     )}
                 </div>
@@ -298,23 +340,58 @@ export default function DashboardPage({ navigate, user }) {
     }, [year, user]);
 
     const metrics = useMemo(() => {
-        if (isLoading) return { 
-            spesaSostenuta: 0, spesaPrevista: 0, budgetTotale: 0, currentSectorBudget: 0,
-            monthlyData: [], sectorData: [], topSuppliers: [], allBranches: [], 
-            isFullYear: true, annualBudgetTotal: 0, totalSuppliersSpent: 0, totalBranchesSpent: 0
+        if (isLoading) return {
+            spesaSostenuta: 0,
+            spesaPrevista: 0,
+            spesaPrevistaTotale: 0,
+            spesaPrevistaFutura: 0,
+            spesaPrevistaScaduta: 0,
+            budgetTotale: 0,
+            currentSectorBudget: 0,
+            monthlyData: [],
+            sectorData: [],
+            topSuppliers: [],
+            allBranches: [],
+            isFullYear: true,
+            annualBudgetTotal: 0,
+            totalSuppliersSpent: 0,
+            totalBranchesSpent: 0,
+            overdueEntries: []
         };
 
-        const filterStartDate = new Date(startDate);
-        const filterEndDate = new Date(endDate);
-        
+        const dayMs = 24 * 60 * 60 * 1000;
+
+        const normalizeDate = (value) => {
+            if (!value) return null;
+            const d = new Date(value);
+            if (isNaN(d)) return null;
+            d.setHours(0, 0, 0, 0);
+            return d;
+        };
+
+        const filterStartDate = normalizeDate(startDate) || new Date(startDate);
+        const filterEndDate = normalizeDate(endDate) || new Date(endDate);
+        const today = normalizeDate(new Date()) || new Date();
+
         const totals = { bySupplier: {}, bySector: {}, byBranch: {} };
-        const supplierProjections = {};
-        const sectorProjections = {};
-        const branchProjections = {};
         const monthlyTotals = Array.from({ length: 12 }, () => ({ real: 0, projected: 0 }));
-        
+
+        const supplierProjectionsTotal = {};
+        const supplierFutureProjections = {};
+        const supplierOverdueProjections = {};
+
+        const sectorProjectionsTotal = {};
+        const sectorFutureProjections = {};
+        const sectorOverdueProjections = {};
+
+        const branchProjectionsTotal = {};
+        const branchFutureProjections = {};
+        const branchOverdueProjections = {};
+
         let spesaSostenuta = 0;
-        let spesaPrevista = 0;
+        let spesaPrevistaTotale = 0;
+        let spesaPrevistaFutura = 0;
+        let spesaPrevistaScaduta = 0;
         
         const genericoBranchId = branches.find(b => b.name.toLowerCase() === 'generico')?.id;
         
@@ -395,85 +472,231 @@ export default function DashboardPage({ navigate, user }) {
             });
         });
         
-        // Calcola quanto speso per ogni contratto (per le proiezioni)
-        const contractSpentMap = new Map();
-        allExpenses.forEach(expense => {
-            // Spese con lineItems
-            (expense.lineItems || []).forEach(item => {
-                if (item.relatedContractId) {
-                    const currentSpent = contractSpentMap.get(item.relatedContractId) || 0;
-                    contractSpentMap.set(item.relatedContractId, currentSpent + (parseFloat(item.amount) || 0));
+        const overdueEntries = [];
+
+        // Calcolo quote contrattuali attese e residui per contratto
+        const contractLineItemsMeta = new Map();
+        allContracts.forEach(contract => {
+            const normalizedLineItems = (contract.lineItems || [])
+                .map(lineItem => {
+                    const lineItemId = lineItem.id || lineItem.lineItemId || lineItem._key || null;
+                    if (!lineItemId) return null;
+                    const total = parseFloat(lineItem.totalAmount) || 0;
+                    const startDate = normalizeDate(lineItem.startDate);
+                    const endDate = normalizeDate(lineItem.endDate);
+                    const supplierId = lineItem.supplierId || contract.supplierId || lineItem.supplierld || contract.supplierld || null;
+                    const sectorId = lineItem.sectorId || contract.sectorId || lineItem.sectorld || contract.sectorld || null;
+                    const branchId = lineItem.branchId || contract.branchId || lineItem.branchld || contract.branchld || null;
+                    return {
+                        ...lineItem,
+                        lineItemId,
+                        total,
+                        startDate,
+                        endDate,
+                        supplierId,
+                        sectorId,
+                        branchId,
+                        description: lineItem.description || 'N/D'
+                    };
+                })
+                .filter(Boolean)
+                .sort((a, b) => {
+                    const startA = a.startDate ? a.startDate.getTime() : 0;
+                    const startB = b.startDate ? b.startDate.getTime() : 0;
+                    return startA - startB;
+                });
+            contractLineItemsMeta.set(contract.id, normalizedLineItems);
+        });
+
+        const lineItemSpentTotal = new Map();
+        const lineItemSpentInFilter = new Map();
+        const lineItemSpentUpToToday = new Map();
+
+        const addSpendToMaps = (contractId, lineItemId, amount, referenceDate) => {
+            if (!contractId || !lineItemId || !amount) return;
+            const key = `${contractId}|${lineItemId}`;
+            lineItemSpentTotal.set(key, (lineItemSpentTotal.get(key) || 0) + amount);
+
+            const date = normalizeDate(referenceDate);
+            if (!date) return;
+
+            if (date >= filterStartDate && date <= filterEndDate) {
+                lineItemSpentInFilter.set(key, (lineItemSpentInFilter.get(key) || 0) + amount);
+                if (date <= today) {
+                    lineItemSpentUpToToday.set(key, (lineItemSpentUpToToday.get(key) || 0) + amount);
                 }
+            }
+        };
+
+        const allocateAmountToLineItems = (contractId, amount, referenceDate) => {
+            if (!contractId || !amount) return;
+            const lineItems = contractLineItemsMeta.get(contractId);
+            if (!lineItems || lineItems.length === 0) return;
+
+            const date = normalizeDate(referenceDate);
+            let targets = lineItems;
+            if (date) {
+                const active = lineItems.filter(li => li.startDate && li.endDate && date >= li.startDate && date <= li.endDate);
+                if (active.length > 0) targets = active;
+            }
+
+            const totalActive = targets.reduce((sum, li) => sum + (li.total || 0), 0);
+            targets.forEach(li => {
+                const proportion = totalActive > 0 ? (li.total || 0) / totalActive : 1 / targets.length;
+                const share = amount * proportion;
+                addSpendToMaps(contractId, li.lineItemId, share, referenceDate);
             });
-            // Spese dirette su contratto (vecchio formato)
-            if (expense.relatedContractId) {
-                const currentSpent = contractSpentMap.get(expense.relatedContractId) || 0;
-                contractSpentMap.set(expense.relatedContractId, currentSpent + (parseFloat(expense.amount) || 0));
+        };
+
+        allExpenses.forEach(expense => {
+            const lineItems = expense.lineItems || [];
+            if (lineItems.length > 0) {
+                lineItems.forEach(item => {
+                    if (!item.relatedContractId) return;
+                    const amount = parseFloat(item.amount) || 0;
+                    if (amount === 0) return;
+                    if (item.relatedLineItemId) {
+                        addSpendToMaps(item.relatedContractId, item.relatedLineItemId, amount, expense.date);
+                    } else {
+                        allocateAmountToLineItems(item.relatedContractId, amount, expense.date);
+                    }
+                });
+            }
+            if (expense.relatedContractId && lineItems.length === 0) {
+                const amount = parseFloat(expense.amount) || 0;
+                if (amount !== 0) {
+                    allocateAmountToLineItems(expense.relatedContractId, amount, expense.date);
+                }
             }
         });
-        
-        // Processa contratti per proiezioni
+
         if (showProjections) {
             allContracts.forEach(contract => {
-                // ✅ Calcola il residuo UNA VOLTA per contratto (non per lineItem!)
-                const totalContractValue = (contract.lineItems || []).reduce((sum, li) => sum + (parseFloat(li.totalAmount) || 0), 0);
-                const totalSpentOnContract = contractSpentMap.get(contract.id) || 0;
-                const remainingContractValue = Math.max(0, totalContractValue - totalSpentOnContract);
-                
-                // Se il contratto è completamente speso, skip
-                if (remainingContractValue <= 0) return;
-                
-                (contract.lineItems || []).forEach(lineItem => {
-                    const supplierId = lineItem.supplierId || contract.supplierld;
-                    const sectorId = lineItem.sectorld;
-                    const branchId = lineItem.branchld;
-                    
-                    if (selectedSector !== 'all' && sectorId !== selectedSector) return;
-                    
-                    const lineItemTotal = parseFloat(lineItem.totalAmount) || 0;
-                    if (lineItemTotal <= 0 || !lineItem.startDate || !lineItem.endDate) return;
-                    
-                    // Calcola la quota di residuo per questo lineItem
-                    const lineItemProportion = totalContractValue > 0 ? lineItemTotal / totalContractValue : 0;
-                    const remainingLineItemValue = remainingContractValue * lineItemProportion;
-                    
-                    const startDate = new Date(lineItem.startDate);
-                    const endDate = new Date(lineItem.endDate);
-                    
-                    // ✅ LOGICA CORRETTA: Distribuisci il RESIDUO su tutta la durata del contratto
-                    const totalDurationDays = Math.max(1, (endDate - startDate) / (1000 * 60 * 60 * 24) + 1);
-                    const dailyCost = remainingLineItemValue / totalDurationDays;
-                    
-                    // Loop: distribuisci il residuo su tutti i giorni del contratto nel periodo filtrato
-                    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-                        if (d >= filterStartDate && d <= filterEndDate) {
-                            spesaPrevista += dailyCost;
-                            monthlyTotals[d.getMonth()].projected += dailyCost;
-                            
-                            if (supplierId) {
-                                supplierProjections[supplierId] = (supplierProjections[supplierId] || 0) + dailyCost;
+                const lineItems = contractLineItemsMeta.get(contract.id) || [];
+                lineItems.forEach(lineItem => {
+                    const { lineItemId, total, startDate, endDate, supplierId, sectorId, branchId, description } = lineItem;
+                    if (!supplierId || total <= 0 || !startDate || !endDate || startDate > endDate) return;
+
+                    const overlapStart = new Date(Math.max(startDate.getTime(), filterStartDate.getTime()));
+                    overlapStart.setHours(0, 0, 0, 0);
+                    const overlapEnd = new Date(Math.min(endDate.getTime(), filterEndDate.getTime()));
+                    overlapEnd.setHours(0, 0, 0, 0);
+                    if (overlapStart > overlapEnd) return;
+
+                    const fullDurationDays = Math.max(1, Math.round((endDate - startDate) / dayMs) + 1);
+                    const dailyCost = total / fullDurationDays;
+
+                    const daysOverlap = Math.max(1, Math.round((overlapEnd - overlapStart) / dayMs) + 1);
+                    const todayClamped = new Date(Math.min(today.getTime(), overlapEnd.getTime()));
+                    let daysElapsed = 0;
+                    if (todayClamped >= overlapStart) {
+                        daysElapsed = Math.min(daysOverlap, Math.round((todayClamped - overlapStart) / dayMs) + 1);
+                    }
+                    const daysFuture = Math.max(0, daysOverlap - daysElapsed);
+
+                    const expectedTotalInFilter = dailyCost * daysOverlap;
+                    const expectedOverdue = dailyCost * daysElapsed;
+                    const expectedFuture = expectedTotalInFilter - expectedOverdue;
+
+                    const key = `${contract.id}|${lineItemId}`;
+                    const spentTotal = lineItemSpentTotal.get(key) || 0;
+                    const spentInFilter = lineItemSpentInFilter.get(key) || 0;
+                    const spentUpToToday = lineItemSpentUpToToday.get(key) || 0;
+                    const spentFutureInFilter = Math.max(0, spentInFilter - spentUpToToday);
+
+                    const lineRemaining = Math.max(0, total - spentTotal);
+                    if (lineRemaining <= 0) return;
+
+                    const overdueShortfall = Math.max(0, expectedOverdue - spentUpToToday);
+                    const futureShortfall = Math.max(0, expectedFuture - spentFutureInFilter);
+
+                    const overdueAmount = Math.min(lineRemaining, overdueShortfall);
+                    const futureAmount = Math.min(Math.max(0, lineRemaining - overdueAmount), futureShortfall);
+
+                    if (overdueAmount <= 0 && futureAmount <= 0) return;
+
+                    spesaPrevistaTotale += overdueAmount + futureAmount;
+                    spesaPrevistaScaduta += overdueAmount;
+                    spesaPrevistaFutura += futureAmount;
+
+                    const addToBranchTotals = (amount, targetMap) => {
+                        if (!amount || amount <= 0) return;
+                        if (branchId === genericoBranchId && sectorId) {
+                            const sectorBranches = branchesPerSector.get(sectorId) || [];
+                            if (sectorBranches.length > 0) {
+                                const share = amount / sectorBranches.length;
+                                sectorBranches.forEach(branch => {
+                                    targetMap[branch.id] = (targetMap[branch.id] || 0) + share;
+                                });
                             }
-                            if (sectorId) {
-                                sectorProjections[sectorId] = (sectorProjections[sectorId] || 0) + dailyCost;
-                            }
-                            
-                            if (branchId === genericoBranchId && sectorId) {
-                                const sectorBranches = branchesPerSector.get(sectorId) || [];
-                                if (sectorBranches.length > 0) {
-                                    const costPerBranch = dailyCost / sectorBranches.length;
-                                    sectorBranches.forEach(branch => {
-                                        branchProjections[branch.id] = (branchProjections[branch.id] || 0) + costPerBranch;
-                                    });
-                                }
-                            } else if (branchId) {
-                                branchProjections[branchId] = (branchProjections[branchId] || 0) + dailyCost;
-                            }
+                        } else if (branchId) {
+                            targetMap[branchId] = (targetMap[branchId] || 0) + amount;
                         }
+                    };
+
+                    supplierProjectionsTotal[supplierId] = (supplierProjectionsTotal[supplierId] || 0) + overdueAmount + futureAmount;
+                    if (overdueAmount > 0) {
+                        supplierOverdueProjections[supplierId] = (supplierOverdueProjections[supplierId] || 0) + overdueAmount;
+                    }
+                    if (futureAmount > 0) {
+                        supplierFutureProjections[supplierId] = (supplierFutureProjections[supplierId] || 0) + futureAmount;
+                    }
+
+                    if (sectorId) {
+                        sectorProjectionsTotal[sectorId] = (sectorProjectionsTotal[sectorId] || 0) + overdueAmount + futureAmount;
+                        if (overdueAmount > 0) {
+                            sectorOverdueProjections[sectorId] = (sectorOverdueProjections[sectorId] || 0) + overdueAmount;
+                        }
+                        if (futureAmount > 0) {
+                            sectorFutureProjections[sectorId] = (sectorFutureProjections[sectorId] || 0) + futureAmount;
+                        }
+                    }
+
+                    addToBranchTotals(overdueAmount + futureAmount, branchProjectionsTotal);
+                    addToBranchTotals(overdueAmount, branchOverdueProjections);
+                    addToBranchTotals(futureAmount, branchFutureProjections);
+
+                    const distributeToMonths = (amount, baseDate, daysCount) => {
+                        if (!amount || amount <= 0 || daysCount <= 0) return;
+                        const dailyShare = amount / daysCount;
+                        for (let i = 0; i < daysCount; i++) {
+                            const current = new Date(baseDate);
+                            current.setDate(current.getDate() + i);
+                            if (current < overlapStart || current > overlapEnd) continue;
+                            monthlyTotals[current.getMonth()].projected += dailyShare;
+                        }
+                    };
+
+                    if (overdueAmount > 0 && daysElapsed > 0) {
+                        distributeToMonths(overdueAmount, overlapStart, daysElapsed);
+                    }
+                    if (futureAmount > 0 && daysFuture > 0) {
+                        const futureStart = new Date(overlapStart);
+                        futureStart.setDate(futureStart.getDate() + daysElapsed);
+                        distributeToMonths(futureAmount, futureStart, daysFuture);
+                    }
+
+                    if (overdueAmount > 0) {
+                        overdueEntries.push({
+                            contractId: contract.id,
+                            contractDescription: contract.description || 'N/D',
+                            supplierId,
+                            supplierName: supplierMap.get(supplierId) || 'N/D',
+                            lineItemDescription: description,
+                            sectorName: sectorId ? (sectorMap.get(sectorId) || 'N/D') : 'N/D',
+                            branchName: branchId ? (branchMap.get(branchId) || 'N/D') : (sectorId ? 'Generico' : 'N/D'),
+                            startDate: overlapStart.toISOString(),
+                            endDate: overlapEnd.toISOString(),
+                            lineTotal: expectedTotalInFilter,
+                            lineSpent: spentUpToToday,
+                            overdueAmount,
+                            futureAmount,
+                            remainingAmount: Math.max(0, lineRemaining - overdueAmount - futureAmount)
+                        });
                     }
                 });
             });
         }
-        
         const annualBudgetTotal = sectorBudgets.reduce((sum, sb) => sum + (sb.maxAmount || 0), 0);
         let currentSectorBudget = annualBudgetTotal;
         if (selectedSector !== 'all') {
@@ -502,12 +725,14 @@ export default function DashboardPage({ navigate, user }) {
         const sectorData = orderedSectors.map(sector => {
             const budgetInfo = sectorBudgets.find(sb => sb.sectorId === sector.id);
             const spent = totals.bySector[sector.name] || 0;
-            const projections = sectorProjections[sector.id] || 0;
+            const projections = sectorProjectionsTotal[sector.id] || 0;
+            const future = sectorFutureProjections[sector.id] || 0;
+            const overdue = sectorOverdueProjections[sector.id] || 0;
             let budget = budgetInfo?.maxAmount || 0;
             if (!isFullYear) {
                 budget = (budget / 365) * numberOfDays;
             }
-            return { id: sector.id, name: sector.name, spent, budget, projections };
+            return { id: sector.id, name: sector.name, spent, budget, projections, futureProjections: future, overdueProjections: overdue };
         }).filter(s => s.budget > 0 || s.spent > 0 || s.projections > 0);
             
         const topSuppliers = Object.entries(totals.bySupplier)
@@ -515,7 +740,9 @@ export default function DashboardPage({ navigate, user }) {
                 id: supplierId,
                 name: supplierMap.get(supplierId) || 'N/D',
                 spent,
-                projections: supplierProjections[supplierId] || 0
+                projections: supplierProjectionsTotal[supplierId] || 0,
+                futureProjections: supplierFutureProjections[supplierId] || 0,
+                overdueProjections: supplierOverdueProjections[supplierId] || 0
             }))
             .filter(s => s.name !== 'N/D')
             .sort((a, b) => (b.spent + (b.projections || 0)) - (a.spent + (a.projections || 0)))
@@ -527,7 +754,9 @@ export default function DashboardPage({ navigate, user }) {
                 id: branchId,
                 name: branchMap.get(branchId) || 'N/D',
                 spent,
-                projections: branchProjections[branchId] || 0
+                projections: branchProjectionsTotal[branchId] || 0,
+                futureProjections: branchFutureProjections[branchId] || 0,
+                overdueProjections: branchOverdueProjections[branchId] || 0
             }))
             .filter(b => b.name !== 'N/D')
             .sort((a, b) => (b.spent + (b.projections || 0)) - (a.spent + (a.projections || 0)));
@@ -535,7 +764,10 @@ export default function DashboardPage({ navigate, user }) {
 
         return {
             spesaSostenuta,
-            spesaPrevista,
+            spesaPrevista: spesaPrevistaTotale,
+            spesaPrevistaTotale,
+            spesaPrevistaFutura,
+            spesaPrevistaScaduta,
             budgetTotale,
             monthlyData,
             sectorData,
@@ -545,11 +777,16 @@ export default function DashboardPage({ navigate, user }) {
             annualBudgetTotal,
             currentSectorBudget,
             totalSuppliersSpent,
-            totalBranchesSpent
+            totalBranchesSpent,
+            overdueEntries
         };
     }, [isLoading, allExpenses, allContracts, allBudgets, sectorBudgets, startDate, endDate, selectedSector, suppliers, sectors, branches, showProjections, supplierMap, sectorMap, branchMap, orderedSectors]);
     
-    const totalForecast = metrics.spesaSostenuta + (showProjections ? metrics.spesaPrevista : 0);
+    const overdueList = useMemo(() => {
+        return (metrics.overdueEntries || []).slice().sort((a, b) => (b.overdueAmount || 0) - (a.overdueAmount || 0));
+    }, [metrics.overdueEntries]);
+
+    const totalForecast = metrics.spesaSostenuta + (showProjections ? metrics.spesaPrevistaTotale : 0);
     const utilizationRate = metrics.budgetTotale > 0 ? (totalForecast / metrics.budgetTotale) * 100 : 0;
     const remainingBudget = metrics.budgetTotale - totalForecast;
     const isOverBudgetRisk = totalForecast > metrics.budgetTotale;
@@ -715,7 +952,7 @@ export default function DashboardPage({ navigate, user }) {
                     />
                     <KpiCard
                         title="Proiezioni Contratti"
-                        value={formatCurrency(showProjections ? metrics.spesaPrevista : 0)}
+                        value={formatCurrency(showProjections ? metrics.spesaPrevistaTotale : 0)}
                         subtitle={showProjections ? "Da contratti attivi" : "Disabilitate"}
                         icon={<TrendingUp />}
                         gradient="from-cyan-500 to-blue-600"
@@ -837,6 +1074,72 @@ export default function DashboardPage({ navigate, user }) {
                         );
                     })()}
                 </div>
+
+                {showProjections && overdueList.length > 0 && (
+                    <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-6 lg:p-8">
+                        <div className="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 className="text-xl lg:text-2xl font-black text-gray-900 mb-2">Impegni Scaduti</h2>
+                                <p className="text-sm text-gray-600 font-medium">
+                                    Voci di contratto oltre la data attuale senza copertura di spesa registrata
+                                </p>
+                                <p className="text-xs text-gray-500 font-medium mt-1">
+                                    Totale scaduto: {formatCurrency(metrics.spesaPrevistaScaduta)}
+                                </p>
+                            </div>
+                            <div className="p-3 rounded-2xl bg-rose-100 text-rose-700">
+                                <AlertTriangle className="w-6 h-6" />
+                            </div>
+                        </div>
+                        <div className="overflow-x-auto -mx-3 lg:mx-0">
+                            <table className="min-w-full text-sm">
+                                <thead className="bg-slate-100 text-slate-700 uppercase text-xs font-bold">
+                                    <tr>
+                                        <th className="px-3 py-2 text-left">Fornitore</th>
+                                        <th className="px-3 py-2 text-left">Contratto</th>
+                                        <th className="px-3 py-2 text-left">Voce</th>
+                                        <th className="px-3 py-2 text-left">Settore</th>
+                                        <th className="px-3 py-2 text-left">Filiale</th>
+                                        <th className="px-3 py-2 text-left">Periodo</th>
+                                        <th className="px-3 py-2 text-right">Totale Voce</th>
+                                        <th className="px-3 py-2 text-right">Speso</th>
+                                        <th className="px-3 py-2 text-right">Scaduto</th>
+                                        <th className="px-3 py-2 text-right">Residuo Futuro</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {overdueList.map((entry, index) => (
+                                        <tr
+                                            key={`${entry.contractId}-${entry.lineItemDescription}-${index}`}
+                                            className={index % 2 === 0 ? 'bg-white/70' : 'bg-white/50'}
+                                        >
+                                            <td className="px-3 py-2 font-semibold text-gray-900 truncate max-w-[200px]">{entry.supplierName}</td>
+                                            <td className="px-3 py-2 text-gray-700 truncate max-w-[220px]">{entry.contractDescription}</td>
+                                            <td className="px-3 py-2 text-gray-700 truncate max-w-[260px]">{entry.lineItemDescription}</td>
+                                            <td className="px-3 py-2 text-gray-600">{entry.sectorName}</td>
+                                            <td className="px-3 py-2 text-gray-600">{entry.branchName || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
+                                                {formatDate(entry.startDate)} → {formatDate(entry.endDate)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">
+                                                {formatCurrency(entry.lineTotal)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">
+                                                {formatCurrency(entry.lineSpent)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-bold text-rose-600 whitespace-nowrap">
+                                                {formatCurrency(entry.overdueAmount)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right text-gray-500 whitespace-nowrap">
+                                                {entry.futureAmount > 0 ? formatCurrency(entry.futureAmount) : '-'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
                 
                 {/* PERFORMANCE SETTORI */}
                 {selectedSector === 'all' && (
@@ -862,6 +1165,7 @@ export default function DashboardPage({ navigate, user }) {
                                 <SectorCard
                                     key={sector.id}
                                     sector={sector}
+                                    includeProjections={showProjections}
                                     onClick={() => {
                                         setSelectedSector(sector.id);
                                         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -882,7 +1186,7 @@ export default function DashboardPage({ navigate, user }) {
                                     Classificati per volume di spesa e proiezioni
                                 </p>
                                 <p className="text-xs text-gray-500 font-medium mt-1">
-                                    Totale spesa: {formatCurrency(metrics.totalSuppliersSpent)}
+                                    Totale impegno: {formatCurrency(metrics.totalSuppliersSpent)}
                                 </p>
                             </div>
                             <Award className="w-8 h-8 text-amber-500" />
@@ -893,7 +1197,8 @@ export default function DashboardPage({ navigate, user }) {
                                     key={supplier.id} 
                                     supplier={supplier} 
                                     rank={index}
-                                    totalSpent={metrics.totalSuppliersSpent}
+                                    totalCommitted={metrics.totalSuppliersSpent}
+                                    includeProjections={showProjections}
                                 />
                             ))}
                         </div>
@@ -912,7 +1217,7 @@ export default function DashboardPage({ navigate, user }) {
                                     Tutte le sedi aziendali ordinate per spesa
                                 </p>
                                 <p className="text-xs text-gray-500 font-medium mt-1">
-                                    Totale spesa: {formatCurrency(metrics.totalBranchesSpent)}
+                                    Totale impegno: {formatCurrency(metrics.totalBranchesSpent)}
                                 </p>
                             </div>
                             <MapPin className="w-8 h-8 text-blue-500" />
@@ -928,7 +1233,8 @@ export default function DashboardPage({ navigate, user }) {
                                             navigate('expenses', { branchId: branch.id });
                                         }
                                     }}
-                                    totalSpent={metrics.totalBranchesSpent}
+                                    totalCommitted={metrics.totalBranchesSpent}
+                                    includeProjections={showProjections}
                                 />
                             ))}
                         </div>
