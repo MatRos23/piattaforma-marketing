@@ -63,7 +63,16 @@ export default function BudgetAllocationModal({ isOpen, onClose, onSave, supplie
     };
 
     const handleSave = () => {
-        const allocationsToSave = allocations.map(({ _key, ...rest }) => ({ ...rest, budgetAmount: parseFloat(String(rest.budgetAmount || '0').replace(',', '.')) || 0, isUnexpected: rest.isUnexpected || false }));
+        const allocationsToSave = allocations.map((allocation) => {
+            const cleaned = { ...allocation };
+            delete cleaned._key;
+            const budgetAmount = parseFloat(String(cleaned.budgetAmount || '0').replace(',', '.')) || 0;
+            return {
+                ...cleaned,
+                budgetAmount,
+                isUnexpected: cleaned.isUnexpected || false,
+            };
+        });
         for (const alloc of allocationsToSave) {
             if (!alloc.marketingChannelId || !alloc.sectorId || !alloc.branchId) {
                 toast.error("Tutte le righe devono avere Canale, Settore e Filiale selezionati.");

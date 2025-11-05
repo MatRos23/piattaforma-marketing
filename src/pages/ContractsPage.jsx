@@ -760,7 +760,15 @@ export default function ContractsPage({ user }) {
     };
 
     const handleDuplicateContract = (contractToDuplicate) => {
-        const { id, createdAt, updatedAt, authorld, authorName, contractPdfUrl, ...restOfContract } = contractToDuplicate;
+        const {
+            id: _ID,
+            createdAt: _CREATED_AT,
+            updatedAt: _UPDATED_AT,
+            authorld: _AUTHOR_ID,
+            authorName: _AUTHOR_NAME,
+            contractPdfUrl: _CONTRACT_PDF_URL,
+            ...restOfContract
+        } = contractToDuplicate;
         const newContractData = {
             ...restOfContract,
             description: `${restOfContract.description || ''} (Copia)`,

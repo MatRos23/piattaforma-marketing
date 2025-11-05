@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase/config';
-import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDocs } from 'firebase/firestore';
 import { PlusCircle, X, DollarSign, Target, SlidersHorizontal, ChevronDown, Layers, Search, XCircle, Car, Sailboat, Caravan, Building2, Settings, Percent, TrendingUp, AlertTriangle, CheckCircle, Activity, Zap, LayoutGrid, List, ArrowUpDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import BudgetAllocationModal from '../components/BudgetAllocationModal';
@@ -150,7 +150,6 @@ const ProgressBar = ({ spend, budget, isUnexpected, projections = 0, showProject
     }
     
     const spendPercentage = budgetValue > 0 ? (spendValue / budgetValue) * 100 : 0;
-    const projectionsPercentage = budgetValue > 0 ? (projectionsValue / budgetValue) * 100 : 0;
     const totalPercentage = budgetValue > 0 ? (totalValue / budgetValue) * 100 : 0;
     
     const getSpendGradient = () => {
@@ -593,25 +592,6 @@ export default function BudgetPage() {
         return { totalSpend, totalProjections, totalMasterBudget, totalAllocatedBudget, utilizationPercentage, totalForecast, hasOverrunRisk };
     }, [displayData, sectorBudgets, selectedSector, includeProjections]);
     
-    const sectorKpis = useMemo(() => {
-        const spendBySector = summaries.reduce((acc, summary) => {
-            (summary.details || []).forEach(detail => {
-                if(detail.sectorId) acc[detail.sectorId] = (acc[detail.sectorId] || 0) + (detail.detailedSpend || 0);
-            });
-            return acc;
-        }, {});
-        
-        const projectionsBySector = contractProjections.bySectorId || {};
-        
-        return orderedSectors.map(sector => {
-            const budgetInfo = sectorBudgets.find(b => b.sectorId === sector.id);
-            const spend = spendBySector[sector.id] || 0;
-            const projections = projectionsBySector[sector.id] || 0;
-            const budget = budgetInfo?.maxAmount || 0;
-            return { id: sector.id, name: sector.name, spend, projections, budget };
-        });
-    }, [summaries, orderedSectors, sectorBudgets, contractProjections]);
-
     const handleOpenModal = (supplier) => { 
         setIsModalOpen(true); 
         const summary = summaries.find(s => s.supplierId === supplier.id); 
@@ -661,15 +641,12 @@ export default function BudgetPage() {
             toast.success("Budget salvato!", { id: toastId });
             handleCloseModal();
         } catch (error) { 
+            console.error("Errore durante il salvataggio del budget:", error);
             toast.error("Errore salvataggio.", { id: toastId }); 
         }
     };
     
-    const resetFilters = () => { 
-        setSearchTerm(''); 
-        setSelectedSector('all'); 
-        toast.success("Filtri resettati!"); 
-    };
+
 
     if (isLoading) {
         return (

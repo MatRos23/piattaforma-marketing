@@ -49,8 +49,9 @@ const sectorIcons = {
 
 const getSectorIcon = (sectorName) => sectorIcons[sectorName] || sectorIcons.default;
 
-const TabButton = ({ tabKey, label, icon: Icon, activeTab, setActiveTab, count }) => {
+const TabButton = ({ tabKey, label, icon, activeTab, setActiveTab, count }) => {
     const isActive = activeTab === tabKey;
+    const Icon = icon;
     return (
         <button 
             onClick={() => setActiveTab(tabKey)}
@@ -174,6 +175,7 @@ export default function SettingsPage({ user }) {
                 await deleteDoc(doc(db, collectionName, id));
                 toast.success("Elemento eliminato!", { id: toastId });
             } catch (error) {
+                console.error("Errore durante l'eliminazione:", error);
                 toast.error("Errore durante l'eliminazione.", { id: toastId });
             }
         }
@@ -399,7 +401,7 @@ export default function SettingsPage({ user }) {
                     </div>
                 ), 'sector');
             case 'marketing_channels':
-            case 'channel_categories':
+            case 'channel_categories': {
                 const channelItems = activeTab === 'marketing_channels' ? marketingChannels : channelCategories;
                 return renderList(channelItems, TABS[activeTab].collectionName, TABS[activeTab].modalType, (item) => (
                     <div className="flex items-center gap-4">
@@ -409,6 +411,7 @@ export default function SettingsPage({ user }) {
                         <p className="font-bold text-gray-900 text-lg">{item.name}</p>
                     </div>
                 ), 'default');
+            }
             case 'users':
                 return (
                     <ul className="space-y-3">

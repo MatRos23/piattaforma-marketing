@@ -7,6 +7,7 @@ import {
     ChevronRight, ChevronDown, Activity, Award, XCircle, ArrowUpDown, MapPin, Calendar, X, HelpCircle, PieChart
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
 
 // ===== UTILITY FUNCTIONS =====
 const formatCurrency = (number) => {
@@ -19,6 +20,20 @@ const formatDate = (value) => {
     const date = value instanceof Date ? value : new Date(value);
     if (isNaN(date)) return 'N/D';
     return date.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const formatLabel = (value, fallback = 'N/D') => {
+    if (value === null || value === undefined) return fallback;
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return fallback;
+        const normalized = trimmed.toLowerCase();
+        if (normalized === 'non definito' || normalized === 'non-definito' || normalized === 'undefined') {
+            return fallback;
+        }
+        return trimmed;
+    }
+    return String(value);
 };
 
 const getSectorIcon = (sectorName, className = "w-5 h-5") => {
@@ -114,13 +129,13 @@ const InfoTooltip = ({ message }) => {
 };
 
 const TOP_SUPPLIERS_LIMIT = 8;
-const FILTER_PRESETS_STORAGE_KEY = 'dashboardFilterPresets';
 
 const SectorCard = React.memo(({ sector, onClick, includeProjections }) => {
     const futureProjections = sector.futureProjections || 0;
     const overdueProjections = sector.overdueProjections || 0;
     const totalProjections = includeProjections ? (futureProjections + overdueProjections) : 0;
     const totalValue = sector.spent + totalProjections;
+    const displaySectorName = formatLabel(sector.name);
     const hasBudget = sector.budget > 0;
     const utilization = hasBudget ? (totalValue / sector.budget) * 100 : (totalValue > 0 ? Infinity : 0);
     const isOverBudget = !hasBudget ? totalValue > 0 : utilization > 100;
@@ -156,7 +171,7 @@ const SectorCard = React.memo(({ sector, onClick, includeProjections }) => {
                                 Settore
                             </p>
                             <h3 className="text-lg font-black text-slate-900">
-                                {sector.name}
+                                {displaySectorName}
                             </h3>
                         </div>
                     </div>
@@ -167,19 +182,19 @@ const SectorCard = React.memo(({ sector, onClick, includeProjections }) => {
 
                 <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-2xl border border-slate-200/60 bg-slate-50/70 px-4 py-3">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Spesa effettiva
-                            <InfoTooltip message="Importo già registrato come spesa per il settore nel periodo considerato." />
-                        </div>
-                        <p className="mt-1 text-lg font-black text-slate-900">{formatCurrency(sector.spent)}</p>
+                    <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-slate-500">
+                        Spesa effettiva
+                        <InfoTooltip message="Importo già registrato come spesa per il settore nel periodo considerato." />
                     </div>
-                    <div className="rounded-2xl border border-slate-200/60 bg-slate-50/70 px-4 py-3">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Budget annuo
-                            <InfoTooltip message="Budget assegnato al settore per l'anno in corso (o il periodo filtrato)." />
-                        </div>
-                        <p className="mt-1 text-lg font-black text-slate-900">
-                            {hasBudget ? formatCurrency(sector.budget) : 'Non definito'}
+                    <p className="mt-1 text-lg font-black text-slate-900">{formatCurrency(sector.spent)}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200/60 bg-slate-50/70 px-4 py-3">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-slate-500">
+                        Budget annuo
+                        <InfoTooltip message="Budget assegnato al settore per l'anno in corso (o il periodo filtrato)." />
+                    </div>
+                    <p className="mt-1 text-lg font-black text-slate-900">
+                        {hasBudget ? formatCurrency(sector.budget) : 'N/D'}
                         </p>
                     </div>
                     {hasBudget && (
@@ -262,6 +277,7 @@ const SupplierRankItem = React.memo(({ supplier, rank, baselineCommitted, includ
     const displayCommitted = includeProjections ? committed : supplier.spent;
     const denominator = baselineCommitted > 0 ? baselineCommitted : 0;
     const percentage = denominator > 0 ? (displayCommitted / denominator) * 100 : 0;
+    const supplierName = formatLabel(supplier.name);
 
     const progressTotal = includeProjections ? committed : supplier.spent;
     const safeTotal = progressTotal > 0 ? progressTotal : 1;
@@ -281,7 +297,7 @@ const SupplierRankItem = React.memo(({ supplier, rank, baselineCommitted, includ
                     </div>
                     <div className="space-y-1">
                         <p className="text-[11px] font-semibold tracking-[0.28em] text-slate-400">Fornitore</p>
-                        <h4 className="max-w-[180px] truncate text-base font-black text-slate-900">{supplier.name}</h4>
+                        <h4 className="max-w-[180px] truncate text-base font-black text-slate-900">{supplierName}</h4>
                     </div>
                 </div>
                 <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 ring-1 ring-inset ring-indigo-200">
@@ -293,7 +309,7 @@ const SupplierRankItem = React.memo(({ supplier, rank, baselineCommitted, includ
             <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-2xl border border-slate-200/60 bg-slate-50/70 px-4 py-3">
                     <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.12em] text-slate-500">
-                        Impegno
+                        Impegno totale
                         <InfoTooltip message="Spesa effettiva più proiezioni attive per il fornitore nel periodo." />
                     </div>
                     <p className="mt-1 text-lg font-black text-slate-900">{formatCurrency(displayCommitted)}</p>
@@ -375,6 +391,7 @@ const BranchItem = React.memo(({ branch, rank, onClick, totalCommitted, includeP
     const displayCommitted = includeProjections ? committed : branch.spent;
     const denominator = totalCommitted > 0 ? totalCommitted : 0;
     const percentage = denominator > 0 ? (displayCommitted / denominator) * 100 : 0;
+    const branchName = formatLabel(branch.name);
 
     const progressTotal = includeProjections ? committed : branch.spent;
     const safeTotal = progressTotal > 0 ? progressTotal : 1;
@@ -399,7 +416,7 @@ const BranchItem = React.memo(({ branch, rank, onClick, totalCommitted, includeP
                         <p className="text-[11px] font-semibold tracking-[0.28em] text-slate-400">Filiale</p>
                         <h4 className="max-w-[180px] truncate text-base font-black text-slate-900 flex items-center gap-2">
                             <MapPin className="w-4 h-4 text-indigo-400" />
-                            {branch.name}
+                            {branchName}
                         </h4>
                     </div>
                 </div>
@@ -412,7 +429,7 @@ const BranchItem = React.memo(({ branch, rank, onClick, totalCommitted, includeP
             <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-2xl border border-slate-200/60 bg-slate-50/70 px-4 py-3">
                     <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.12em] text-slate-500">
-                        Impegno
+                        Impegno totale
                         <InfoTooltip message="Spesa effettiva più proiezioni attive della filiale." />
                     </div>
                     <p className="mt-1 text-lg font-black text-slate-900">{formatCurrency(displayCommitted)}</p>
@@ -498,7 +515,6 @@ const BranchItem = React.memo(({ branch, rank, onClick, totalCommitted, includeP
 export default function DashboardPage({ navigate, user }) {
     const [allExpenses, setAllExpenses] = useState([]);
     const [allContracts, setAllContracts] = useState([]);
-    const [allBudgets, setAllBudgets] = useState([]);
     const [sectorBudgets, setSectorBudgets] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [sectors, setSectors] = useState([]);
@@ -507,7 +523,7 @@ export default function DashboardPage({ navigate, user }) {
     const [selectedSector, setSelectedSector] = useState('all');
     const [showProjections, setShowProjections] = useState(true);
     const [selectedBranch, setSelectedBranch] = useState('all');
-    const [filterPresets, setFilterPresets] = useState([]);
+    const [filterPresets, setFilterPresets] = useState(() => loadFilterPresets());
     const [presetName, setPresetName] = useState('');
     const [isOverdueExpanded, setIsOverdueExpanded] = useState(false);
     
@@ -549,21 +565,13 @@ export default function DashboardPage({ navigate, user }) {
         }
     }, [endDate, year]);
 
+    const filtersLoaded = useRef(false);
     useEffect(() => {
-        if (typeof window === 'undefined') return;
-        try {
-            const stored = JSON.parse(localStorage.getItem(FILTER_PRESETS_STORAGE_KEY) || '[]');
-            if (Array.isArray(stored)) {
-                setFilterPresets(stored);
-            }
-        } catch (error) {
-            console.error('Impossibile leggere i preset salvati', error);
+        if (filtersLoaded.current) {
+            persistFilterPresets(filterPresets);
+        } else {
+            filtersLoaded.current = true;
         }
-    }, []);
-
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        localStorage.setItem(FILTER_PRESETS_STORAGE_KEY, JSON.stringify(filterPresets));
     }, [filterPresets]);
 
     const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers]);
@@ -604,7 +612,6 @@ export default function DashboardPage({ navigate, user }) {
         const unsubs = [
             onSnapshot(expensesQuery, snap => setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(contractsQuery, snap => setAllContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "budgets"), where("year", "==", year)), snap => setAllBudgets(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "sector_budgets"), where("year", "==", year)), snap => setSectorBudgets(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "channels"), orderBy("name")), snap => setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "sectors"), orderBy("name")), snap => setSectors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
@@ -1119,7 +1126,7 @@ export default function DashboardPage({ navigate, user }) {
             totalBranchesSpent,
             overdueEntries
         };
-    }, [isLoading, allExpenses, allContracts, allBudgets, sectorBudgets, startDate, endDate, selectedSector, selectedBranch, suppliers, sectors, branches, showProjections, supplierMap, sectorMap, branchMap, orderedSectors]);
+    }, [isLoading, allExpenses, allContracts, sectorBudgets, startDate, endDate, selectedSector, selectedBranch, sectors, branches, showProjections, supplierMap, sectorMap, sectorNameToId, branchMap, orderedSectors]);
     
     const overdueList = useMemo(() => {
         return (metrics.overdueEntries || []).slice().sort((a, b) => (b.overdueAmount || 0) - (a.overdueAmount || 0));
@@ -1234,11 +1241,11 @@ export default function DashboardPage({ navigate, user }) {
     };
 
     const applyPreset = (preset) => {
-        setStartDate(preset.startDate);
-        setEndDate(preset.endDate);
-        setSelectedSector(preset.selectedSector);
+        setStartDate(preset.startDate || defaultStartDate);
+        setEndDate(preset.endDate || defaultEndDate);
+        setSelectedSector(preset.selectedSector || 'all');
         setSelectedBranch(preset.selectedBranch || 'all');
-        setShowProjections(preset.showProjections);
+        setShowProjections(preset.showProjections !== undefined ? preset.showProjections : true);
         toast.success(`Preset "${preset.name}" applicato`);
     };
 
@@ -1546,7 +1553,6 @@ export default function DashboardPage({ navigate, user }) {
                         const maxMonth = monthlyDataWithTotal.find(m => m.total === maxMonthValue) || monthlyDataWithTotal[0] || { mese: 'N/D', total: 0 };
                         const currentCalendar = new Date();
                         const sameYear = new Date(endDate).getFullYear() === currentCalendar.getFullYear();
-                        const currentMonthIndex = sameYear ? currentCalendar.getMonth() : monthlyDataWithTotal.length - 1;
                         const displayMax = Math.max(maxMonthValue, monthlyAvgBudget);
                         const budgetPercentage = displayMax > 0 ? (monthlyAvgBudget / displayMax) * 100 : 0;
 
@@ -1609,27 +1615,13 @@ export default function DashboardPage({ navigate, user }) {
                                                 
                                                 return (
                                                     <div key={month.mese} className="h-full flex-1 flex flex-col items-center justify-end group relative">
-                                                        {isCurrentMonth && (
-                                                            <div className="absolute bottom-0 translate-y-[-110%] flex flex-col items-center gap-1 text-[11px] font-bold">
-                                                                <span className="rounded-full bg-white px-2 py-0.5 text-emerald-600 ring-1 ring-emerald-200 shadow-sm">
-                                                                    Spesa {formatCurrency(month.real)}
-                                                                </span>
-                                                                {showProjections && month.projected > 0 && (
-                                                                    <span className="rounded-full bg-white px-2 py-0.5 text-indigo-600 ring-1 ring-indigo-200 shadow-sm">
-                                                                        Proiezioni {formatCurrency(month.projected)}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                        {!isCurrentMonth && (
-                                                            <div className="absolute bottom-full mb-2 w-max max-w-[220px] rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30">
+                                                        <div className="absolute bottom-full mb-2 w-max max-w-[220px] rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30">
                                                             <p className="font-black text-sm">{month.mese}</p>
                                                             <p className="mt-1 text-emerald-300">Totale: {formatCurrency(month.total)}</p>
                                                             <p className="text-white/80">Effettiva: {formatCurrency(month.real)}</p>
                                                             {showProjections && <p className="text-white/80">Proiezioni: {formatCurrency(month.projected)}</p>}
                                                             <p className="text-white/60">Budget medio: {formatCurrency(monthlyAvgBudget)}</p>
                                                         </div>
-                                                        )}
                                                         
                                                         <div
                                                             className={`w-[70%] rounded-t-xl transition-all duration-300 ${isCurrentMonth ? 'ring-4 ring-indigo-200' : ''}`}
@@ -1748,7 +1740,7 @@ export default function DashboardPage({ navigate, user }) {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
+                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex flex-col justify-between">
                                 <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
                                     Budget attivo
                                     <InfoTooltip message="Budget complessivo disponibile per i settori nel periodo selezionato." />
@@ -1758,7 +1750,7 @@ export default function DashboardPage({ navigate, user }) {
                                 </p>
                             </div>
                             <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
                                     Spesa effettiva
                                     <InfoTooltip message="Somma delle spese già registrate nei settori attivi." />
                                 </div>
@@ -1767,7 +1759,7 @@ export default function DashboardPage({ navigate, user }) {
                                 </p>
                             </div>
                             <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
                                     Proiezioni attive
                                     <InfoTooltip message="Quote future o scadute legate ai contratti dei settori. Visibili solo se le proiezioni sono abilitate." />
                                 </div>
@@ -1817,30 +1809,30 @@ export default function DashboardPage({ navigate, user }) {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
+                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
                                     Impegno Top {TOP_SUPPLIERS_LIMIT}
                                     <InfoTooltip message={showProjections ? `Somma di spesa effettiva e proiezioni per i primi ${TOP_SUPPLIERS_LIMIT} fornitori.` : `Somma della sola spesa effettiva per i primi ${TOP_SUPPLIERS_LIMIT} fornitori.`} />
                                 </div>
-                                <p className="mt-2 text-lg font-black text-slate-900">
+                                <p className="mt-auto pt-2 text-lg font-black text-slate-900">
                                     {formatCurrency(showProjections ? metrics.totalSuppliersSpent : metrics.topSuppliersSpentOnly)}
                                 </p>
                             </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
+                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
                                     Spesa effettiva
                                     <InfoTooltip message={`Totale della spesa già registrata per i fornitori Top ${TOP_SUPPLIERS_LIMIT}.`} />
                                 </div>
-                                <p className="mt-2 text-lg font-black text-slate-900">
+                                <p className="mt-auto pt-2 text-lg font-black text-slate-900">
                                     {formatCurrency(metrics.topSuppliersSpentOnly)}
                                 </p>
                             </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
+                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
                                     Proiezioni attive
                                     <InfoTooltip message={`Quote contrattuali future o scadute ancora da coprire per i fornitori Top ${TOP_SUPPLIERS_LIMIT}.`} />
                                 </div>
-                                <p className={`mt-2 text-lg font-black ${showProjections ? 'text-slate-900' : 'text-slate-300'}`}>
+                                <p className={`mt-auto pt-2 text-lg font-black ${showProjections ? 'text-slate-900' : 'text-slate-300'}`}>
                                     {showProjections ? formatCurrency(topSuppliersProjections) : '—'}
                                 </p>
                             </div>
@@ -1884,30 +1876,30 @@ export default function DashboardPage({ navigate, user }) {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
+                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
                                 <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
                                     Impegno filiali
                                     <InfoTooltip message="Somma di spesa e proiezioni di tutte le filiali attive." />
                                 </div>
-                                <p className="mt-2 text-lg font-black text-slate-900">
+                                <p className="mt-auto pt-2 text-lg font-black text-slate-900">
                                     {formatCurrency(showProjections ? metrics.totalBranchesSpent : branchesSpentOnly)}
                                 </p>
                             </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
+                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
                                     Spesa effettiva
                                     <InfoTooltip message="Importo contabile già registrato sulle filiali." />
                                 </div>
-                                <p className="mt-2 text-lg font-black text-slate-900">
+                                <p className="mt-auto pt-2 text-lg font-black text-slate-900">
                                     {formatCurrency(branchesSpentOnly)}
                                 </p>
                             </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
+                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
                                     Proiezioni attive
                                     <InfoTooltip message="Residuo futuro e importi scaduti dei contratti associati alle filiali." />
                                 </div>
-                                <p className={`mt-2 text-lg font-black ${showProjections ? 'text-slate-900' : 'text-slate-300'}`}>
+                                <p className={`mt-auto pt-2 text-lg font-black ${showProjections ? 'text-slate-900' : 'text-slate-300'}`}>
                                     {showProjections ? formatCurrency(branchesProjectionsTotal) : '—'}
                                 </p>
                             </div>
@@ -1971,7 +1963,7 @@ export default function DashboardPage({ navigate, user }) {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
+                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex flex-col justify-between">
                                 <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
                                     Totale scaduto
                                     <InfoTooltip message="Somma delle quote già scadute e non ancora coperte da spesa per tutte le voci elencate." />
