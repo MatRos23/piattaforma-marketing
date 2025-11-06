@@ -13,6 +13,7 @@ import ExpenseFormModal from '../components/ExpenseFormModal';
 import toast from 'react-hot-toast';
 import { MultiSelect } from '../components/SharedComponents';
 import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
+import { deriveBranchesForLineItem, computeExpenseBranchShares } from '../utils/branchAssignments';
 
 const storage = getStorage();
 
@@ -177,12 +178,23 @@ const ExpenseTableView = React.memo(({
     };
 
     const buildBranchName = (expense) => {
+        const branchIds = new Set();
         if (expense.lineItems && expense.lineItems.length > 0) {
-            const item = expense.lineItems[0];
-            if (item.branchNames) return item.branchNames;
-            if (item.assignmentId) return branchMap.get(item.assignmentId) || '—';
+            expense.lineItems.forEach(item => {
+                (item.assignedBranches || []).forEach(id => branchIds.add(id));
+            });
+        } else if (expense.branchId) {
+            branchIds.add(expense.branchId);
         }
-        return branchMap.get(expense.branchId) || '—';
+
+        if (branchIds.size === 0) {
+            return '—';
+        }
+        if (branchIds.size === 1) {
+            const [branchId] = branchIds;
+            return branchMap.get(branchId) || '—';
+        }
+        return 'Più Filiali';
     };
 
     return (
@@ -531,66 +543,122 @@ export default function ExpensesPage({ user, initialFilters }) {
             // Prepara lineItems
             let lineItems = [];
             if (Array.isArray(expense.lineItems) && expense.lineItems.length > 0) {
-                lineItems = expense.lineItems.map((item, index) => ({
-                    ...item,
-                    assignmentId: item.assignmentId || item.assignmentid || item.branchld || expense.branchId || expense.branchld || "",
-                    marketingChannelId: item.marketingChannelId || item.marketingChannelld || "",
-                    sectorId: item.sectorId || item.sectorld || sectorId,
-                    amount: parseFloat(item.amount) || 0,
-                    _key: `${expense.id}-${index}`
-                }));
+                lineItems = expense.lineItems.map((item, index) => {
+                    const normalizedItem = {
+                        ...item,
+                        assignmentId: item.assignmentId || item.assignmentid || item.branchld || expense.branchId || expense.branchld || "",
+                        assignmentType: item.assignmentType || item.assignmenttype,
+                        marketingChannelId: item.marketingChannelId || item.marketingChannelld || "",
+                        sectorId: item.sectorId || item.sectorld || sectorId,
+                        amount: parseFloat(item.amount) || 0,
+                        _key: `${expense.id}-${index}`
+                    };
+                    const assignedBranches = deriveBranchesForLineItem({
+                        expense,
+                        item: normalizedItem,
+                        sectorId: normalizedItem.sectorId,
+                        branchMap,
+                        branchesPerSector
+                    });
+                    return {
+                        ...normalizedItem,
+                        assignedBranches,
+                        branchNames: assignedBranches.length
+                            ? assignedBranches.map(id => branchMap.get(id) || 'N/D').join(', ')
+                            : 'N/D'
+                    };
+                });
             } else {
-                lineItems.push({
+                const fallbackItem = {
                     description: expense.description || 'Voce principale',
                     amount: parseFloat(expense.amount) || 0,
                     marketingChannelId: expense.marketingChannelId || expense.marketingChannelld || "",
                     assignmentId: expense.branchId || expense.branchld || "",
                     sectorId: sectorId,
                     _key: `${expense.id}-0`
+                };
+                const assignedBranches = deriveBranchesForLineItem({
+                    expense,
+                    item: fallbackItem,
+                    sectorId: fallbackItem.sectorId,
+                    branchMap,
+                    branchesPerSector
+                });
+                lineItems.push({
+                    ...fallbackItem,
+                    assignedBranches,
+                    branchNames: assignedBranches.length
+                        ? assignedBranches.map(id => branchMap.get(id) || 'N/D').join(', ')
+                        : 'N/D'
                 });
             }
             
             // Calcola totale
             const totalAmount = lineItems.reduce((sum, item) => sum + item.amount, 0);
-            
+            const { branchTotals, itemTotals, itemBranchTotals } = computeExpenseBranchShares({
+                expense,
+                lineItems,
+                branchMap,
+                branchesPerSector,
+                filterStartDate: dateFilter.startDate,
+                filterEndDate: dateFilter.endDate,
+                activeSectorId: selectedSector
+            });
+
+            const branchShares = Object.fromEntries(branchTotals);
+            const lineItemsWithAllocation = lineItems.map(item => {
+                const itemKey = item._key;
+                const branchBreakdownMap = itemBranchTotals.get(itemKey) || new Map();
+                return {
+                    ...item,
+                    amountInFilter: itemTotals.get(itemKey) ?? 0,
+                    branchBreakdown: Object.fromEntries(branchBreakdownMap)
+                };
+            });
+
             // Processa lineItems per display
             const processedLineItems = [];
             const processedGroupIds = new Set();
             
-            lineItems.forEach(item => {
+            lineItemsWithAllocation.forEach(item => {
                 if (item.splitGroupId && !processedGroupIds.has(item.splitGroupId)) {
-                    const groupItems = lineItems.filter(li => li.splitGroupId === item.splitGroupId);
+                    const groupItems = lineItemsWithAllocation.filter(li => li.splitGroupId === item.splitGroupId);
                     const totalGroupAmount = groupItems.reduce((sum, gi) => sum + gi.amount, 0);
-                    const branchNames = groupItems.map(gi => branchMap.get(gi.assignmentId) || 'N/D').join(', ');
+                    const totalGroupAllocated = groupItems.reduce((sum, gi) => sum + (gi.amountInFilter || 0), 0);
+                    const uniqueBranchNames = new Set();
+                    const combinedBreakdown = new Map();
+                    groupItems.forEach(gi => {
+                        (gi.assignedBranches || []).forEach(branchId => {
+                            uniqueBranchNames.add(branchMap.get(branchId) || 'N/D');
+                        });
+                        Object.entries(gi.branchBreakdown || {}).forEach(([branchId, value]) => {
+                            combinedBreakdown.set(branchId, (combinedBreakdown.get(branchId) || 0) + value);
+                        });
+                    });
+                    const branchNames = uniqueBranchNames.size
+                        ? Array.from(uniqueBranchNames).join(', ')
+                        : 'N/D';
                     
                     processedLineItems.push({
                         _key: item.splitGroupId,
                         isGroup: true,
                         description: item.description,
                         amount: totalGroupAmount,
+                        amountInFilter: totalGroupAllocated,
                         displayAmount: totalGroupAmount,
                         marketingChannelId: item.marketingChannelId,
                         branchNames: branchNames,
                         branchCount: groupItems.length,
+                        branchBreakdown: Object.fromEntries(combinedBreakdown)
                     });
                     processedGroupIds.add(item.splitGroupId);
                 } else if (!item.splitGroupId) {
-                    if (item.assignmentId === genericoBranchId) {
-                        const sectorBranches = branchesPerSector.get(item.sectorId) || [];
-                        processedLineItems.push({
-                            ...item,
-                            isGenerico: true,
-                            displayAmount: item.amount,
-                            distributedTo: sectorBranches.length > 0 
-                                ? `${sectorBranches.length} filiali: ${sectorBranches.map(b => b.name).join(', ')}` 
-                                : 'Nessuna filiale associata'
-                        });
-                    } else {
-                        processedLineItems.push({
-                            ...item,
-                            displayAmount: item.amount
-                        });
-                    }
+                    processedLineItems.push({
+                        ...item,
+                        displayAmount: item.amount,
+                        branchCount: item.assignedBranches?.length || 0,
+                        branchBreakdown: item.branchBreakdown || {}
+                    });
                 }
             });
             
@@ -608,11 +676,12 @@ export default function ExpensesPage({ user, initialFilters }) {
                 supplierId,
                 sectorId,
                 amount: totalAmount,
-                lineItems,
+                lineItems: lineItemsWithAllocation,
                 processedLineItems,
                 displayAmount: totalAmount,
                 budgetInfo,
-                requiresContract: expense.requiresContract !== undefined ? expense.requiresContract : true
+                requiresContract: expense.requiresContract !== undefined ? expense.requiresContract : true,
+                branchShares
             };
         });
         
@@ -671,52 +740,114 @@ if (supplierFilter.length > 0) {
         
         // Filtro filiale con calcolo distribuito
         if (effectiveBranchFilter.length > 0) {
-            normalized = normalized.filter(exp => 
-                exp.lineItems?.some(item => {
-                    if (effectiveBranchFilter.includes(item.assignmentId)) return true;
-                    
-                    if (item.assignmentId === genericoBranchId) {
-                        const sectorBranches = branchesPerSector.get(item.sectorId || exp.sectorId) || [];
-                        return sectorBranches.some(b => effectiveBranchFilter.includes(b.id));
-                    }
-                    
-                    return false;
-                })
-            );
-            
-            // Ricalcola displayAmount per filiali filtrate
+            normalized = normalized.filter(exp => {
+                return effectiveBranchFilter.some(branchId => (exp.branchShares?.[branchId] || 0) > 0);
+            });
+
+            const isSingleBranchFilter = effectiveBranchFilter.length === 1;
+
             normalized = normalized.map(exp => {
+                const shares = exp.branchShares || {};
+                const processedItems = exp.processedLineItems || [];
+
                 let displayAmount = 0;
-                let hasDistributedAmount = false;
                 const distributedDetails = [];
-                
-                (exp.lineItems || []).forEach(item => {
-                    const itemAmount = item.amount || 0;
-                    
-                    if (effectiveBranchFilter.includes(item.assignmentId)) {
-                        displayAmount += itemAmount;
-                    } else if (item.assignmentId === genericoBranchId) {
-                        const sectorBranches = branchesPerSector.get(item.sectorId || exp.sectorId) || [];
-                        const filteredBranchesInSector = sectorBranches.filter(b => effectiveBranchFilter.includes(b.id));
-                        
-                        if (filteredBranchesInSector.length > 0 && sectorBranches.length > 0) {
-                            const quotaPerBranch = itemAmount / sectorBranches.length;
-                            const quotaForFiltered = quotaPerBranch * filteredBranchesInSector.length;
-                            displayAmount += quotaForFiltered;
-                            hasDistributedAmount = true;
-                            
-                            distributedDetails.push(`${formatCurrency(quotaPerBranch)} x ${filteredBranchesInSector.length} filiali`);
-                        }
-                    }
-                });
-                
+                let hasDistributedAmount = false;
+
+                let filteredLineItems = [];
+
+                if (isSingleBranchFilter) {
+                    const branchId = effectiveBranchFilter[0];
+                    const branchShareTotal = shares[branchId] || 0;
+                    displayAmount = branchShareTotal;
+
+                    filteredLineItems = processedItems
+                        .map(item => {
+                            const branchBreakdown = item.branchBreakdown || {};
+                            const branchShare = branchBreakdown[branchId] || 0;
+                            if (branchShare <= 0) {
+                                return null;
+                            }
+
+                            const totalItemAmount = item.amountInFilter ?? item.amount ?? 0;
+
+                            const otherBranches = Math.max(0, Object.keys(branchBreakdown).length - 1);
+                            if (otherBranches > 0) {
+                                hasDistributedAmount = true;
+                                const othersLabel = otherBranches === 1
+                                    ? '1 altra filiale'
+                                    : `${otherBranches} altre filiali`;
+                                distributedDetails.push(`${formatCurrency(branchShare)} assegnati a questa filiale su ${formatCurrency(totalItemAmount)} totali (condivisa con ${othersLabel})`);
+                            }
+
+                            return {
+                                ...item,
+                                displayAmount: branchShare,
+                                filteredAmount: branchShare,
+                                branchShare
+                            };
+                        })
+                        .filter(Boolean);
+                } else {
+                    displayAmount = effectiveBranchFilter.reduce(
+                        (sum, branchId) => sum + (shares[branchId] || 0),
+                        0
+                    );
+
+                    filteredLineItems = processedItems
+                        .map(item => {
+                            const branchBreakdown = item.branchBreakdown || {};
+                            const filteredAmount = effectiveBranchFilter.reduce(
+                                (sum, branchId) => sum + (branchBreakdown[branchId] || 0),
+                                0
+                            );
+
+                            if ((item.assignedBranches || []).length > 1 && filteredAmount > 0) {
+                                hasDistributedAmount = true;
+                                distributedDetails.push(
+                                    `${formatCurrency(filteredAmount)} totale sulle filiali selezionate (voce condivisa)`
+                                );
+                            }
+
+                            return {
+                                ...item,
+                                displayAmount: filteredAmount,
+                                filteredAmount
+                            };
+                        })
+                        .filter(item => (item.filteredAmount || 0) > 0.00001);
+                }
+
+                const uniqueDetails = distributedDetails.length > 0
+                    ? Array.from(new Set(distributedDetails))
+                    : [];
+
                 return {
                     ...exp,
                     displayAmount,
                     hasDistributedAmount,
-                    distributedInfo: hasDistributedAmount ? { details: distributedDetails.join(' + ') } : null
+                    distributedInfo: hasDistributedAmount ? { details: uniqueDetails.join(' + ') } : null,
+                    processedLineItems: filteredLineItems
                 };
             });
+        }
+
+        // Debug: log branch allocations when a single branch filter is active
+        if (effectiveBranchFilter.length === 1) {
+            const branchId = effectiveBranchFilter[0];
+            const branchName = branchMap.get(branchId) || branchId;
+            console.table(normalized
+                .filter(exp => (exp.branchShares?.[branchId] || 0) > 0)
+                .map(exp => ({
+                    id: exp.id,
+                    supplier: supplierMap.get(exp.supplierId) || 'N/D',
+                    amount: exp.amount,
+                    displayAmount: exp.displayAmount,
+                    branchShare: exp.branchShares?.[branchId] || 0,
+                    lineItems: (exp.lineItems || []).length,
+                    breakdown: exp.lineItems?.map(item => item.branchBreakdown?.[branchId] || 0).join(', ')
+                }))
+            , [`Filiale: ${branchName}`]);
         }
         
         // Filtro ricerca testuale con debounce
@@ -739,7 +870,7 @@ if (supplierFilter.length > 0) {
         if (specialFilter === 'unassigned') {
             normalized = normalized.filter(exp => {
                 if (exp.lineItems && exp.lineItems.length > 0) {
-                    return exp.lineItems.some(item => !item.assignmentId || !branchMap.has(item.assignmentId));
+                    return exp.lineItems.some(item => !item.assignedBranches || item.assignedBranches.length === 0);
                 }
                 return !exp.branchId || !branchMap.has(exp.branchId);
             });
@@ -786,7 +917,6 @@ if (supplierFilter.length > 0) {
         supplierMap, 
         marketingChannelMap, 
         branchMap,
-        genericoBranchId, 
         branchesPerSector,
         budgetInfoMap
     ]);

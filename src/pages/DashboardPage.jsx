@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
+import { deriveBranchesForLineItem } from '../utils/branchAssignments';
 
 // ===== UTILITY FUNCTIONS =====
 const formatCurrency = (number) => {
@@ -696,36 +697,6 @@ export default function DashboardPage({ navigate, user }) {
             return mapped || null;
         };
 
-        const deriveBranchesForItem = (expense, item, sectorId) => {
-            const branchIds = new Set();
-            const assignment = item.assignmentId;
-            if (item.assignmentType === 'distributed' && assignment) {
-                const ids = Array.isArray(assignment)
-                    ? assignment
-                    : typeof assignment === 'string'
-                        ? assignment.split(',').map(id => id.trim()).filter(Boolean)
-                        : [];
-                ids.forEach(id => {
-                    if (branchMap.has(id)) branchIds.add(id);
-                });
-            }
-            if (assignment && typeof assignment === 'string' && branchMap.has(assignment)) {
-                branchIds.add(assignment);
-            }
-            if (item.branchId && branchMap.has(item.branchId)) {
-                branchIds.add(item.branchId);
-            }
-            const expenseBranch = expense.branchId || expense.branchld;
-            if (expenseBranch && branchMap.has(expenseBranch)) {
-                branchIds.add(expenseBranch);
-            }
-            if (branchIds.size === 0 && sectorId) {
-                const sectorBranches = branchesPerSector.get(sectorId) || [];
-                sectorBranches.forEach(branch => branchIds.add(branch.id));
-            }
-            return Array.from(branchIds);
-        };
-
         // Processa spese
         allExpenses.forEach((expense) => {
             const supplierId = expense.supplierId || expense.supplierld || expense.channelId || expense.channelld;
@@ -739,10 +710,21 @@ export default function DashboardPage({ navigate, user }) {
                 const itemSectorId = normalizeSectorId(item.sectorId || expenseSectorId);
                 if (selectedSector !== 'all' && itemSectorId !== selectedSector) return;
                 const sectorName = itemSectorId ? (sectorMap.get(itemSectorId) || 'Sconosciuto') : 'Sconosciuto';
-                const associatedBranches = deriveBranchesForItem(expense, item, itemSectorId);
+                const associatedBranches = deriveBranchesForLineItem({
+                    expense,
+                    item,
+                    sectorId: itemSectorId,
+                    branchMap,
+                    branchesPerSector
+                });
                 const matchesBranchFilter = selectedBranch === 'all' || associatedBranches.includes(selectedBranch);
                 if (!matchesBranchFilter) return;
                 
+                const branchShareFactor = selectedBranch === 'all'
+                    ? 1
+                    : (associatedBranches.length > 0 ? 1 / associatedBranches.length : 0);
+                if (branchShareFactor === 0) return;
+
                 const processAmount = (amount, date) => {
                     if (date >= filterStartDate && date <= filterEndDate) {
                         spesaSostenuta += amount;
@@ -775,12 +757,14 @@ export default function DashboardPage({ navigate, user }) {
                     
                     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
                         const currentDate = new Date(d);
-                        processAmount(dailyAmount, currentDate);
-                        processBranchAmount(dailyAmount, currentDate, associatedBranches);
+                        const adjustedAmount = dailyAmount * branchShareFactor;
+                        processAmount(adjustedAmount, currentDate);
+                        processBranchAmount(adjustedAmount, currentDate, associatedBranches);
                     }
                 } else {
-                    processAmount(itemAmount, expenseDate);
-                    processBranchAmount(itemAmount, expenseDate, associatedBranches);
+                    const adjustedAmount = itemAmount * branchShareFactor;
+                    processAmount(adjustedAmount, expenseDate);
+                    processBranchAmount(adjustedAmount, expenseDate, associatedBranches);
                 }
             });
         });
@@ -868,17 +852,46 @@ export default function DashboardPage({ navigate, user }) {
                     if (!item.relatedContractId) return;
                     const amount = parseFloat(item.amount) || 0;
                     if (amount === 0) return;
+                    const itemSectorId = normalizeSectorId(item.sectorId || expense.sectorId || expense.sectorld);
+                    const associatedBranches = deriveBranchesForLineItem({
+                        expense,
+                        item,
+                        sectorId: itemSectorId,
+                        branchMap,
+                        branchesPerSector
+                    });
+                    const branchShareFactor = selectedBranch === 'all'
+                        ? 1
+                        : (associatedBranches.length > 0 ? 1 / associatedBranches.length : 0);
+                    if (branchShareFactor === 0) return;
+                    const adjustedAmount = amount * branchShareFactor;
                     if (item.relatedLineItemId) {
-                        addSpendToMaps(item.relatedContractId, item.relatedLineItemId, amount, expense.date);
+                        addSpendToMaps(item.relatedContractId, item.relatedLineItemId, adjustedAmount, expense.date);
                     } else {
-                        allocateAmountToLineItems(item.relatedContractId, amount, expense.date);
+                        allocateAmountToLineItems(item.relatedContractId, adjustedAmount, expense.date);
                     }
                 });
             }
             if (expense.relatedContractId && lineItems.length === 0) {
                 const amount = parseFloat(expense.amount) || 0;
                 if (amount !== 0) {
-                    allocateAmountToLineItems(expense.relatedContractId, amount, expense.date);
+                    const branchId = expense.branchId || expense.branchld || null;
+                    let branchShareFactor = 1;
+                    if (selectedBranch !== 'all') {
+                        if (branchId && branchMap.has(branchId)) {
+                            branchShareFactor = branchId === selectedBranch ? 1 : 0;
+                        } else if (expense.sectorId || expense.sectorld) {
+                            const sectorBranches = branchesPerSector.get(normalizeSectorId(expense.sectorId || expense.sectorld)) || [];
+                            branchShareFactor = sectorBranches.length > 0 && sectorBranches.some(b => b.id === selectedBranch)
+                                ? 1 / sectorBranches.length
+                                : 0;
+                        } else {
+                            branchShareFactor = 0;
+                        }
+                    }
+                    if (branchShareFactor > 0) {
+                        allocateAmountToLineItems(expense.relatedContractId, amount * branchShareFactor, expense.date);
+                    }
                 }
             }
         });
@@ -893,10 +906,10 @@ export default function DashboardPage({ navigate, user }) {
 
                     const contractBranches = (() => {
                         const ids = new Set();
-                        if (branchId && branchId !== genericoBranchId) {
+                        if (branchId && branchMap.has(branchId)) {
                             ids.add(branchId);
                         }
-                        if ((!branchId || branchId === genericoBranchId) && sectorId) {
+                        if (!branchId && sectorId) {
                             const sectorBranches = branchesPerSector.get(sectorId) || [];
                             sectorBranches.forEach(branch => ids.add(branch.id));
                         }
@@ -912,6 +925,11 @@ export default function DashboardPage({ navigate, user }) {
                     if (selectedBranch !== 'all' && !contractBranches.includes(selectedBranch)) {
                         return;
                     }
+
+                    const branchShareFactor = selectedBranch === 'all'
+                        ? 1
+                        : (contractBranches.length > 0 ? 1 / contractBranches.length : 0);
+                    if (branchShareFactor === 0) return;
 
                     const overlapStart = new Date(Math.max(startDate.getTime(), filterStartDate.getTime()));
                     overlapStart.setHours(0, 0, 0, 0);
@@ -951,9 +969,13 @@ export default function DashboardPage({ navigate, user }) {
 
                     if (overdueAmount <= 0 && futureAmount <= 0) return;
 
-                    spesaPrevistaTotale += overdueAmount + futureAmount;
-                    spesaPrevistaScaduta += overdueAmount;
-                    spesaPrevistaFutura += futureAmount;
+                    const adjustedOverdueAmount = overdueAmount * branchShareFactor;
+                    const adjustedFutureAmount = futureAmount * branchShareFactor;
+                    const adjustedTotalAmount = adjustedOverdueAmount + adjustedFutureAmount;
+
+                    spesaPrevistaTotale += adjustedTotalAmount;
+                    spesaPrevistaScaduta += adjustedOverdueAmount;
+                    spesaPrevistaFutura += adjustedFutureAmount;
 
                     const addToBranchTotals = (amount, targetMap) => {
                         if (!amount || amount <= 0) return;
@@ -969,27 +991,27 @@ export default function DashboardPage({ navigate, user }) {
                         });
                     };
 
-                    supplierProjectionsTotal[supplierId] = (supplierProjectionsTotal[supplierId] || 0) + overdueAmount + futureAmount;
-                    if (overdueAmount > 0) {
-                        supplierOverdueProjections[supplierId] = (supplierOverdueProjections[supplierId] || 0) + overdueAmount;
+                    supplierProjectionsTotal[supplierId] = (supplierProjectionsTotal[supplierId] || 0) + adjustedTotalAmount;
+                    if (adjustedOverdueAmount > 0) {
+                        supplierOverdueProjections[supplierId] = (supplierOverdueProjections[supplierId] || 0) + adjustedOverdueAmount;
                     }
-                    if (futureAmount > 0) {
-                        supplierFutureProjections[supplierId] = (supplierFutureProjections[supplierId] || 0) + futureAmount;
+                    if (adjustedFutureAmount > 0) {
+                        supplierFutureProjections[supplierId] = (supplierFutureProjections[supplierId] || 0) + adjustedFutureAmount;
                     }
 
                     if (sectorId) {
-                        sectorProjectionsTotal[sectorId] = (sectorProjectionsTotal[sectorId] || 0) + overdueAmount + futureAmount;
-                        if (overdueAmount > 0) {
-                            sectorOverdueProjections[sectorId] = (sectorOverdueProjections[sectorId] || 0) + overdueAmount;
+                        sectorProjectionsTotal[sectorId] = (sectorProjectionsTotal[sectorId] || 0) + adjustedTotalAmount;
+                        if (adjustedOverdueAmount > 0) {
+                            sectorOverdueProjections[sectorId] = (sectorOverdueProjections[sectorId] || 0) + adjustedOverdueAmount;
                         }
-                        if (futureAmount > 0) {
-                            sectorFutureProjections[sectorId] = (sectorFutureProjections[sectorId] || 0) + futureAmount;
+                        if (adjustedFutureAmount > 0) {
+                            sectorFutureProjections[sectorId] = (sectorFutureProjections[sectorId] || 0) + adjustedFutureAmount;
                         }
                     }
 
-                    addToBranchTotals(overdueAmount + futureAmount, branchProjectionsTotal);
-                    addToBranchTotals(overdueAmount, branchOverdueProjections);
-                    addToBranchTotals(futureAmount, branchFutureProjections);
+                    addToBranchTotals(adjustedTotalAmount, branchProjectionsTotal);
+                    addToBranchTotals(adjustedOverdueAmount, branchOverdueProjections);
+                    addToBranchTotals(adjustedFutureAmount, branchFutureProjections);
 
                     const distributeToMonths = (amount, baseDate, daysCount) => {
                         if (!amount || amount <= 0 || daysCount <= 0) return;
@@ -1002,16 +1024,16 @@ export default function DashboardPage({ navigate, user }) {
                         }
                     };
 
-                    if (overdueAmount > 0 && daysElapsed > 0) {
-                        distributeToMonths(overdueAmount, overlapStart, daysElapsed);
+                    if (adjustedOverdueAmount > 0 && daysElapsed > 0) {
+                        distributeToMonths(adjustedOverdueAmount, overlapStart, daysElapsed);
                     }
-                    if (futureAmount > 0 && daysFuture > 0) {
+                    if (adjustedFutureAmount > 0 && daysFuture > 0) {
                         const futureStart = new Date(overlapStart);
                         futureStart.setDate(futureStart.getDate() + daysElapsed);
-                        distributeToMonths(futureAmount, futureStart, daysFuture);
+                        distributeToMonths(adjustedFutureAmount, futureStart, daysFuture);
                     }
 
-                    if (overdueAmount > 0) {
+                    if (adjustedOverdueAmount > 0) {
                         overdueEntries.push({
                             contractId: contract.id,
                             contractDescription: contract.description || 'N/D',
@@ -1022,11 +1044,11 @@ export default function DashboardPage({ navigate, user }) {
                             branchName: branchId ? (branchMap.get(branchId) || 'N/D') : (sectorId ? 'Generico' : 'N/D'),
                             startDate: overlapStart.toISOString(),
                             endDate: overlapEnd.toISOString(),
-                            lineTotal: expectedTotalInFilter,
-                            lineSpent: spentUpToToday,
-                            overdueAmount,
-                            futureAmount,
-                            remainingAmount: Math.max(0, lineRemaining - overdueAmount - futureAmount)
+                            lineTotal: expectedTotalInFilter * branchShareFactor,
+                            lineSpent: spentUpToToday * branchShareFactor,
+                            overdueAmount: adjustedOverdueAmount,
+                            futureAmount: adjustedFutureAmount,
+                            remainingAmount: Math.max(0, (lineRemaining - overdueAmount - futureAmount) * branchShareFactor)
                         });
                     }
                 });
