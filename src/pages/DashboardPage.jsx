@@ -39,6 +39,8 @@ const formatLabel = (value, fallback = 'N/D') => {
     return String(value);
 };
 
+const formatDateInput = (year, month, day) => new Date(Date.UTC(year, month, day)).toISOString().split('T')[0];
+
 const getSectorIcon = (sectorName, className = "w-5 h-5") => {
     const icons = {
         'Auto': <Car className={className} />,
@@ -509,14 +511,13 @@ export default function DashboardPage({ navigate, user }) {
     const [presetName, setPresetName] = useState('');
     const [isOverdueExpanded, setIsOverdueExpanded] = useState(false);
     
-    // ✅ CORREZIONE: Date corrette (1 gen, 31 dic)
     const [startDate, setStartDate] = useState(() => {
         const currentYear = new Date().getFullYear();
-        return new Date(currentYear, 0, 1).toISOString().split('T')[0];
+        return formatDateInput(currentYear, 0, 1);
     });
     const [endDate, setEndDate] = useState(() => {
         const currentYear = new Date().getFullYear();
-        return new Date(currentYear, 11, 31).toISOString().split('T')[0];
+        return formatDateInput(currentYear, 11, 31);
     });
     
     const [year, setYear] = useState(() => new Date().getFullYear());
@@ -524,12 +525,12 @@ export default function DashboardPage({ navigate, user }) {
     // ✅ CORREZIONE: defaultStartDate e defaultEndDate corretti
     const defaultStartDate = useMemo(() => {
         const currentYear = new Date().getFullYear();
-        return new Date(currentYear, 0, 1).toISOString().split('T')[0];
+        return formatDateInput(currentYear, 0, 1);
     }, []);
     
     const defaultEndDate = useMemo(() => {
         const currentYear = new Date().getFullYear();
-        return new Date(currentYear, 11, 31).toISOString().split('T')[0];
+        return formatDateInput(currentYear, 11, 31);
     }, []);
     
     const hasActiveFilters = useMemo(() => {
@@ -1212,8 +1213,8 @@ export default function DashboardPage({ navigate, user }) {
     
     const resetFilters = () => {
         const currentYear = new Date().getFullYear();
-        setStartDate(new Date(currentYear, 0, 1).toISOString().split('T')[0]);
-        setEndDate(new Date(currentYear, 11, 31).toISOString().split('T')[0]);
+        setStartDate(formatDateInput(currentYear, 0, 1));
+        setEndDate(formatDateInput(currentYear, 11, 31));
         setSelectedSector('all');
         setSelectedBranch('all');
         toast.success("Filtri resettati!");

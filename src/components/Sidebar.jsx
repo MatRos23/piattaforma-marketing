@@ -172,27 +172,6 @@ export default function Sidebar({
                     isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
                 }`}
             >
-                <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-4 shadow-sm shadow-black/40">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/30">
-                            <span className="text-lg font-bold">{userInitial}</span>
-                        </div>
-                        <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-white">
-                                {user?.name || user?.email}
-                            </p>
-                            {user?.name && (
-                                <p className="truncate text-xs font-medium text-slate-400">
-                                    {user?.email}
-                                </p>
-                            )}
-                            <span className="mt-2 inline-flex items-center rounded-full bg-indigo-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.25em] text-indigo-200">
-                                {roleLabel}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-
                 <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-4 shadow-sm shadow-black/40">
                     <div className="flex items-center gap-3">
                         <div className="flex aspect-square w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-500/40">
@@ -234,14 +213,42 @@ export default function Sidebar({
                     ))}
                 </nav>
 
-                <div className="mt-auto rounded-3xl border border-rose-500/20 bg-rose-500/10 p-4 shadow-sm shadow-rose-500/20">
+                <div className="mt-auto space-y-3">
+                    <div className="space-y-3">
+                        <p className="px-2 text-[11px] font-bold uppercase tracking-[0.32em] text-slate-500">
+                            Account
+                        </p>
+                    </div>
+                    <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-4 shadow-sm shadow-black/40">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-800 text-white font-semibold">
+                                {userInitial}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-white">
+                                    {user?.name || user?.email}
+                                </p>
+                                {user?.name && user?.email && (
+                                    <p className="truncate text-xs font-medium text-slate-400">
+                                        {user.email}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="mt-4 flex items-center justify-start">
+                            <span className="inline-flex items-center rounded-full border border-slate-700 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.3em] text-slate-300">
+                                {roleLabel}
+                            </span>
+                        </div>
+                    </div>
+
                     <button
                         type="button"
                         onClick={() => {
                             handleLogout();
                             closeMobileMenu();
                         }}
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition-colors hover:bg-rose-500/30 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm font-semibold text-slate-200 transition-colors hover:border-rose-400 hover:bg-rose-500/10 hover:text-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                     >
                         <LogOut className="h-4 w-4" />
                         Esci

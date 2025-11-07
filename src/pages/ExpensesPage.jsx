@@ -42,14 +42,16 @@ const formatDate = (dateString) => {
     });
 };
 
+const formatDateInput = (year, month, day) => new Date(Date.UTC(year, month, day)).toISOString().split('T')[0];
+
 const getDefaultStartDate = () => {
     const currentYear = new Date().getFullYear();
-    return new Date(currentYear, 0, 1).toISOString().split('T')[0];
+    return formatDateInput(currentYear, 0, 1);
 };
 
 const getDefaultEndDate = () => {
     const currentYear = new Date().getFullYear();
-    return new Date(currentYear, 11, 31).toISOString().split('T')[0];
+    return formatDateInput(currentYear, 11, 31);
 };
 
 // Progress Bar universale con gestione sforamenti

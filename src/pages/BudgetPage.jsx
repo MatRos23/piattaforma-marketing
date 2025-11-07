@@ -32,6 +32,8 @@ import { KpiCard, MultiSelect } from '../components/SharedComponents';
 import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
 import { DEFAULT_COST_DOMAIN } from '../constants/costDomains';
 
+const formatDateInput = (year, month, day) => new Date(Date.UTC(year, month, day)).toISOString().split('T')[0];
+
 const SupplierTableView = ({ suppliers, onManage, sectorMap, showProjections }) => (
     <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl shadow-slate-200/60">
         <div className="overflow-x-auto">
@@ -199,11 +201,11 @@ export default function BudgetPage() {
     const [year, setYear] = useState(() => new Date().getFullYear());
     const [startDate, setStartDate] = useState(() => {
         const currentYear = new Date().getFullYear();
-        return new Date(currentYear, 0, 1).toISOString().split('T')[0];
+        return formatDateInput(currentYear, 0, 1);
     });
     const [endDate, setEndDate] = useState(() => {
         const currentYear = new Date().getFullYear();
-        return new Date(currentYear, 11, 31).toISOString().split('T')[0];
+        return formatDateInput(currentYear, 11, 31);
     });
     const [summaries, setSummaries] = useState([]);
     const [contracts, setContracts] = useState([]);
@@ -243,12 +245,12 @@ export default function BudgetPage() {
 
     const defaultStartDate = useMemo(() => {
         const currentYear = new Date().getFullYear();
-        return new Date(currentYear, 0, 1).toISOString().split('T')[0];
+        return formatDateInput(currentYear, 0, 1);
     }, []);
 
     const defaultEndDate = useMemo(() => {
         const currentYear = new Date().getFullYear();
-        return new Date(currentYear, 11, 31).toISOString().split('T')[0];
+        return formatDateInput(currentYear, 11, 31);
     }, []);
 
     const hasActiveFilters = useMemo(() => {
@@ -836,8 +838,8 @@ export default function BudgetPage() {
 
     const handleYearChange = (newYear) => {
         setYear(newYear);
-        const start = new Date(newYear, 0, 1).toISOString().split('T')[0];
-        const end = new Date(newYear, 11, 31).toISOString().split('T')[0];
+        const start = formatDateInput(newYear, 0, 1);
+        const end = formatDateInput(newYear, 11, 31);
         setStartDate(start);
         setEndDate(end);
     };
