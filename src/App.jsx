@@ -28,9 +28,9 @@ export default function App() {
 
     const renderPage = (page, user, filters) => {
         const userPermissions = {
-            manager: ['dashboard', 'budget', 'expenses', 'settings', 'contracts'],
+            manager: ['dashboard', 'budget', 'expenses', 'operations', 'settings', 'contracts'],
             collaborator: ['dashboard', 'expenses'],
-            admin: ['dashboard', 'expenses', 'budget', 'settings', 'contracts'],
+            admin: ['dashboard', 'expenses', 'operations', 'budget', 'settings', 'contracts'],
         };
         const allowedPages = userPermissions[user.role] || [];
         if (!allowedPages.includes(page)) {
@@ -42,6 +42,8 @@ export default function App() {
                 return <DashboardPage user={user} navigate={navigate} />;
             case 'expenses':
                 return <ExpensesPage user={user} initialFilters={filters} />;
+            case 'operations':
+                return <ExpensesPage user={user} initialFilters={filters} costDomain="operations" />;
             case 'budget':
                 return <BudgetPage user={user} />;
             case 'settings':

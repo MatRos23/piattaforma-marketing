@@ -1,16 +1,16 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { db } from '../firebase/config';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { 
-    PlusCircle, Pencil, Trash2, ChevronDown, Search, Layers, XCircle, Copy, FileSignature, 
-    Paperclip, DollarSign, Calendar, Target, AlertTriangle, CheckCircle, Clock, TrendingUp, 
-    Activity, Zap, Car, Sailboat, Caravan, Building2, ArrowUpDown, LayoutGrid, List,
-    Download, RefreshCw, Eye, ChevronUp, Tag, Building
+    PlusCircle, Pencil, Trash2, Search, Layers, XCircle, FileSignature, Check,
+    Paperclip, DollarSign, Calendar, Target, AlertTriangle, CheckCircle, Clock,
+    Car, Sailboat, Caravan, Building2, ArrowUpDown, SlidersHorizontal, Info, MapPin
 } from 'lucide-react';
 import ContractFormModal from '../components/ContractFormModal';
 import toast from 'react-hot-toast';
-import { KpiCard } from '../components/SharedComponents';
+import { KpiCard, MultiSelect } from '../components/SharedComponents';
+import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
 
 const storage = getStorage();
 
@@ -18,13 +18,6 @@ const storage = getStorage();
 const formatCurrency = (number) => {
     if (typeof number !== 'number' || isNaN(number)) return 'N/A';
     return number.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
-};
-
-const formatDate = (dateString) => {
-    if (!dateString) return 'N/D';
-    return new Date(dateString + 'T00:00:00').toLocaleDateString('it-IT', {
-        day: '2-digit', month: 'short', year: 'numeric'
-    });
 };
 
 const getSectorIcon = (sectorName, className = "w-4 h-4") => {
@@ -41,340 +34,34 @@ const getSectorIcon = (sectorName, className = "w-4 h-4") => {
 // ===== UI COMPONENTS =====
 
 // Progress Bar Component con gestione sforamenti
-const ProgressBar = ({ value }) => {
-    const percentage = Math.round(Math.min(Math.max(value, 0), 200) * 10) / 10;
-    const displayPercentage = Math.min(percentage, 100);
-    
-    const getGradient = () => {
-        if (percentage > 100) return 'from-red-500 to-rose-600';
-        if (percentage >= 100) return 'from-green-500 to-emerald-600';
-        if (percentage >= 85) return 'from-amber-500 to-orange-600';
-        if (percentage > 0) return 'from-blue-500 to-indigo-600';
-        return 'from-gray-300 to-gray-400';
-    };
-    
+const ProgressBar = ({ spentPercentage = 0, overduePercentage = 0 }) => {
+    const safeSpent = Math.max(0, Math.min(spentPercentage, 100));
+    const combined = Math.max(0, Math.min(spentPercentage + overduePercentage, 100));
+    const overdueWidth = Math.max(0, combined - safeSpent);
+    const totalPercentage = Math.max(0, spentPercentage + overduePercentage);
+    const overrunValue = Math.max(0, totalPercentage - 100);
+
     return (
-        <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden relative">
-            <div 
-                className={`h-full rounded-full bg-gradient-to-r ${getGradient()} transition-all duration-700 relative overflow-hidden`} 
-                style={{ width: `${displayPercentage}%` }}
-            >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>
-            </div>
-            {percentage > 100 && (
-                <div className="absolute inset-0 flex items-center justify-end pr-2">
-                    <span className="text-[10px] font-bold text-red-700 drop-shadow-lg">
-                        +{(percentage - 100).toFixed(0)}%
-                    </span>
-                </div>
-            )}
-        </div>
-    );
-};
-
-// Status Badge Component con gestione sforamenti
-const StatusBadge = ({ progress }) => {
-    const badgeStyles = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-all";
-    const roundedProgress = Math.round(progress * 10) / 10;
-    
-    if (roundedProgress > 100) {
-        return (
-            <span className={`${badgeStyles} bg-gradient-to-r from-red-50 to-rose-50 text-red-700 border-red-300`}>
-                <AlertTriangle className="w-3.5 h-3.5" />
-                Sforato +{(roundedProgress - 100).toFixed(1)}%
-            </span>
-        );
-    } else if (roundedProgress === 100) {
-        return (
-            <span className={`${badgeStyles} bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-700 border-emerald-200`}>
-                <CheckCircle className="w-3.5 h-3.5" />
-                Completato
-            </span>
-        );
-    } else if (roundedProgress >= 85) {
-        return (
-            <span className={`${badgeStyles} bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 border-amber-300`}>
-                <Clock className="w-3.5 h-3.5" />
-                In Chiusura
-            </span>
-        );
-    } else if (roundedProgress > 0) {
-        return (
-            <span className={`${badgeStyles} bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border-blue-200`}>
-                <Clock className="w-3.5 h-3.5" />
-                In Corso
-            </span>
-        );
-    } else {
-        return (
-            <span className={`${badgeStyles} bg-gray-100 text-gray-600 border-gray-200`}>
-                <Clock className="w-3.5 h-3.5" />
-                Non Avviato
-            </span>
-        );
-    }
-};
-
-// Contract Card Compatto - Nuovo Design
-// ===== FIX COMPLETO PER ContractCardCompact =====
-// Sostituisci la funzione ContractCardCompact con questa versione corretta
-
-const ContractCardCompact = ({ contract, sectorMap, supplierMap, branchMap, onEdit, onDelete, onDuplicate, onToggle, isExpanded }) => {
-    const primarySectorName = sectorMap.get(contract.effectiveSectors[0]);
-    const utilizationPercentage = contract.totalAmount > 0 
-        ? Math.round((contract.spentAmount / contract.totalAmount) * 1000) / 10
-        : 0;
-    
-    const residuo = contract.totalAmount - contract.spentAmount;
-    const residuoDisplay = Math.abs(residuo) < 0.01 ? 0 : residuo;
-    
-    // Calcola giorni alla scadenza
-    const getDaysToEnd = () => {
-        const endDates = (contract.lineItems || []).map(item => item.endDate).filter(Boolean);
-        if (endDates.length === 0) return null;
-        
-        const nearestEndDate = endDates.sort()[0];
-        const days = Math.ceil((new Date(nearestEndDate) - new Date()) / (1000 * 60 * 60 * 24));
-        
-        return days;
-    };
-    
-    const daysToEnd = getDaysToEnd();
-    const isOverrun = utilizationPercentage > 100;
-    const isCompleted = utilizationPercentage === 100;
-    const isExpiring = daysToEnd && daysToEnd > 0 && daysToEnd <= 30;
-    const isExpired = daysToEnd && daysToEnd <= 0;
-    
-    // NUOVA LOGICA: Funzione per determinare colore bordo e sfondo
-    const getBorderAndBackground = () => {
-        // Priorità 1: Sforato (rosso) - più critico
-        if (isOverrun) {
-            return 'border-red-300 bg-red-50/20';
-        }
-        
-        // Priorità 2: Scaduto (grigio scuro) - già passato
-        if (isExpired) {
-            return 'border-gray-400 bg-gray-50/20';
-        }
-        
-        // Priorità 3: In scadenza entro 30gg (ambra) - attenzione
-        if (isExpiring) {
-            return 'border-amber-300 bg-amber-50/20';
-        }
-        
-        // Priorità 4: Completato esattamente al 100% (verde) - successo!
-        if (isCompleted) {
-            return 'border-emerald-300 bg-emerald-50/20';
-        }
-        
-        // Priorità 5: In corso (blu chiaro)
-        if (utilizationPercentage > 0 && utilizationPercentage < 100) {
-            return 'border-blue-200 bg-blue-50/10';
-        }
-        
-        // Default: Non iniziato o normale
-        return 'border-white/30 bg-white/50';
-    };
-    
-    // Badge aggiuntivo per stato temporale (solo se non sforato)
-    const getTimeBadge = () => {
-        if (isOverrun) return null; // Non mostrare se già sforato
-        
-        if (isExpired) {
-            return (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full text-xs font-bold">
-                    <Clock className="w-3 h-3" />
-                    Scaduto {Math.abs(daysToEnd)}gg fa
-                </span>
-            );
-        }
-        
-        if (isExpiring) {
-            return (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-bold">
-                    <Clock className="w-3 h-3" />
-                    Scade tra {daysToEnd}gg
-                </span>
-            );
-        }
-        
-        return null;
-    };
-    
-    // Icona del settore con colore appropriato
-    const getIconBackground = () => {
-        if (isOverrun) return 'bg-gradient-to-br from-red-500 to-rose-600';
-        if (isCompleted) return 'bg-gradient-to-br from-emerald-500 to-green-600';
-        return 'bg-gradient-to-br from-purple-500 to-pink-600';
-    };
-    
-    return (
-        <div className={`
-            group bg-white/90 backdrop-blur-2xl rounded-2xl shadow-lg 
-            border-2 transition-all duration-300 hover:shadow-2xl
-            ${getBorderAndBackground()}
-        `}>
-            <div className="p-4 lg:p-5">
-                <div className="grid grid-cols-[1fr_auto] lg:grid-cols-[1fr_350px_180px] items-center gap-4">
-                    {/* Colonna 1: Info Base */}
-                    <div className="flex items-center gap-3 min-w-0">
-                        <div className={`p-2.5 rounded-xl text-white shadow-lg flex-shrink-0 ${getIconBackground()}`}>
-    {contract.effectiveSectors?.length > 1 ? 
-        <Layers className="w-5 h-5" /> : 
-        getSectorIcon(primarySectorName, "w-5 h-5")
-    }
-</div>
-                        
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="text-lg font-bold text-gray-900 truncate">
-                                    {supplierMap.get(contract.supplierld) || 'N/D'}
-                                </h3>
-                                <StatusBadge progress={utilizationPercentage} />
-                                {getTimeBadge()}
-                            </div>
-                            
-                            <div className="flex items-center justify-between mt-1">
-    <p className="text-sm text-gray-600 truncate">
-        {contract.description}
-    </p>
-    <div className="flex items-center gap-1.5 flex-shrink-0">
-        {contract.effectiveSectors.map(sectorId => (
-            <div key={sectorId} title={sectorMap.get(sectorId)}>
-            </div>
-        ))}
-    </div>
-</div>
-                        </div>
-                    </div>
-                    
-                    {/* Colonna 2: Metriche */}
-<div className="hidden lg:flex items-center justify-end gap-6">
-    <div className="relative w-14 h-14">
-        <svg className="transform -rotate-90 w-14 h-14">
-            <circle cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="4" fill="none" className="text-gray-200" />
-            <circle
-                cx="28"
-                cy="28"
-                r="24"
-                stroke="currentColor"
-                strokeWidth="4"
-                fill="none"
-                strokeDasharray={`${Math.min(utilizationPercentage, 100) * 1.51} 151`}
-                className={`transition-all duration-700 ${
-                    isOverrun ? 'text-red-500' :
-                    isCompleted ? 'text-emerald-500' :
-                    utilizationPercentage >= 85 ? 'text-amber-500' :
-                    'text-blue-500'
-                }`}
+        <div className="relative w-full h-3 rounded-full bg-slate-200 overflow-hidden">
+            <div
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-700"
+                style={{ width: `${safeSpent}%` }}
             />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-            <span className={`text-xs font-bold ${
-                isOverrun ? 'text-red-600' : 
-                isCompleted ? 'text-emerald-600' :
-                'text-gray-900'
-            }`}>
-                {Math.round(utilizationPercentage)}%
-            </span>
-        </div>
-    </div>
-
-    <div className="flex items-start gap-6">
-        <div className="text-right w-28">
-            <div className="text-xs text-gray-500 font-medium">Valore</div>
-            <div className="text-lg font-black text-gray-900">
-                {formatCurrency(contract.totalAmount)}
-            </div>
-        </div>
-
-        <div className="text-right w-28">
-            <div className="text-xs text-gray-500 font-medium">Residuo</div>
-            <div className={`text-lg font-black ${
-                residuoDisplay < 0 ? 'text-red-600' : 
-                residuoDisplay === 0 ? 'text-gray-600' : 
-                'text-emerald-600'
-            }`}>
-                {formatCurrency(residuoDisplay)}
-            </div>
-        </div>
-    </div>
-</div>
-                    
-                    {/* Colonna 3: Azioni */}
-                    <div className="flex items-center gap-1">
-                        {contract.contractPdfUrl && (
-                            <a href={contract.contractPdfUrl} target="_blank" rel="noopener noreferrer" 
-                               className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-all" 
-                               title="PDF">
-                                <Paperclip className="w-4 h-4" />
-                            </a>
-                        )}
-                        
-                        <button 
-                            onClick={() => onDuplicate(contract)}
-                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" 
-                            title="Duplica">
-                            <Copy className="w-4 h-4" />
-                        </button>
-                        
-                        <button 
-                            onClick={() => onEdit(contract)}
-                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all" 
-                            title="Modifica">
-                            <Pencil className="w-4 h-4" />
-                        </button>
-                        
-                        <button 
-                            onClick={() => onDelete(contract)}
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" 
-                            title="Elimina">
-                            <Trash2 className="w-4 h-4" />
-                        </button>
-                        
-                        {(contract.lineItems || []).length > 0 && (
-                            <button 
-                                onClick={() => onToggle(contract.id)}
-                                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
-                                title="Dettagli">
-                                <ChevronDown className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </div>
-            
-            {/* Dettagli Espandibili - invariato */}
-            {isExpanded && (contract.lineItems || []).length > 0 && (
-                <div className="border-t border-gray-200 bg-gray-50/50 p-4 lg:p-6">
-                    <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2 text-base">
-                        <Activity className="w-4 h-4 text-purple-600" />
-                        Dettaglio Voci Contratto
-                    </h4>
-                    <div className="space-y-3">
-                        {(contract.lineItems || []).map((item, index) => (
-                            <div key={index} className="p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-purple-300 transition-all">
-                                <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
-                                    <div className="flex-1 min-w-0">
-                                        <h5 className="font-semibold text-gray-800 mb-2">{item.description}</h5>
-                                        <div className="flex flex-wrap gap-3 text-sm text-gray-600">
-                                            <span className="flex items-center gap-1">
-                                                <Building2 className="w-3.5 h-3.5 text-purple-600" />
-                                                <span className="font-medium">Filiale:</span> {branchMap.get(item.branchld) || 'N/D'}
-                                            </span>
-                                            <span className="flex items-center gap-1">
-                                                <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                                                <span className="font-medium">Periodo:</span> {formatDate(item.startDate)} - {formatDate(item.endDate)}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="text-right flex-shrink-0">
-                                        <div className="text-lg font-bold text-purple-600">{formatCurrency(item.totalAmount)}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+            {overduePercentage > 0 && (
+                <div
+                    className="absolute inset-y-0 bg-gradient-to-r from-rose-400 to-red-500 transition-all duration-700"
+                    style={{
+                        left: `${safeSpent}%`,
+                        width: `${overdueWidth}%`
+                    }}
+                />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent pointer-events-none" />
+            {overrunValue > 0 && (
+                <div className="absolute inset-0 flex items-center justify-end pr-2">
+                    <span className="text-[10px] font-bold text-rose-600 drop-shadow-lg">
+                        +{overrunValue.toFixed(0)}%
+                    </span>
                 </div>
             )}
         </div>
@@ -384,96 +71,126 @@ const ContractCardCompact = ({ contract, sectorMap, supplierMap, branchMap, onEd
 // Vista Tabella
 const ContractsTableView = ({ contracts, supplierMap, sectorMap, onEdit, onDelete }) => {
     return (
-        <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl overflow-hidden">
+        <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl shadow-blue-200/60">
             <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+                <table className="w-full text-sm text-slate-700">
+                    <thead className="bg-blue-700/95 text-white uppercase text-[11px] font-bold tracking-[0.16em]">
                         <tr>
-                            <th className="px-4 py-3 text-left text-xs font-bold uppercase">Fornitore</th>
-                            <th className="px-4 py-3 text-left text-xs font-bold uppercase hidden lg:table-cell">Descrizione</th>
-                            <th className="px-4 py-3 text-center text-xs font-bold uppercase">Progresso</th>
-                            <th className="px-4 py-3 text-right text-xs font-bold uppercase">Valore</th>
-                            <th className="px-4 py-3 text-right text-xs font-bold uppercase">Speso</th>
-                            <th className="px-4 py-3 text-right text-xs font-bold uppercase">Residuo</th>
-                            <th className="px-4 py-3 text-center text-xs font-bold uppercase">Azioni</th>
+                            <th className="px-5 py-3 text-left">Fornitore</th>
+                            <th className="px-5 py-3 text-left hidden lg:table-cell">Descrizione</th>
+                            <th className="px-5 py-3 text-left hidden xl:table-cell">Settori</th>
+                            <th className="px-5 py-3 text-left">Progresso</th>
+                            <th className="px-5 py-3 text-right">Valore</th>
+                            <th className="px-5 py-3 text-right">Speso</th>
+                            <th className="px-5 py-3 text-right">Scaduto</th>
+                            <th className="px-5 py-3 text-right">Residuo</th>
+                            <th className="px-5 py-3 text-center">Azioni</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="divide-y divide-slate-100 bg-white/70">
                         {contracts.map((contract, index) => {
-                            const utilizationPercentage = Math.round((contract.spentAmount / contract.totalAmount) * 1000) / 10;
-                            const residuo = contract.totalAmount - contract.spentAmount;
-                            const residuoDisplay = Math.abs(residuo) < 0.01 ? 0 : residuo;
-                            const isOverrun = utilizationPercentage > 100;
-                            
+                            const totalAmount = contract.totalAmount || 0;
+                            const spentAmount = contract.spentAmount || 0;
+                            const overdueAmount = contract.overdueAmount || 0;
+                            const residualAmount = typeof contract.residualAmount === 'number'
+                                ? contract.residualAmount
+                                : totalAmount - (spentAmount + overdueAmount);
+                            const spentPercentage = totalAmount > 0 ? (spentAmount / totalAmount) * 100 : 0;
+                            const overduePercentage = totalAmount > 0 ? (overdueAmount / totalAmount) * 100 : 0;
+                            const effectivePercentage = totalAmount > 0
+                                ? ((spentAmount + overdueAmount) / totalAmount) * 100
+                                : (spentAmount > 0 ? Infinity : 0);
+                            const primarySectorId = contract.effectiveSectors?.[0];
+                            const primarySectorName = primarySectorId ? sectorMap.get(primarySectorId) : 'default';
+                            const sectorNames = (contract.effectiveSectors || []).map(id => sectorMap.get(id)).filter(Boolean).join(', ');
+                            const residualDisplay = Math.abs(residualAmount) < 0.01 ? 0 : residualAmount;
+
                             return (
                                 <tr key={contract.id} className={`
-                                    hover:bg-gray-50 transition-colors
-                                    ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}
+                                    hover:bg-blue-50/40 transition-colors
+                                    ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}
                                 `}>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className={`w-2 h-8 rounded-full ${
-                                                isOverrun ? 'bg-red-500' :
-                                                utilizationPercentage >= 85 ? 'bg-amber-500' :
-                                                'bg-emerald-500'
-                                            }`} />
-                                            <div>
-                                                <div className="font-bold text-gray-900">
-                                                    {supplierMap.get(contract.supplierld)}
-                                                </div>
-                                                <div className="text-xs text-gray-500">
-                                                    {contract.effectiveSectors.map(id => sectorMap.get(id)).join(', ')}
-                                                </div>
+                                    <td className="px-5 py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 shadow-inner ring-1 ring-blue-100">
+                                                {getSectorIcon(primarySectorName || 'default', 'w-4 h-4 text-blue-600')}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-semibold text-slate-900 truncate max-w-[180px]">
+                                                    {supplierMap.get(contract.supplierld) || 'N/D'}
+                                                </p>
+                                                {sectorNames && (
+                                                    <p className="text-[11px] font-medium text-slate-400 truncate sm:hidden">
+                                                        {sectorNames}
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3 hidden lg:table-cell">
-                                        <div className="text-sm text-gray-600 truncate max-w-xs">
-                                            {contract.description}
+                                    <td className="px-5 py-4 hidden lg:table-cell">
+                                        <div className="text-sm font-medium text-slate-600 truncate max-w-xs">
+                                            {contract.description || '—'}
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center justify-center gap-2">
-                                            <div className="w-full max-w-[100px] bg-gray-200 rounded-full h-2">
-                                                <div 
-                                                    className={`h-full rounded-full bg-gradient-to-r ${
-                                                        isOverrun ? 'from-red-500 to-rose-600' :
-                                                        utilizationPercentage >= 85 ? 'from-amber-500 to-orange-600' :
-                                                        'from-emerald-500 to-green-600'
-                                                    }`}
-                                                    style={{ width: `${Math.min(utilizationPercentage, 100)}%` }}
+                                    <td className="px-5 py-4 hidden xl:table-cell text-xs font-semibold text-slate-500">
+                                        {sectorNames || '—'}
+                                    </td>
+                                    <td className="px-5 py-4 min-w-[190px]">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex-1 min-w-[120px]">
+                                                <ProgressBar
+                                                    spentPercentage={spentPercentage}
+                                                    overduePercentage={overduePercentage}
                                                 />
                                             </div>
-                                            <span className={`text-xs font-bold ${
-                                                isOverrun ? 'text-red-600' : 'text-gray-900'
-                                            }`}>
-                                                {utilizationPercentage.toFixed(0)}%
+                                            <span className="text-xs font-semibold text-slate-700">
+                                                {Number.isFinite(effectivePercentage) ? `${Math.round(effectivePercentage)}%` : 'N/D'}
                                             </span>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3 text-right font-bold text-gray-900">
-                                        {formatCurrency(contract.totalAmount)}
+                                    <td className="px-5 py-4 text-right font-semibold text-slate-900 whitespace-nowrap">
+                                        {formatCurrency(totalAmount)}
                                     </td>
-                                    <td className="px-4 py-3 text-right font-medium text-gray-700">
-                                        {formatCurrency(contract.spentAmount)}
+                                    <td className="px-5 py-4 text-right font-semibold text-blue-700 whitespace-nowrap">
+                                        {formatCurrency(spentAmount)}
                                     </td>
-                                    <td className={`px-4 py-3 text-right font-bold ${
-                                        residuoDisplay < 0 ? 'text-red-600' : 'text-emerald-600'
-                                        }`}>
-                                        {formatCurrency(residuoDisplay)}
+                                    <td className={`px-5 py-4 text-right font-semibold whitespace-nowrap ${
+                                        overdueAmount > 0 ? 'text-rose-600' : 'text-slate-500'
+                                    }`}>
+                                        {overdueAmount > 0 ? formatCurrency(overdueAmount) : '—'}
                                     </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center justify-center gap-1">
-                                            <button 
+                                    <td className={`px-5 py-4 text-right font-semibold whitespace-nowrap ${
+                                        residualDisplay < 0 ? 'text-rose-600' : residualDisplay === 0 ? 'text-slate-500' : 'text-emerald-600'
+                                    }`}>
+                                        {formatCurrency(residualDisplay)}
+                                    </td>
+                                    <td className="px-5 py-4">
+                                        <div className="flex items-center justify-center gap-1.5">
+                                            <button
                                                 onClick={() => onEdit(contract)}
-                                                className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-all">
+                                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                title="Modifica"
+                                            >
                                                 <Pencil className="w-3.5 h-3.5" />
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => onDelete(contract)}
-                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all">
+                                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                                title="Elimina"
+                                            >
                                                 <Trash2 className="w-3.5 h-3.5" />
                                             </button>
+                                            {contract.contractPdfUrl && (
+                                                <a
+                                                    href={contract.contractPdfUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                    title="Apri PDF"
+                                                >
+                                                    <Paperclip className="w-3.5 h-3.5" />
+                                                </a>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
@@ -496,18 +213,36 @@ export default function ContractsPage({ user }) {
     const [isLoading, setIsLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingContract, setEditingContract] = useState(null);
-    const [expandedRows, setExpandedRows] = useState({});
     const [sectorFilter, setSectorFilter] = useState('all');
+    const [selectedBranch, setSelectedBranch] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOrder, setSortOrder] = useState('progress_desc');
     const [statusFilter, setStatusFilter] = useState('all');
-    const [viewMode, setViewMode] = useState('table'); // 'cards' o 'table'
-    const [supplierFilter, setSupplierFilter] = useState(''); // NUOVO
-    const [dateFilter, setDateFilter] = useState({ startDate: '', endDate: '' }); // NUOVO
+    const [supplierFilter, setSupplierFilter] = useState([]); // multi-select fornitori
+    const [dateFilter, setDateFilter] = useState({ startDate: '', endDate: '' }); // intervallo firma
+    const otherPresetsRef = useRef([]);
+    const [filterPresets, setFilterPresets] = useState(() => {
+        const stored = loadFilterPresets() || [];
+        const contractPresets = [];
+        const others = [];
+        stored.forEach(preset => {
+            if (!preset.scope || preset.scope === 'contracts') {
+                contractPresets.push(preset);
+            } else {
+                others.push(preset);
+            }
+        });
+        otherPresetsRef.current = others;
+        return contractPresets;
+    });
+    const [presetName, setPresetName] = useState('');
+    const presetsMountedRef = useRef(false);
     
     const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers]);
-    const branchMap = useMemo(() => new Map(branches.map(b => [b.id, b.name])), [branches]);
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
+    const orderedBranches = useMemo(() => {
+        return [...branches].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [branches]);
 
     const orderedSectors = useMemo(() => {
         const order = ['Auto', 'Camper&Caravan', 'Yachting', 'Frattin Group'];
@@ -549,179 +284,378 @@ export default function ContractsPage({ user }) {
         return () => unsubs.forEach(unsub => unsub());
     }, [user]);
 
+    useEffect(() => {
+        if (presetsMountedRef.current) {
+            const scopedPresets = filterPresets.map(preset => ({
+                ...preset,
+                scope: 'contracts'
+            }));
+            persistFilterPresets([
+                ...otherPresetsRef.current,
+                ...scopedPresets
+            ]);
+        } else {
+            presetsMountedRef.current = true;
+        }
+    }, [filterPresets]);
+
     const processedContracts = useMemo(() => {
-    let filtered = allContracts.map(contract => {
-        // Calcola valore totale del contratto
-        const totalAmount = (contract.lineItems || []).reduce((sum, item) => sum + (Number(item.totalAmount) || 0), 0);
-        
-        // 🆕 NUOVA LOGICA: Mappa quanto speso per ogni lineItem
-        const lineItemSpentMap = new Map();
-        
-        // Inizializza tutti i lineItems con 0 speso
-        (contract.lineItems || []).forEach(li => {
-            lineItemSpentMap.set(li.id, 0);
-        });
-        
-        // Ordina lineItems per data (per fallback distribuzione temporale)
-        const sortedLineItems = [...(contract.lineItems || [])].sort(
-            (a, b) => new Date(a.startDate) - new Date(b.startDate)
-        );
-        
-        // Calcola quanto è stato speso per ogni lineItem
-        allExpenses.forEach(expense => {
-            (expense.lineItems || []).forEach(item => {
-                if (item.relatedContractId === contract.id) {
-                    const amount = parseFloat(item.amount) || 0;
-                    
-                    if (item.relatedLineItemId) {
-                        // ✅ NUOVO: Spesa collegata a lineItem specifico
-                        const currentSpent = lineItemSpentMap.get(item.relatedLineItemId) || 0;
-                        lineItemSpentMap.set(item.relatedLineItemId, currentSpent + amount);
-                    } else {
-                        // ⚠️ FALLBACK: Distribuzione temporale per spese vecchie
-                        const expenseDate = new Date(expense.date || new Date());
-                        
-                        // Trova lineItems attivi alla data della spesa
-                        const activeLineItems = sortedLineItems.filter(li => {
-                            const start = new Date(li.startDate);
-                            const end = new Date(li.endDate);
-                            return expenseDate >= start && expenseDate <= end;
-                        });
-                        
-                        if (activeLineItems.length === 0 && sortedLineItems.length > 0) {
-                            // Usa primo lineItem se nessuno attivo
-                            const firstId = sortedLineItems[0].id;
-                            const current = lineItemSpentMap.get(firstId) || 0;
-                            lineItemSpentMap.set(firstId, current + amount);
-                        } else if (activeLineItems.length > 0) {
-                            // Distribuisci proporzionalmente
-                            const totalActive = activeLineItems.reduce((sum, li) => sum + (parseFloat(li.totalAmount) || 0), 0);
-                            activeLineItems.forEach(li => {
-                                const proportion = totalActive > 0 ? (parseFloat(li.totalAmount) || 0) / totalActive : 1 / activeLineItems.length;
-                                const allocatedAmount = amount * proportion;
-                                const current = lineItemSpentMap.get(li.id) || 0;
-                                lineItemSpentMap.set(li.id, current + allocatedAmount);
-                            });
+        const dayMs = 24 * 60 * 60 * 1000;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let filtered = allContracts.map(contract => {
+            const rawLineItems = Array.isArray(contract.lineItems) ? contract.lineItems : [];
+            const normalizedLineItems = rawLineItems.map((item, index) => {
+                const normalizedId = item.id || item._key || `${contract.id}-line-${index}`;
+                return { ...item, _normalizedId: normalizedId };
+            });
+
+            const lineItemIdLookup = new Map();
+            normalizedLineItems.forEach(li => {
+                lineItemIdLookup.set(li._normalizedId, li._normalizedId);
+                if (li.id) lineItemIdLookup.set(li.id, li._normalizedId);
+                if (li._key) lineItemIdLookup.set(li._key, li._normalizedId);
+            });
+
+            const lineItemSpent = new Map();
+            const lineItemSpentToDate = new Map();
+            normalizedLineItems.forEach(li => {
+                lineItemSpent.set(li._normalizedId, 0);
+                lineItemSpentToDate.set(li._normalizedId, 0);
+            });
+
+            const allocateToLineItem = (normalizedId, amount, isUpToToday) => {
+                if (!normalizedId || amount === 0) return;
+                lineItemSpent.set(normalizedId, (lineItemSpent.get(normalizedId) || 0) + amount);
+                if (isUpToToday) {
+                    lineItemSpentToDate.set(normalizedId, (lineItemSpentToDate.get(normalizedId) || 0) + amount);
+                }
+            };
+
+            const sortedLineItems = [...normalizedLineItems].sort((a, b) => {
+                const startA = a.startDate ? new Date(a.startDate) : null;
+                const startB = b.startDate ? new Date(b.startDate) : null;
+                if (!startA && !startB) return 0;
+                if (!startA) return 1;
+                if (!startB) return -1;
+                return startA - startB;
+            });
+
+            const distributeAmount = (amount, expenseDate, isUpToToday) => {
+                if (!sortedLineItems.length || amount === 0) return;
+                const activeLineItems = expenseDate
+                    ? sortedLineItems.filter(li => {
+                        if (!li.startDate || !li.endDate) return false;
+                        const start = new Date(li.startDate);
+                        const end = new Date(li.endDate);
+                        start.setHours(0, 0, 0, 0);
+                        end.setHours(0, 0, 0, 0);
+                        return expenseDate >= start && expenseDate <= end;
+                    })
+                    : [];
+
+                if (activeLineItems.length === 0) {
+                    allocateToLineItem(sortedLineItems[0]._normalizedId, amount, isUpToToday);
+                    return;
+                }
+
+                const totalActive = activeLineItems.reduce((sum, li) => sum + (parseFloat(li.totalAmount) || 0), 0);
+                if (totalActive <= 0) {
+                    const share = amount / activeLineItems.length;
+                    activeLineItems.forEach(li => allocateToLineItem(li._normalizedId, share, isUpToToday));
+                    return;
+                }
+
+                activeLineItems.forEach(li => {
+                    const liTotal = parseFloat(li.totalAmount) || 0;
+                    const share = (liTotal / totalActive) * amount;
+                    allocateToLineItem(li._normalizedId, share, isUpToToday);
+                });
+            };
+
+            allExpenses.forEach(expense => {
+                const expenseLineItems = Array.isArray(expense.lineItems) ? expense.lineItems : [];
+                const expenseDate = expense.date ? new Date(`${expense.date}T00:00:00`) : null;
+                if (expenseDate) expenseDate.setHours(0, 0, 0, 0);
+                const isUpToToday = !expenseDate || expenseDate <= today;
+
+                let handled = false;
+                expenseLineItems.forEach(item => {
+                    if (item.relatedContractId === contract.id) {
+                        handled = true;
+                        const amount = parseFloat(item.amount) || 0;
+                        const normalizedId = lineItemIdLookup.get(item.relatedLineItemId || item.relatedLineItemID);
+                        if (normalizedId) {
+                            allocateToLineItem(normalizedId, amount, isUpToToday);
+                        } else {
+                            distributeAmount(amount, expenseDate, isUpToToday);
                         }
                     }
+                });
+
+                if (!handled && expense.relatedContractId === contract.id) {
+                    const amount = parseFloat(expense.amount) || 0;
+                    distributeAmount(amount, expenseDate, isUpToToday);
                 }
             });
-            
-            // Gestisci vecchio formato spese (compatibilità)
-            if (expense.relatedContractId === contract.id && !expense.lineItems) {
-                const amount = parseFloat(expense.amount) || 0;
-                if (sortedLineItems.length > 0) {
-                    const firstId = sortedLineItems[0].id;
-                    const current = lineItemSpentMap.get(firstId) || 0;
-                    lineItemSpentMap.set(firstId, current + amount);
+
+        const enrichedNormalizedLineItems = normalizedLineItems.map(li => {
+            const total = parseFloat(li.totalAmount) || 0;
+            const spent = lineItemSpent.get(li._normalizedId) || 0;
+            const spentUpToToday = lineItemSpentToDate.get(li._normalizedId) || 0;
+            const remaining = Math.max(0, total - spent);
+            let overdue = 0;
+
+                if (total > 0 && li.startDate && li.endDate) {
+                    const start = new Date(li.startDate);
+                    const end = new Date(li.endDate);
+                    if (!isNaN(start) && !isNaN(end)) {
+                        start.setHours(0, 0, 0, 0);
+                        end.setHours(0, 0, 0, 0);
+                        if (today >= start) {
+                            const totalDays = Math.max(1, Math.round((end - start) / dayMs) + 1);
+                            const effectiveEnd = today > end ? end : today;
+                            const elapsedDays = Math.max(0, Math.min(totalDays, Math.round((effectiveEnd - start) / dayMs) + 1));
+                            if (elapsedDays > 0) {
+                                const expectedToDate = (total / totalDays) * elapsedDays;
+                                const shortfall = expectedToDate - Math.min(spentUpToToday, expectedToDate);
+                                overdue = Math.max(0, Math.min(remaining, shortfall));
+                            }
+                        }
                 }
             }
-        });
-        
-        // Calcola totali e statistiche
-        const spentAmount = Array.from(lineItemSpentMap.values()).reduce((sum, val) => sum + val, 0);
-        const progress = totalAmount > 0 ? (spentAmount / totalAmount) * 100 : 0;
-        
-        // Arricchisci lineItems con dati di utilizzo
-        const enrichedLineItems = (contract.lineItems || []).map(li => {
-            const spent = lineItemSpentMap.get(li.id) || 0;
-            const liTotal = parseFloat(li.totalAmount) || 0;
-            const remaining = Math.max(0, liTotal - spent);
-            const utilization = liTotal > 0 ? (spent / liTotal) * 100 : 0;
-            
+
+            const { _normalizedId, ...baseLineItem } = li;
             return {
-                ...li,
+                ...baseLineItem,
                 spent,
+                spentUpToToday,
                 remaining,
-                utilization
+                overdue
             };
         });
-        
-        // Determina settori
-        let sectorsFromSource = [];
-        const lineItemSectors = [...new Set((contract.lineItems || []).map(item => item.sectorld).filter(Boolean))];
-        
-        if (lineItemSectors.length > 0) {
-            sectorsFromSource = lineItemSectors;
-        } else if (contract.associatedSectors && contract.associatedSectors.length > 0) {
-            sectorsFromSource = contract.associatedSectors;
-        } else if (contract.sectorld) {
-            sectorsFromSource = [contract.sectorld];
+
+        const cleanedLineItems = enrichedNormalizedLineItems;
+            const spentAmount = enrichedNormalizedLineItems.reduce((sum, li) => sum + li.spent, 0);
+            const overdueAmount = enrichedNormalizedLineItems.reduce((sum, li) => sum + li.overdue, 0);
+            const totalAmountFromLines = enrichedNormalizedLineItems.reduce((sum, li) => sum + (parseFloat(li.totalAmount) || 0), 0);
+            const totalAmount = totalAmountFromLines || parseFloat(contract.totalAmount) || 0;
+            const residualAmount = totalAmount - (spentAmount + overdueAmount);
+            const progress = totalAmount > 0 ? ((spentAmount + overdueAmount) / totalAmount) * 100 : (spentAmount > 0 ? Infinity : 0);
+            const actualProgress = totalAmount > 0 ? (spentAmount / totalAmount) * 100 : (spentAmount > 0 ? Infinity : 0);
+
+            let sectorsFromSource = [];
+            const lineItemSectors = [...new Set(cleanedLineItems.map(item => item.sectorld).filter(Boolean))];
+
+            if (lineItemSectors.length > 0) {
+                sectorsFromSource = lineItemSectors;
+            } else if (contract.associatedSectors && contract.associatedSectors.length > 0) {
+                sectorsFromSource = contract.associatedSectors;
+            } else if (contract.sectorld) {
+                sectorsFromSource = [contract.sectorld];
+            }
+
+            return {
+                ...contract,
+                totalAmount,
+                spentAmount,
+                overdueAmount,
+                residualAmount,
+                progress,
+                actualProgress,
+                effectiveSectors: sectorsFromSource,
+                lineItems: cleanedLineItems
+            };
+        });
+
+        if (sectorFilter !== 'all') {
+            filtered = filtered.filter(c => c.effectiveSectors.includes(sectorFilter));
         }
-        
-        return { 
-            ...contract, 
-            totalAmount, 
-            spentAmount, 
-            progress, 
-            effectiveSectors: sectorsFromSource,
-            lineItems: enrichedLineItems // ✅ LineItems arricchiti con dati di utilizzo
+
+        if (searchTerm.trim() !== '') {
+            const lowerSearch = searchTerm.toLowerCase();
+            filtered = filtered.filter(c =>
+                (c.description || '').toLowerCase().includes(lowerSearch) ||
+                (supplierMap.get(c.supplierld) || '').toLowerCase().includes(lowerSearch)
+            );
+        }
+
+        if (supplierFilter.length > 0) {
+            filtered = filtered.filter(c => supplierFilter.includes(c.supplierld));
+        }
+
+        if (dateFilter.startDate) {
+            const start = new Date(dateFilter.startDate);
+            start.setHours(0, 0, 0, 0);
+            filtered = filtered.filter(c => {
+                const signingDate = c.signingDate ? new Date(c.signingDate) : null;
+                return signingDate ? signingDate >= start : true;
+            });
+        }
+
+        if (dateFilter.endDate) {
+            const end = new Date(dateFilter.endDate);
+            end.setHours(23, 59, 59, 999);
+            filtered = filtered.filter(c => {
+                const signingDate = c.signingDate ? new Date(c.signingDate) : null;
+                return signingDate ? signingDate <= end : true;
+            });
+        }
+
+        if (selectedBranch !== 'all') {
+            filtered = filtered.filter(c => {
+                if (c.branchld && c.branchld === selectedBranch) return true;
+                return (c.lineItems || []).some(li => (li.branchld || li.branchId) === selectedBranch);
+            });
+        }
+
+        if (statusFilter === 'overrun') {
+            filtered = filtered.filter(c => c.progress > 100);
+        } else if (statusFilter === 'active') {
+            filtered = filtered.filter(c => c.actualProgress > 0 && c.actualProgress < 100);
+        } else if (statusFilter === 'completed') {
+            filtered = filtered.filter(c => c.actualProgress >= 100);
+        } else if (statusFilter === 'not_started') {
+            filtered = filtered.filter(c => c.actualProgress === 0);
+        }
+
+        return filtered.sort((a, b) => {
+            switch (sortOrder) {
+                case 'progress_desc':
+                    return b.progress - a.progress;
+                case 'progress_asc':
+                    return a.progress - b.progress;
+                case 'date_desc':
+                    return new Date(b.signingDate || 0) - new Date(a.signingDate || 0);
+                case 'date_asc':
+                    return new Date(a.signingDate || 0) - new Date(b.signingDate || 0);
+                case 'amount_desc':
+                    return b.totalAmount - a.totalAmount;
+                case 'amount_asc':
+                    return a.totalAmount - b.totalAmount;
+                case 'name_asc':
+                    return (supplierMap.get(a.supplierld) || '').localeCompare(supplierMap.get(b.supplierld) || '');
+                case 'name_desc':
+                    return (supplierMap.get(b.supplierld) || '').localeCompare(supplierMap.get(a.supplierld) || '');
+                default:
+                    return 0;
+            }
+        });
+    }, [
+        allContracts,
+        allExpenses,
+        sectorFilter,
+        searchTerm,
+        statusFilter,
+        sortOrder,
+        supplierMap,
+        supplierFilter,
+        selectedBranch,
+        dateFilter.startDate,
+        dateFilter.endDate
+    ]);
+    const savePreset = useCallback(() => {
+        const name = presetName.trim();
+        if (!name) {
+            toast.error('Inserisci un nome per il preset');
+            return;
+        }
+        const trimmedSearch = searchTerm.trim();
+        const preset = {
+            id: Date.now(),
+            scope: 'contracts',
+            name,
+            searchTerm: trimmedSearch,
+            startDate: dateFilter.startDate,
+            endDate: dateFilter.endDate,
+            selectedSector: sectorFilter,
+            selectedBranch,
+            supplierFilter,
+            statusFilter,
+            sortOrder
         };
-    });
-    
-    // FILTRI (invariati)
-    if (sectorFilter !== 'all') {
-        filtered = filtered.filter(c => c.effectiveSectors.includes(sectorFilter));
-    }
-    
-    if (searchTerm.trim() !== '') {
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter(c => 
-            c.description.toLowerCase().includes(lowerSearch) ||
-            (supplierMap.get(c.supplierld) || '').toLowerCase().includes(lowerSearch)
-        );
-    }
-    
-    if (statusFilter === 'active') {
-        filtered = filtered.filter(c => c.progress > 0 && c.progress < 100);
-    } else if (statusFilter === 'completed') {
-        filtered = filtered.filter(c => c.progress >= 100);
-    } else if (statusFilter === 'not_started') {
-        filtered = filtered.filter(c => c.progress === 0);
-    }
-    
-    // ORDINAMENTO (invariato)
-    return filtered.sort((a, b) => {
-        switch (sortOrder) {
-            case 'progress_desc':
-                return b.progress - a.progress;
-            case 'progress_asc':
-                return a.progress - b.progress;
-            case 'date_desc':
-                return new Date(b.signingDate || 0) - new Date(a.signingDate || 0);
-            case 'date_asc':
-                return new Date(a.signingDate || 0) - new Date(b.signingDate || 0);
-            case 'amount_desc':
-                return b.totalAmount - a.totalAmount;
-            case 'amount_asc':
-                return a.totalAmount - b.totalAmount;
-            case 'name_asc':
-                return (supplierMap.get(a.supplierld) || '').localeCompare(supplierMap.get(b.supplierld) || '');
-            case 'name_desc':
-                return (supplierMap.get(b.supplierld) || '').localeCompare(supplierMap.get(a.supplierld) || '');
-            default:
-                return 0;
-        }
-    });
-}, [allContracts, allExpenses, sectorFilter, searchTerm, statusFilter, sortOrder, supplierMap]);
+        setFilterPresets(prev => {
+            const withoutDuplicates = prev.filter(p => p.name.toLowerCase() !== name.toLowerCase());
+            return [...withoutDuplicates, preset];
+        });
+        setPresetName('');
+        toast.success('Preset salvato');
+    }, [presetName, searchTerm, dateFilter.startDate, dateFilter.endDate, sectorFilter, selectedBranch, supplierFilter, statusFilter, sortOrder]);
+
+    const applyPreset = useCallback((preset) => {
+        setSearchTerm(preset.searchTerm || '');
+        setDateFilter({
+            startDate: preset.startDate ?? '',
+            endDate: preset.endDate ?? ''
+        });
+        setSectorFilter(preset.selectedSector || 'all');
+        setSelectedBranch(preset.selectedBranch || 'all');
+        setSupplierFilter(preset.supplierFilter || []);
+        setStatusFilter(preset.statusFilter || 'all');
+        setSortOrder(preset.sortOrder || 'progress_desc');
+        toast.success(`Preset "${preset.name}" applicato`);
+    }, []);
+
+    const deletePreset = useCallback((id) => {
+        setFilterPresets(prev => prev.filter(p => p.id !== id));
+        toast.success('Preset eliminato');
+    }, []);
 
     const contractStats = useMemo(() => {
         const total = processedContracts.length;
         const totalValue = processedContracts.reduce((sum, c) => sum + c.totalAmount, 0);
         const totalSpent = processedContracts.reduce((sum, c) => sum + c.spentAmount, 0);
-        const active = processedContracts.filter(c => c.progress > 0 && c.progress < 100).length;
-        const completed = processedContracts.filter(c => c.progress === 100).length;
+        const totalOverdue = processedContracts.reduce((sum, c) => sum + (c.overdueAmount || 0), 0);
+        const totalResidual = processedContracts.reduce((sum, c) => sum + (c.residualAmount || 0), 0);
+        const active = processedContracts.filter(c => c.actualProgress > 0 && c.actualProgress < 100).length;
+        const completed = processedContracts.filter(c => c.actualProgress >= 100).length;
         const overrun = processedContracts.filter(c => c.progress > 100).length;
-        const avgUtilization = total > 0 ? (totalSpent / totalValue) * 100 : 0;
-        
-        return { total, totalValue, totalSpent, active, completed, overrun, avgUtilization };
+        const avgUtilization = totalValue > 0 ? ((totalSpent + totalOverdue) / totalValue) * 100 : 0;
+
+        return { total, totalValue, totalSpent, totalOverdue, totalResidual, active, completed, overrun, avgUtilization };
     }, [processedContracts]);
+
+    const kpiCards = useMemo(() => {
+        return [
+            {
+                key: 'total',
+                title: 'Contratti Totali',
+                value: contractStats.total.toString(),
+                subtitle: `${contractStats.active} attivi`,
+                icon: <FileSignature className="w-6 h-6" />,
+                gradient: 'from-blue-500 to-indigo-600'
+            },
+            {
+                key: 'value',
+                title: 'Valore Totale',
+                value: formatCurrency(contractStats.totalValue),
+                subtitle: 'valore complessivo',
+                icon: <DollarSign className="w-6 h-6" />,
+                gradient: 'from-sky-500 to-cyan-500'
+            },
+            {
+                key: 'spent',
+                title: 'Importo Speso',
+                value: formatCurrency(contractStats.totalSpent),
+                subtitle: `+ Scaduto ${formatCurrency(contractStats.totalOverdue)}`,
+                icon: <Target className="w-6 h-6" />,
+                gradient: 'from-indigo-500 to-blue-700'
+            },
+            {
+                key: 'residual',
+                title: 'Residuo Netto',
+                value: formatCurrency(contractStats.totalResidual),
+                subtitle: contractStats.overrun > 0 ? `${contractStats.overrun} sforati` : 'budget disponibile',
+                icon: <CheckCircle className="w-6 h-6" />,
+                gradient: contractStats.overrun > 0 ? 'from-rose-500 to-red-600' : 'from-emerald-500 to-green-600'
+            }
+        ];
+    }, [contractStats]);
 
     const handleOpenAddModal = () => { setEditingContract(null); setIsModalOpen(true); };
     const handleOpenEditModal = (contract) => { setEditingContract(contract); setIsModalOpen(true); };
     const handleCloseModal = () => { setIsModalOpen(false); setEditingContract(null); };
-    const toggleRow = (id) => setExpandedRows(prev => ({...prev, [id]: !prev[id]}));
-
     const handleSaveContract = async (formData, contractFile) => {
         const isEditing = !!formData.id;
         const toastId = toast.loading(isEditing ? 'Aggiornamento...' : 'Salvataggio...');
@@ -759,25 +693,6 @@ export default function ContractsPage({ user }) {
         }
     };
 
-    const handleDuplicateContract = (contractToDuplicate) => {
-        const {
-            id: _ID,
-            createdAt: _CREATED_AT,
-            updatedAt: _UPDATED_AT,
-            authorld: _AUTHOR_ID,
-            authorName: _AUTHOR_NAME,
-            contractPdfUrl: _CONTRACT_PDF_URL,
-            ...restOfContract
-        } = contractToDuplicate;
-        const newContractData = {
-            ...restOfContract,
-            description: `${restOfContract.description || ''} (Copia)`,
-            signingDate: new Date().toISOString().split('T')[0],
-        };
-        setEditingContract(newContractData);
-        setIsModalOpen(true);
-    };
-
     const handleDeleteContract = async (contract) => {
         if (!window.confirm(`Sei sicuro di voler eliminare il contratto "${contract.description}"?`)) return;
         const toastId = toast.loading("Eliminazione in corso...");
@@ -797,10 +712,12 @@ export default function ContractsPage({ user }) {
     const resetFilters = () => {
         setSearchTerm(''); 
         setSectorFilter('all');
+        setSelectedBranch('all');
         setStatusFilter('all');
         setSortOrder('progress_desc');
-        setSupplierFilter(''); // NUOVO
-        setDateFilter({ startDate: '', endDate: '' }); // NUOVO
+        setSupplierFilter([]);
+        setDateFilter({ startDate: '', endDate: '' });
+        setPresetName('');
         toast.success("Filtri resettati!");
     };
 
@@ -808,173 +725,250 @@ export default function ContractsPage({ user }) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
                 <div className="text-center space-y-4">
-                    <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
                     <div className="text-xl font-semibold text-gray-700">Caricamento contratti...</div>
                 </div>
             </div>
         );
     }
 
-    const hasActiveFilters = searchTerm || sectorFilter !== 'all' || statusFilter !== 'all' || sortOrder !== 'progress_desc' || supplierFilter || dateFilter.startDate || dateFilter.endDate;
-    const overrunContracts = processedContracts.filter(c => c.progress > 100);
+    const trimmedSearchTerm = searchTerm.trim();
+    const hasActiveFilters = Boolean(
+        trimmedSearchTerm ||
+        sectorFilter !== 'all' ||
+        selectedBranch !== 'all' ||
+        statusFilter !== 'all' ||
+        sortOrder !== 'progress_desc' ||
+        supplierFilter.length > 0 ||
+        dateFilter.startDate ||
+        dateFilter.endDate
+    );
+    const overrunContracts = processedContracts
+        .filter(c => c.progress > 100)
+        .map(c => ({
+            ...c,
+            budgetOverrun: Math.max(0, (c.spentAmount + (c.overdueAmount || 0)) - c.totalAmount)
+        }));
+    const totalOverrunAmount = overrunContracts.reduce((sum, c) => sum + (c.budgetOverrun || 0), 0);
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative">
             <div className="relative p-4 lg:p-8 space-y-6">
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-700 text-white shadow-lg">
-                            <FileSignature className="w-7 h-7" />
-                        </div>
-                        <div>
-                            <h1 className="text-3xl lg:text-4xl font-black text-gray-900">Gestione Contratti</h1>
-                            <p className="text-gray-600 font-medium mt-1">Monitoraggio e gestione contratti fornitori</p>
+                {/* Hero */}
+                <div className="space-y-6">
+                    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-sky-600 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.3),transparent_55%)]" />
+                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-blue-900/30 ring-4 ring-white/20">
+                                        <FileSignature className="w-7 h-7" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs uppercase tracking-[0.4em] text-white/70 font-semibold">Contratti</p>
+                                        <h1 className="text-3xl lg:text-4xl xl:text-5xl font-black leading-tight">Gestione Contratti</h1>
+                                    </div>
+                                </div>
+                                <p className="text-sm lg:text-base text-white/85 max-w-3xl">
+                                    Monitora accordi e impegni con i fornitori mantenendo un'esperienza coerente con dashboard, spese e budget.
+                                </p>
+                                <div className="flex flex-wrap items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={handleOpenAddModal}
+                                    className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
+                                >
+                                    <PlusCircle className="w-4 h-4" />
+                                    Nuovo contratto
+                                </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <button 
-                        onClick={handleOpenAddModal} 
-                        className="flex items-center justify-center gap-2 h-12 px-6 bg-gradient-to-r from-purple-600 to-pink-700 text-white font-bold rounded-xl hover:shadow-lg transition-all hover:scale-105"
-                    >
-                        <PlusCircle className="w-5 h-5" />
-                        <span className="hidden sm:inline">Nuovo Contratto</span>
-                        <span className="sm:hidden">Nuovo</span>
-                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
+                    {kpiCards.map(({ key, ...card }) => (
+                        <KpiCard key={key} {...card} />
+                    ))}
                 </div>
 
                 {/* Filtri */}
-                <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-6">
-                    <div className="space-y-4">
-                        <div className="flex flex-col lg:flex-row gap-4">
-                            <div className="flex-1">
-                                <div className="relative">
-                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                                    <input 
-                                        type="text" 
-                                        placeholder="Cerca per descrizione o fornitore..." 
-                                        value={searchTerm} 
-                                        onChange={(e) => setSearchTerm(e.target.value)} 
-                                        className="w-full h-12 pl-12 pr-4 bg-white border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/20 transition-all"
+                <div className="bg-gradient-to-br from-blue-50 via-white to-white backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-6 lg:p-8 space-y-6">
+                    <div className="flex items-start gap-4">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-sky-500 text-white shadow-lg shadow-blue-500/20 ring-4 ring-blue-400/20">
+                            <SlidersHorizontal className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-lg font-black text-slate-900">Filtri Contratti</h2>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-[11px] font-bold text-blue-700">
+                                    <Info className="w-3 h-3" />
+                                    Allineati alla dashboard
+                                </span>
+                            </div>
+                            <p className="mt-1 text-sm font-medium text-slate-600">
+                                Definisci ricerche e intervalli temporali per uniformare la lettura dei contratti con le altre sezioni.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        <div className="flex flex-col gap-3 lg:flex-row">
+                            <div className="relative flex-1 min-w-[220px]">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                                <input
+                                    type="text"
+                                    placeholder="Cerca per descrizione, fornitore..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full h-12 rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-sm font-medium text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                                />
+                            </div>
+                            <div className="flex-1 min-w-[220px]">
+                                <MultiSelect
+                                    options={suppliers}
+                                    selected={supplierFilter}
+                                    onChange={(supplierId) => {
+                                        setSupplierFilter(prev =>
+                                            prev.includes(supplierId)
+                                                ? prev.filter(id => id !== supplierId)
+                                                : [...prev, supplierId]
+                                        );
+                                    }}
+                                    placeholder="Tutti i fornitori"
+                                    selectedText={supplierFilter.length
+                                        ? `${supplierFilter.length} fornitore${supplierFilter.length === 1 ? '' : 'i'} selezionat${supplierFilter.length === 1 ? 'o' : 'i'}`
+                                        : undefined}
+                                    searchPlaceholder="Cerca fornitore..."
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+                            <div className="flex flex-col gap-3">
+                                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                    Periodo
+                                </span>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <input
+                                        type="date"
+                                        value={dateFilter.startDate}
+                                        onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                                        className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-600 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                                    />
+                                    <span className="text-slate-400 font-semibold text-sm">→</span>
+                                    <input
+                                        type="date"
+                                        value={dateFilter.endDate}
+                                        onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                                        className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-600 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                                     />
                                 </div>
                             </div>
-                            
-                            {/* NUOVO: Filtro Date */}
-                            <div className="flex gap-2">
-                                <input
-                                    type="date"
-                                    value={dateFilter.startDate}
-                                    onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                                    className="h-12 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/20 transition-all text-sm"
-                                    placeholder="Da"
-                                />
-                                <input
-                                    type="date"
-                                    value={dateFilter.endDate}
-                                    onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                                    className="h-12 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/20 transition-all text-sm"
-                                    placeholder="A"
-                                />
+
+                            <div className="flex flex-col gap-3">
+                                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                    Settori
+                                </span>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSectorFilter('all')}
+                                        className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 ${
+                                            sectorFilter === 'all'
+                                                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30'
+                                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <Layers className={`w-4 h-4 ${sectorFilter === 'all' ? 'text-white' : 'text-blue-600'}`} />
+                                        Tutti i settori
+                                    </button>
+                                    {orderedSectors.map(sector => {
+                                        const isActive = sectorFilter === sector.id;
+                                        const iconClassName = `w-4 h-4 ${isActive ? 'text-white' : 'text-blue-600'}`;
+                                        return (
+                                            <button
+                                                key={sector.id}
+                                                type="button"
+                                                onClick={() => setSectorFilter(sector.id)}
+                                                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 ${
+                                                    isActive
+                                                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30'
+                                                        : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                {getSectorIcon(sector.name, iconClassName)}
+                                                {sector.name}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
-                            
-                            {/* NUOVO: Filtro Fornitore */}
-                            <select
-                                value={supplierFilter}
-                                onChange={(e) => setSupplierFilter(e.target.value)}
-                                className="h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/20 transition-all font-medium min-w-[200px]"
-                            >
-                                <option value="">Tutti i fornitori</option>
-                                {suppliers.map(supplier => (
-                                    <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
-                                ))}
-                            </select>
-                            
-                            {/* Toggle Vista */}
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => setViewMode('cards')}
-                                    className={`p-2 rounded-lg transition-all ${viewMode === 'cards' 
-                                        ? 'bg-purple-100 text-purple-600' 
-                                        : 'text-gray-400 hover:bg-gray-100'}`}
-                                    title="Vista Card"
-                                >
-                                    <LayoutGrid className="w-5 h-5" />
-                                </button>
-                                <button
-                                    onClick={() => setViewMode('table')}
-                                    className={`p-2 rounded-lg transition-all ${viewMode === 'table' 
-                                        ? 'bg-purple-100 text-purple-600' 
-                                        : 'text-gray-400 hover:bg-gray-100'}`}
-                                    title="Vista Tabella"
-                                >
-                                    <List className="w-5 h-5" />
-                                </button>
+                            <div className="flex flex-col gap-3">
+                                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                    Filiali
+                                </span>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedBranch('all')}
+                                        className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 ${
+                                            selectedBranch === 'all'
+                                                ? 'bg-gradient-to-r from-slate-600 to-slate-800 text-white shadow-lg shadow-slate-500/30'
+                                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <MapPin className="w-4 h-4" />
+                                        Tutte le Filiali
+                                    </button>
+                                    {orderedBranches.map(branch => {
+                                        const isActive = selectedBranch === branch.id;
+                                        return (
+                                            <button
+                                                key={branch.id}
+                                                type="button"
+                                                onClick={() => setSelectedBranch(branch.id)}
+                                                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 ${
+                                                    isActive
+                                                        ? 'bg-gradient-to-r from-slate-600 to-slate-800 text-white shadow-lg shadow-slate-500/30'
+                                                        : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                <MapPin className="w-4 h-4" />
+                                                {branch.name || 'N/D'}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
-                        
-                        {/* Filtri Settore */}
-                        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
-                            <div className="flex items-center gap-2 lg:gap-3 flex-wrap w-full xl:w-auto">
-                                <button 
-                                    onClick={() => setSectorFilter('all')} 
-                                    className={`px-3 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-bold transition-all duration-300 flex items-center gap-1 lg:gap-2 hover:scale-105 ${
-                                        sectorFilter === 'all' 
-                                            ? 'bg-gradient-to-r from-purple-600 to-pink-700 text-white shadow-lg' 
-                                            : 'bg-white/80 border-2 border-gray-200 text-gray-700 hover:bg-gray-50'
-                                    }`}
-                                >
-                                    <Layers className="w-3 h-3 lg:w-4 lg:h-4" /> 
-                                    <span className="hidden sm:inline">Tutti i Settori</span>
-                                    <span className="sm:hidden">Tutti</span>
-                                </button>
-                                {orderedSectors.map(sector => {
-                                    const isActive = sectorFilter === sector.id;
-                                    const iconClassName = `w-3 h-3 lg:w-4 lg:h-4 ${isActive ? 'text-white' : 'text-gray-400'}`;
-                                    return (
-                                        <button 
-                                            key={sector.id} 
-                                            onClick={() => setSectorFilter(sector.id)} 
-                                            className={`px-3 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-bold transition-all duration-300 flex items-center gap-1 lg:gap-2 hover:scale-105 ${
-                                                isActive 
-                                                    ? 'bg-gradient-to-r from-purple-600 to-pink-700 text-white shadow-lg' 
-                                                    : 'bg-white/80 border-2 border-gray-200 text-gray-700 hover:bg-gray-50'
-                                            }`}
-                                        >
-                                            {getSectorIcon(sector.name, iconClassName)}
-                                            <span className="hidden sm:inline">{sector.name}</span>
-                                            <span className="sm:hidden">{sector.name.includes('&') ? sector.name.split('&')[0] : sector.name}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            {hasActiveFilters && (
-                                <button 
-                                    onClick={resetFilters}
-                                    className="text-xs lg:text-sm font-bold text-red-600 hover:text-white transition-all duration-300 flex items-center gap-1 lg:gap-2 bg-red-100 hover:bg-gradient-to-r hover:from-red-500 hover:to-pink-600 px-3 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl hover:shadow-lg hover:scale-105 w-full xl:w-auto justify-center xl:justify-start"
-                                >
-                                    <XCircle className="w-3 h-3 lg:w-4 lg:h-4" />Reset Filtri
-                                </button>
-                            )}
-                        </div>
-                        
-                        {/* Filtri Stato e Ordinamento */}
-                        <div className="border-t border-gray-200 pt-4">
-                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                                {/* Filtri Stato Rapidi */}
+
+                        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                            <div className="flex flex-col gap-2">
+                                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                    Stato contratti
+                                </span>
                                 <div className="flex flex-wrap gap-2">
                                     <button
+                                        type="button"
                                         onClick={() => setStatusFilter('all')}
-                                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                                            statusFilter === 'all' ? 'bg-purple-600 text-white' : 'bg-gray-100 hover:bg-gray-200'
+                                        className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                                            statusFilter === 'all'
+                                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
+                                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                                         }`}
                                     >
                                         Tutti ({contractStats.total})
                                     </button>
                                     {contractStats.overrun > 0 && (
                                         <button
+                                            type="button"
                                             onClick={() => setStatusFilter('overrun')}
-                                            className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-1 transition-all ${
-                                                statusFilter === 'overrun' ? 'bg-red-600 text-white' : 'bg-gray-100 hover:bg-gray-200'
+                                            className={`px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-1 transition-all ${
+                                                statusFilter === 'overrun'
+                                                    ? 'bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-lg shadow-rose-500/30'
+                                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                                             }`}
                                         >
                                             <AlertTriangle className="w-3 h-3" />
@@ -982,156 +976,198 @@ export default function ContractsPage({ user }) {
                                         </button>
                                     )}
                                     <button
+                                        type="button"
                                         onClick={() => setStatusFilter('active')}
-                                        className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-1 transition-all ${
-                                            statusFilter === 'active' ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'
+                                        className={`px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-1 transition-all ${
+                                            statusFilter === 'active'
+                                                ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-500/30'
+                                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                                         }`}
                                     >
                                         <Clock className="w-3 h-3" />
-                                        In Corso ({contractStats.active})
+                                        In corso ({contractStats.active})
                                     </button>
                                     <button
+                                        type="button"
                                         onClick={() => setStatusFilter('completed')}
-                                        className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-1 transition-all ${
-                                            statusFilter === 'completed' ? 'bg-emerald-600 text-white' : 'bg-gray-100 hover:bg-gray-200'
+                                        className={`px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-1 transition-all ${
+                                            statusFilter === 'completed'
+                                                ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-500/30'
+                                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                                         }`}
                                     >
                                         <CheckCircle className="w-3 h-3" />
                                         Completati ({contractStats.completed})
                                     </button>
                                 </div>
-                                
-                                {/* Ordinamento */}
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                                    <span className="text-sm font-bold text-gray-600 flex items-center gap-1.5">
-                                        <ArrowUpDown className="w-4 h-4" />
-                                        Ordina:
-                                    </span>
-                                    <select
-                                        value={sortOrder}
-                                        onChange={(e) => setSortOrder(e.target.value)}
-                                        className="h-10 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/20 transition-all text-sm font-semibold"
-                                    >
-                                        <option value="progress_desc">Progresso ↓</option>
-                                        <option value="progress_asc">Progresso ↑</option>
-                                        <option value="amount_desc">Importo ↓</option>
-                                        <option value="amount_asc">Importo ↑</option>
-                                        <option value="date_desc">Data Firma ↓</option>
-                                        <option value="date_asc">Data Firma ↑</option>
-                                        <option value="name_asc">Nome A-Z</option>
-                                        <option value="name_desc">Nome Z-A</option>
-                                    </select>
-                                </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <span className="text-sm font-bold text-slate-600 flex items-center gap-1.5">
+                                    <ArrowUpDown className="w-4 h-4" />
+                                    Ordina:
+                                </span>
+                                <select
+                                    value={sortOrder}
+                                    onChange={(e) => setSortOrder(e.target.value)}
+                                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                >
+                                    <option value="progress_desc">Progresso ↓</option>
+                                    <option value="progress_asc">Progresso ↑</option>
+                                    <option value="amount_desc">Importo ↓</option>
+                                    <option value="amount_asc">Importo ↑</option>
+                                    <option value="date_desc">Data firma ↓</option>
+                                    <option value="date_asc">Data firma ↑</option>
+                                    <option value="name_asc">Nome A-Z</option>
+                                    <option value="name_desc">Nome Z-A</option>
+                                </select>
                             </div>
                         </div>
-                    </div>
-                </div>
+                        <div className="border-t border-slate-200 pt-4 space-y-3">
+                            <span className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
+                                Preset salvati
+                            </span>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                                <input
+                                    type="text"
+                                    value={presetName}
+                                    onChange={(e) => setPresetName(e.target.value)}
+                                    placeholder="Nome preset (es. Direzione Q1)"
+                                    className="w-full sm:flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={savePreset}
+                                    disabled={!presetName.trim()}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-blue-500/30 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <Check className="w-4 h-4" />
+                                    Salva preset
+                                </button>
+                            </div>
+                            {filterPresets.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                    {filterPresets.map(preset => (
+                                        <div
+                                            key={preset.id}
+                                            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-semibold text-slate-600 shadow-sm"
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => applyPreset(preset)}
+                                                className="hover:text-blue-600 transition-colors"
+                                            >
+                                                {preset.name}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => deletePreset(preset.id)}
+                                                className="text-slate-400 hover:text-rose-500 transition-colors"
+                                            >
+                                                <XCircle className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-xs font-medium text-slate-400">
+                                    Salva le combinazioni di filtri per riutilizzarle rapidamente nelle altre pagine.
+                                </p>
+                            )}
+                        </div>
 
-                {/* KPI Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-                    <KpiCard 
-                        title="Contratti Totali" 
-                        value={contractStats.total.toString()}
-                        subtitle={`${contractStats.active} attivi`}
-                        icon={<FileSignature className="w-6 h-6" />}
-                        gradient="from-purple-500 to-pink-600"
-                    />
-                    <KpiCard 
-                        title="Valore Totale" 
-                        value={formatCurrency(contractStats.totalValue)}
-                        subtitle="valore complessivo"
-                        icon={<DollarSign className="w-6 h-6" />}
-                        gradient="from-blue-500 to-indigo-600"
-                    />
-                    <KpiCard 
-                        title="Importo Speso" 
-                        value={formatCurrency(contractStats.totalSpent)}
-                        subtitle={`${contractStats.avgUtilization.toFixed(0)}% utilizzato`}
-                        icon={<Target className="w-6 h-6" />}
-                        gradient="from-emerald-500 to-green-600"
-                    />
-                    <KpiCard 
-                        title="Completati" 
-                        value={contractStats.completed.toString()}
-                        subtitle={contractStats.overrun > 0 ? `${contractStats.overrun} sforati` : "contratti al 100%"}
-                        icon={<CheckCircle className="w-6 h-6" />}
-                        gradient={contractStats.overrun > 0 ? "from-red-500 to-rose-600" : "from-amber-500 to-orange-600"}
-                    />
+                        {hasActiveFilters && (
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={resetFilters}
+                                    className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-red-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-rose-500/30 transition-all hover:scale-105"
+                                >
+                                    <XCircle className="w-4 h-4" />
+                                    Resetta filtri
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Alert Contratti Sforati */}
                 {overrunContracts.length > 0 && (
-                    <div className="bg-gradient-to-r from-red-50 to-rose-50 border-2 border-red-300 rounded-2xl p-4 lg:p-6 flex items-start gap-3">
-                        <div className="p-2 bg-red-100 rounded-lg flex-shrink-0">
-                            <AlertTriangle className="w-5 h-5 text-red-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <h4 className="font-bold text-red-900 mb-1 text-sm lg:text-base">
-                                Attenzione: {overrunContracts.length} Contratt{overrunContracts.length > 1 ? 'i Sforati' : 'o Sforato'}
-                            </h4>
-                            <p className="text-xs lg:text-sm text-red-700">
-                                Hai superato il budget previsto in {overrunContracts.length} contratt{overrunContracts.length > 1 ? 'i' : 'o'}. 
-                                Totale sforamento: {formatCurrency(
-                                    overrunContracts.reduce((sum, c) => sum + (c.spentAmount - c.totalAmount), 0)
-                                )}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                                {overrunContracts.map(c => (
-                                    <span key={c.id} className="text-xs bg-white px-2 py-1 rounded-lg border border-red-200">
-                                        {supplierMap.get(c.supplierld)} (+{(c.progress - 100).toFixed(1)}%)
-                                    </span>
-                                ))}
+                    <div className="rounded-3xl border border-white/40 bg-white/95 shadow-xl shadow-blue-200/50 p-5 lg:p-7 space-y-4">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-3">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-red-500 text-white shadow-lg shadow-rose-500/30">
+                                    <AlertTriangle className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h4 className="text-base font-black text-slate-900">
+                                        {overrunContracts.length} contratt{overrunContracts.length > 1 ? 'i' : 'o'} oltre budget
+                                    </h4>
+                                    <p className="text-sm font-medium text-slate-600">
+                                        Rivedi impegni e condizioni per riportare le spese entro i limiti pianificati.
+                                    </p>
+                                </div>
                             </div>
+                            <div className="rounded-2xl border border-rose-100 px-4 py-3 text-right bg-white">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                                    Sforamento complessivo
+                                </p>
+                                <p className="text-xl font-black text-rose-600">
+                                    {formatCurrency(totalOverrunAmount)}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {overrunContracts.map(c => (
+                                <span
+                                    key={c.id}
+                                    className="inline-flex items-center gap-2 rounded-full border border-rose-100 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
+                                >
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-blue-600 shadow-sm ring-1 ring-blue-100">
+                                        {getSectorIcon(
+                                            sectorMap.get(c.effectiveSectors?.[0]) || 'default',
+                                            'w-3.5 h-3.5 text-blue-600'
+                                        )}
+                                    </span>
+                                    <div className="flex flex-col">
+                                        <span className="truncate max-w-[150px]">{supplierMap.get(c.supplierld) || 'N/D'}</span>
+                                        <div className="flex items-center gap-1 text-[11px]">
+                                        <span className="font-bold text-rose-600">{formatCurrency(c.budgetOverrun || 0)}</span>
+                                            <span className="font-semibold text-rose-400">+{(c.progress - 100).toFixed(1)}%</span>
+                                        </div>
+                                    </div>
+                                </span>
+                            ))}
                         </div>
                     </div>
                 )}
 
                 {/* Lista Contratti o Tabella */}
                 {processedContracts.length > 0 ? (
-                    viewMode === 'cards' ? (
-                        <div className="space-y-4">
-                            {processedContracts.map(contract => (
-                                <ContractCardCompact
-                                    key={contract.id}
-                                    contract={contract}
-                                    sectorMap={sectorMap}
-                                    supplierMap={supplierMap}
-                                    branchMap={branchMap}
-                                    onEdit={handleOpenEditModal}
-                                    onDelete={handleDeleteContract}
-                                    onDuplicate={handleDuplicateContract}
-                                    onToggle={toggleRow}
-                                    isExpanded={expandedRows[contract.id]}
-                                />
-                            ))}
-                        </div>
-                    ) : (
-                        <ContractsTableView
-                            contracts={processedContracts}
-                            supplierMap={supplierMap}
-                            sectorMap={sectorMap}
-                            onEdit={handleOpenEditModal}
-                            onDelete={handleDeleteContract}
-                        />
-                    )
+                    <ContractsTableView
+                        contracts={processedContracts}
+                        supplierMap={supplierMap}
+                        sectorMap={sectorMap}
+                        onEdit={handleOpenEditModal}
+                        onDelete={handleDeleteContract}
+                    />
                 ) : (
                     <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center">
-                        <div className="p-4 rounded-2xl bg-purple-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
-                            <FileSignature className="w-8 h-8 text-purple-600" />
+                        <div className="p-4 rounded-2xl bg-blue-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
+                            <FileSignature className="w-8 h-8 text-blue-600" />
                         </div>
                         <h3 className="text-xl font-bold text-gray-800 mb-4">Nessun Contratto Trovato</h3>
                         <p className="text-gray-600 mb-6">Non ci sono contratti che corrispondono ai filtri selezionati.</p>
                         {hasActiveFilters ? (
                             <button 
                                 onClick={resetFilters}
-                                className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-700 text-white font-semibold rounded-xl hover:shadow-lg transition-all hover:scale-105"
+                                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all hover:scale-105"
                             >
                                 Resetta Filtri
                             </button>
                         ) : (
                             <button 
                                 onClick={handleOpenAddModal}
-                                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-700 text-white font-semibold rounded-xl hover:shadow-lg transition-all hover:scale-105"
+                                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all hover:scale-105"
                             >
                                 <PlusCircle className="w-5 h-5" />
                                 Crea il primo contratto

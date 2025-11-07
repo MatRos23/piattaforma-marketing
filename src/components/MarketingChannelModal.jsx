@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { X, RadioTower } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { COST_DOMAINS, DEFAULT_COST_DOMAIN } from '../constants/costDomains';
 
 export default function MarketingChannelModal({ isOpen, onClose, onSave, initialData, categories }) {
     const [name, setName] = useState('');
     const [categoryId, setCategoryId] = useState('');
+    const [domainId, setDomainId] = useState(DEFAULT_COST_DOMAIN);
 
     useEffect(() => {
         if (isOpen) {
             setName(initialData?.name || '');
             setCategoryId(initialData?.categoryId || '');
+            const initialDomain = initialData?.domain && COST_DOMAINS[initialData.domain]
+                ? initialData.domain
+                : DEFAULT_COST_DOMAIN;
+            setDomainId(initialDomain);
         }
     }, [isOpen, initialData]);
 
@@ -19,7 +25,7 @@ export default function MarketingChannelModal({ isOpen, onClose, onSave, initial
         if (!name.trim() || !categoryId) {
             return toast.error("Nome e categoria sono obbligatori.");
         }
-        onSave({ name: name.trim(), categoryId });
+        onSave({ name: name.trim(), categoryId, domain: domainId });
     };
 
     return (
@@ -47,6 +53,20 @@ export default function MarketingChannelModal({ isOpen, onClose, onSave, initial
                             onChange={(e) => setName(e.target.value)} 
                             className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-slate-500 focus:ring-4 focus:ring-slate-500/20 transition-all" 
                         />
+                    </div>
+                    <div>
+                        <label className="text-sm font-semibold text-gray-700 block mb-1">Area di costo</label>
+                        <select
+                            value={domainId}
+                            onChange={(e) => setDomainId(e.target.value)}
+                            className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-slate-500 focus:ring-4 focus:ring-slate-500/20 transition-all"
+                        >
+                            {Object.values(COST_DOMAINS).map(domain => (
+                                <option key={domain.id} value={domain.id}>
+                                    {domain.label}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                     <div>
                         <label className="text-sm font-semibold text-gray-700 block mb-1">Categoria di Appartenenza</label>

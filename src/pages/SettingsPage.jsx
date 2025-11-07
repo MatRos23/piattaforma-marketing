@@ -3,93 +3,85 @@ import { db } from '../firebase/config';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, query, onSnapshot, addDoc, doc, deleteDoc, updateDoc, orderBy, serverTimestamp, setDoc, where } from 'firebase/firestore';
-import { Users, Layers, Building2, RadioTower, Link2, PlusCircle, Pencil, Trash2, Search, ShoppingCart, Car, Sailboat, Caravan, DollarSign, Settings, Target, X, AlertCircle, CheckCircle } from 'lucide-react';
+import { Users, Layers, Building2, RadioTower, Link2, PlusCircle, Search, ShoppingCart, Car, Sailboat, Caravan, DollarSign, Settings, Target, AlertCircle, CheckCircle } from 'lucide-react';
 import AssociationModal from '../components/AssociationModal';
 import UserPermissionsModal from '../components/UserPermissionsModal';
 import AddUserModal from '../components/AddUserModal';
 import MarketingChannelModal from '../components/MarketingChannelModal';
 import SimpleAddModal from '../components/SimpleAddModal';
 import SectorBudgetModal from '../components/SectorBudgetModal';
+import SettingsListItem from '../components/SettingsListItem';
+import { KpiCard } from '../components/SharedComponents';
 import toast from 'react-hot-toast';
-
-const SettingsListItem = ({ children, onEdit, onDelete, variant = 'default' }) => {
-    const variantStyles = {
-        default: 'bg-white/70 hover:border-indigo-200',
-        sector: 'bg-gradient-to-br from-indigo-50/50 to-purple-50/50 hover:border-indigo-300',
-        supplier: 'bg-gradient-to-br from-amber-50/50 to-orange-50/50 hover:border-amber-300',
-        user: 'bg-gradient-to-br from-blue-50/50 to-cyan-50/50 hover:border-blue-300',
-    };
-
-    return (
-        <li className={`flex justify-between items-center p-4 rounded-xl border-2 border-white hover:shadow-lg transition-all group ${variantStyles[variant]}`}>
-            <div className="flex-1 min-w-0">{children}</div>
-            <div className="flex items-center gap-2 ml-4 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                {onEdit && (
-                    <button onClick={onEdit} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-100 rounded-lg transition-all" title="Modifica">
-                        <Pencil size={16} />
-                    </button>
-                )}
-                {onDelete && (
-                    <button onClick={onDelete} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-100 rounded-lg transition-all" title="Elimina">
-                        <Trash2 size={16} />
-                    </button>
-                )}
-            </div>
-        </li>
-    );
-};
+import { COST_DOMAINS, DEFAULT_COST_DOMAIN } from '../constants/costDomains';
 
 const sectorIcons = {
-    'Auto': <Car className="w-5 h-5" />,
-    'Camper&Caravan': <Caravan className="w-5 h-5" />,
-    'Yachting': <Sailboat className="w-5 h-5" />,
-    'Frattin Group': <Building2 className="w-5 h-5" />,
-    'default': <DollarSign className="w-5 h-5" />,
+    'Auto': <Car className="w-5 h-5 text-slate-600" />,
+    'Camper&Caravan': <Caravan className="w-5 h-5 text-slate-600" />,
+    'Yachting': <Sailboat className="w-5 h-5 text-slate-600" />,
+    'Frattin Group': <Building2 className="w-5 h-5 text-slate-600" />,
+    'default': <DollarSign className="w-5 h-5 text-slate-600" />,
 };
 
 const getSectorIcon = (sectorName) => sectorIcons[sectorName] || sectorIcons.default;
+
+const HERO_DESCRIPTIONS = {
+    sector_budgets: "Verifica gli stanziamenti annuali e monitora l'utilizzo dei budget per ogni settore.",
+    suppliers: 'Mantieni aggiornato il catalogo fornitori e associa rapidamente i canali disponibili.',
+    branches: 'Gestisci filiali e punti vendita collegando i settori di competenza.',
+    sectors: 'Crea o modifica i settori aziendali per mantenere coerenti tutte le analisi.',
+    marketing_channels: 'Organizza i canali marketing e definisci categorie per segmentare gli investimenti.',
+    channel_categories: 'Raggruppa i canali per categoria così da velocizzare report e assegnazioni.',
+    users: 'Definisci ruoli e canali assegnati per garantire accessi coerenti al team.',
+    default:
+        "Configura strutture, fornitori e permessi con un'interfaccia coerente e sincronizzata con il resto della piattaforma.",
+};
+
+const QUICK_ADD_LABELS = {
+    suppliers: 'Nuovo fornitore',
+    branches: 'Nuova filiale',
+    sectors: 'Nuovo settore',
+    marketing_channels: 'Nuovo canale',
+    channel_categories: 'Nuova categoria',
+    users: 'Nuovo utente',
+};
 
 const TabButton = ({ tabKey, label, icon, activeTab, setActiveTab, count }) => {
     const isActive = activeTab === tabKey;
     const Icon = icon;
     return (
-        <button 
+        <button
+            type="button"
             onClick={() => setActiveTab(tabKey)}
-            className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 ${
-                isActive 
-                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg scale-105' 
-                    : 'text-gray-600 hover:bg-white/60 hover:text-indigo-700 hover:scale-105'
+            aria-pressed={isActive}
+            className={`group relative flex items-center gap-3 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+                isActive
+                    ? 'border-transparent bg-gradient-to-r from-slate-800 via-slate-700 to-slate-900 text-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.9)]'
+                    : 'border-white/60 bg-white/70 text-slate-600 hover:-translate-y-[1px] hover:border-indigo-200/80 hover:bg-white'
             }`}
         >
-            <Icon size={18} />
-            <span className="hidden sm:inline">{label}</span>
-            {count !== undefined && (
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                    isActive ? 'bg-white/20' : 'bg-indigo-100 text-indigo-700'
-                }`}>
+            <div
+                className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border transition-all duration-300 ${
+                    isActive
+                        ? 'border-white/30 bg-white/20 text-white shadow-inner shadow-indigo-900/30'
+                        : 'border-slate-200 bg-white text-indigo-500 group-hover:border-indigo-200/70 group-hover:text-indigo-500'
+                }`}
+            >
+                <Icon className="w-4 h-4" />
+            </div>
+            <span className="whitespace-nowrap">{label}</span>
+            {typeof count === 'number' && (
+                <span
+                    className={`ml-1 inline-flex items-center justify-center rounded-xl px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.2em] ${
+                        isActive ? 'bg-white/25 text-white' : 'bg-indigo-100 text-indigo-600'
+                    }`}
+                >
                     {count}
                 </span>
             )}
         </button>
     );
 };
-
-const KpiCard = ({ title, value, icon, gradient }) => (
-    <div className="group relative bg-white/90 backdrop-blur-2xl rounded-2xl shadow-lg border border-white/30 p-5 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-        <div className="absolute -right-4 -top-4 text-gray-200/50 opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500">
-            {React.cloneElement(icon, { className: "w-20 h-20" })}
-        </div>
-        <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-3">
-                <div className={`p-2 rounded-lg bg-gradient-to-br ${gradient} text-white shadow-md`}>
-                    {React.cloneElement(icon, { className: "w-5 h-5" })}
-                </div>
-                <p className="text-xs font-bold text-gray-600 tracking-wide uppercase">{title}</p>
-            </div>
-            <p className="text-2xl lg:text-3xl font-black text-gray-900">{value}</p>
-        </div>
-    </div>
-);
 
 export default function SettingsPage({ user }) {
     const [sectors, setSectors] = useState([]);
@@ -102,9 +94,14 @@ export default function SettingsPage({ user }) {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('sector_budgets');
     const [searchTerms, setSearchTerms] = useState({});
-    
-    const [sectorBudgets, setSectorBudgets] = useState(new Map());
+    const [availableBudgetYears, setAvailableBudgetYears] = useState(() => {
+        const current = new Date().getFullYear();
+        return [current, current - 1, current - 2];
+    });
     const [budgetYear, setBudgetYear] = useState(new Date().getFullYear());
+    const [isAddingBudgetYear, setIsAddingBudgetYear] = useState(false);
+    const [newBudgetYearInput, setNewBudgetYearInput] = useState('');
+    const [sectorBudgets, setSectorBudgets] = useState(new Map());
     const [editingSectorBudget, setEditingSectorBudget] = useState(null);
 
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
@@ -137,6 +134,15 @@ export default function SettingsPage({ user }) {
         return () => unsubscribe();
     }, [budgetYear]);
 
+    useEffect(() => {
+        setAvailableBudgetYears(prev => {
+            if (prev.includes(budgetYear)) {
+                return prev;
+            }
+            return [...prev, budgetYear].sort((a, b) => b - a);
+        });
+    }, [budgetYear]);
+
     const combinedSectorData = useMemo(() => {
         return sectors.map(sector => ({
             ...sector,
@@ -147,6 +153,38 @@ export default function SettingsPage({ user }) {
     const handleOpenModal = (type, data = null) => setModalState({ isOpen: true, type, data });
     const handleCloseModal = () => { setModalState({ isOpen: false, type: null, data: null }); setEditingSectorBudget(null); };
     const handleSearchChange = (e) => setSearchTerms(prev => ({ ...prev, [activeTab]: e.target.value }));
+    const handleStartAddBudgetYear = () => {
+        setIsAddingBudgetYear(true);
+        setNewBudgetYearInput('');
+    };
+    const handleCancelAddBudgetYear = () => {
+        setIsAddingBudgetYear(false);
+        setNewBudgetYearInput('');
+    };
+    const handleConfirmAddBudgetYear = () => {
+        const parsedYear = parseInt(newBudgetYearInput, 10);
+        if (Number.isNaN(parsedYear) || parsedYear < 2000 || parsedYear > 2100) {
+            toast.error("Inserisci un anno valido tra 2000 e 2100.");
+            return;
+        }
+        if (availableBudgetYears.includes(parsedYear)) {
+            toast.error("Anno già presente in elenco.");
+            setBudgetYear(parsedYear);
+            setIsAddingBudgetYear(false);
+            setNewBudgetYearInput('');
+            return;
+        }
+        setAvailableBudgetYears(prev => [...prev, parsedYear].sort((a, b) => b - a));
+        setBudgetYear(parsedYear);
+        setIsAddingBudgetYear(false);
+        setNewBudgetYearInput('');
+    };
+    const handleBudgetYearInputKeyDown = (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            handleConfirmAddBudgetYear();
+        }
+    };
     
     const handleOpenSectorBudgetModal = (sector) => setEditingSectorBudget(sector);
     
@@ -294,11 +332,60 @@ export default function SettingsPage({ user }) {
         branches: { label: 'Filiali', icon: Building2, modalType: 'branch', collectionName: 'branches' },
         sectors: { label: 'Settori', icon: Layers, modalType: 'sector', collectionName: 'sectors' },
         marketing_channels: { label: 'Canali Marketing', icon: RadioTower, modalType: 'marketing_channel', collectionName: 'marketing_channels' },
-        channel_categories: { label: 'Categorie', icon: Link2, modalType: 'category', collectionName: 'channel_categories' },
-        users: { label: 'Utenti', icon: Users, modalType: 'user_permissions', addModalType: 'add_user', collectionName: 'users' },
+    channel_categories: { label: 'Categorie', icon: Link2, modalType: 'category', collectionName: 'channel_categories' },
+    users: { label: 'Utenti', icon: Users, modalType: 'user_permissions', addModalType: 'add_user', collectionName: 'users' },
+};
+
+    const activeTabInfo = TABS[activeTab];
+    const heroDescription = HERO_DESCRIPTIONS[activeTab] || HERO_DESCRIPTIONS.default;
+    const tabCounts = useMemo(() => ({
+        sector_budgets: combinedSectorData.length,
+        suppliers: suppliers.length,
+        branches: branches.length,
+        sectors: sectors.length,
+        marketing_channels: marketingChannels.length,
+        channel_categories: channelCategories.length,
+        users: allUsers.length,
+    }), [combinedSectorData, suppliers, branches, sectors, marketingChannels, channelCategories, allUsers]);
+    const budgetYearsOptions = useMemo(() => [...availableBudgetYears].sort((a, b) => b - a), [availableBudgetYears]);
+    const activeTabCount = tabCounts[activeTab] ?? 0;
+    const heroHighlights = useMemo(() => {
+        const base = [
+            {
+                key: 'sync',
+                icon: CheckCircle,
+                title: 'Cataloghi sincronizzati',
+                description: 'Ogni modifica è disponibile subito nella dashboard e nei moduli operativi.',
+            },
+        ];
+
+        if (activeTab === 'users') {
+            base.push({
+                key: 'permissions',
+                icon: AlertCircle,
+                title: 'Permessi sensibili',
+                description: "Dopo ogni aggiornamento avvisa l'utente di eseguire nuovamente l'accesso.",
+            });
+        } else {
+            base.push({
+                key: 'associations',
+                icon: Link2,
+                title: 'Associazioni guidate',
+                description: 'Collega rapidamente settori, canali e filiali direttamente dal tab attivo.',
+            });
+        }
+
+        return base;
+    }, [activeTab]);
+    const canAddOnActiveTab = activeTab !== 'sector_budgets';
+    const quickAddLabel = QUICK_ADD_LABELS[activeTab] || 'Nuovo elemento';
+    const handleQuickAdd = () => {
+        if (!canAddOnActiveTab || !activeTabInfo) return;
+        handleOpenModal(activeTabInfo.addModalType || activeTabInfo.modalType);
     };
 
     const currentSearchTerm = searchTerms[activeTab] || '';
+    const ICON_WRAPPER_BASE = 'flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200/80 bg-white text-slate-500';
     const filterItems = (items) => items.filter(item => item.name?.toLowerCase().includes(currentSearchTerm.toLowerCase()));
 
     const renderTabContent = () => {
@@ -335,15 +422,15 @@ export default function SettingsPage({ user }) {
                 const associatedSectorNames = item.associatedSectors?.map(id => sectorMap.get(id)).filter(Boolean).join(', ');
                 
                 return (
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-xl flex-shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className={`${ICON_WRAPPER_BASE} flex-shrink-0`}>
                             {primarySectorName ? getSectorIcon(primarySectorName) : defaultIcon}
                         </div>
                         <div className="min-w-0 flex-1">
-                            <p className="font-bold text-gray-900 truncate text-lg">{item.name}</p>
+                            <p className="text-sm font-semibold text-slate-900 truncate">{item.name}</p>
                             {associatedSectorNames && (
-                                <p className="text-sm text-gray-600 truncate mt-1">
-                                    <span className="font-semibold">Settori:</span> {associatedSectorNames}
+                                <p className="text-xs text-slate-500 truncate mt-1">
+                                    <span className="font-medium text-slate-600">Settori:</span> {associatedSectorNames}
                                 </p>
                             )}
                         </div>
@@ -356,29 +443,74 @@ export default function SettingsPage({ user }) {
             case 'sector_budgets':
                 return (
                     <div>
-                        <div className="flex justify-end mb-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                             <select 
                                 value={budgetYear} 
-                                onChange={e => setBudgetYear(parseInt(e.target.value))} 
-                                className="h-12 px-4 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all font-semibold"
+                                onChange={e => {
+                                    const value = parseInt(e.target.value, 10);
+                                    if (!Number.isNaN(value)) {
+                                        setBudgetYear(value);
+                                    }
+                                }} 
+                                className="h-11 rounded-2xl border border-slate-200 bg-white/90 px-4 text-sm font-semibold text-slate-700 shadow-inner transition-all focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-300/60"
                             >
-                                {[0, -1, -2].map(offset => { 
-                                    const y = new Date().getFullYear() + offset; 
-                                    return <option key={y} value={y}>{y}</option>; 
-                                })}
+                                {budgetYearsOptions.map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
                             </select>
+                            {isAddingBudgetYear ? (
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min="2000"
+                                        max="2100"
+                                        placeholder="Es. 2026"
+                                        value={newBudgetYearInput}
+                                        onChange={(event) => setNewBudgetYearInput(event.target.value)}
+                                        onKeyDown={handleBudgetYearInputKeyDown}
+                                        className="h-11 w-28 rounded-2xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-inner transition-all focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-300/60"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleConfirmAddBudgetYear}
+                                        className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800"
+                                    >
+                                        Aggiungi
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleCancelAddBudgetYear}
+                                        className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-300 px-3 text-sm font-semibold text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-700"
+                                    >
+                                        Annulla
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={handleStartAddBudgetYear}
+                                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-300 px-4 text-sm font-semibold text-slate-600 transition-all hover:border-slate-400 hover:text-slate-800"
+                                >
+                                    <PlusCircle className="w-4 h-4" />
+                                    Nuovo anno
+                                </button>
+                            )}
                         </div>
                         <ul className="space-y-3">
                             {combinedSectorData.map(item => (
                                 <SettingsListItem key={item.id} onEdit={() => handleOpenSectorBudgetModal(item)} variant="sector">
-                                    <div className="flex items-center justify-between w-full">
-                                        <div className="flex items-center gap-4">
-                                            <div className="p-3 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-xl">
+                                    <div className="flex items-center justify-between w-full gap-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`${ICON_WRAPPER_BASE} border-indigo-200/60 text-indigo-500`}>
                                                 {getSectorIcon(item.name)}
                                             </div>
-                                            <p className="font-bold text-gray-900 text-lg">{item.name}</p>
+                                            <div className="flex flex-col">
+                                                <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                                                <span className="text-xs font-medium text-slate-500">Budget {budgetYear}</span>
+                                            </div>
                                         </div>
-                                        <span className="font-black text-2xl bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                                        <span className="text-sm font-semibold text-slate-700">
                                             {item.budget.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
                                         </span>
                                     </div>
@@ -388,27 +520,43 @@ export default function SettingsPage({ user }) {
                     </div>
                 );
             case 'suppliers':
-                return renderAssociationList(suppliers, TABS.suppliers.collectionName, TABS.suppliers.modalType, <ShoppingCart className="w-5 h-5 text-indigo-600" />, 'supplier');
+                return renderAssociationList(suppliers, TABS.suppliers.collectionName, TABS.suppliers.modalType, <ShoppingCart className="w-5 h-5 text-slate-500" />, 'supplier');
             case 'branches':
-                return renderAssociationList(branches, TABS.branches.collectionName, TABS.branches.modalType, <Building2 className="w-5 h-5 text-indigo-600" />, 'default');
+                return renderAssociationList(branches, TABS.branches.collectionName, TABS.branches.modalType, <Building2 className="w-5 h-5 text-slate-500" />, 'branch');
             case 'sectors':
                 return renderList(sectors, TABS.sectors.collectionName, TABS.sectors.modalType, (item) => (
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-xl">
+                    <div className="flex items-center gap-3">
+                        <div className={ICON_WRAPPER_BASE}>
                             {getSectorIcon(item.name)}
                         </div>
-                        <p className="font-bold text-gray-900 text-lg">{item.name}</p>
+                        <p className="text-sm font-semibold text-slate-900">{item.name}</p>
                     </div>
                 ), 'sector');
             case 'marketing_channels':
             case 'channel_categories': {
                 const channelItems = activeTab === 'marketing_channels' ? marketingChannels : channelCategories;
                 return renderList(channelItems, TABS[activeTab].collectionName, TABS[activeTab].modalType, (item) => (
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-xl">
-                            <RadioTower className="w-5 h-5 text-indigo-600" />
+                    <div className="flex items-center justify-between gap-4 w-full">
+                        <div className="flex items-center gap-3">
+                            <div className={ICON_WRAPPER_BASE}>
+                                <RadioTower className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                                {activeTab === 'marketing_channels' && (
+                                    <span
+                                        className="mt-1 inline-flex items-center rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600"
+                                    >
+                                        {COST_DOMAINS[item.domain]?.shortLabel || COST_DOMAINS[DEFAULT_COST_DOMAIN].shortLabel}
+                                    </span>
+                                )}
+                            </div>
                         </div>
-                        <p className="font-bold text-gray-900 text-lg">{item.name}</p>
+                        {activeTab === 'marketing_channels' && item.categoryId && (
+                            <span className="text-xs font-medium text-slate-500">
+                                {channelCategories.find(cat => cat.id === item.categoryId)?.name || '—'}
+                            </span>
+                        )}
                     </div>
                 ), 'default');
             }
@@ -418,17 +566,17 @@ export default function SettingsPage({ user }) {
                         {filterItems(allUsers).map(item => (
                             <SettingsListItem key={item.id} onEdit={() => handleOpenModal('user_permissions', item)} onDelete={() => handleDeleteUser(item.id)} variant="user">
                                 <div className="flex items-center justify-between w-full">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center text-white font-bold text-lg shadow-lg">
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200/80 bg-white text-slate-600 font-semibold">
                                             {item.name?.charAt(0)?.toUpperCase() || item.email?.charAt(0)?.toUpperCase() || 'U'}
                                         </div>
                                         <div>
-                                            <p className="font-bold text-gray-900 text-lg">{item.name}</p>
-                                            <p className="text-sm text-gray-600">{item.email}</p>
+                                            <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                                            <p className="text-xs text-slate-500">{item.email}</p>
                                         </div>
                                     </div>
-                                    <span className="text-xs font-bold uppercase bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-800 px-4 py-2 rounded-xl border-2 border-indigo-200">
-                                        {item.role}
+                                    <span className="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600">
+                                        {item.role || '—'}
                                     </span>
                                 </div>
                             </SettingsListItem>
@@ -446,96 +594,188 @@ export default function SettingsPage({ user }) {
         totalBranches: branches.length,
         totalUsers: allUsers.length,
     }), [sectors, suppliers, branches, allUsers]);
+    const statCards = [
+        {
+            key: 'sectors',
+            title: 'Settori',
+            value: stats.totalSectors.toString(),
+            icon: <Layers className="w-6 h-6" />,
+            gradient: 'from-indigo-500 via-purple-500 to-indigo-600',
+            subtitle: 'Anagrafica business unit',
+            onClick: () => setActiveTab('sectors'),
+        },
+        {
+            key: 'suppliers',
+            title: 'Fornitori',
+            value: stats.totalSuppliers.toString(),
+            icon: <ShoppingCart className="w-6 h-6" />,
+            gradient: 'from-amber-500 via-orange-500 to-rose-500',
+            subtitle: 'Catalogo partner e media',
+            onClick: () => setActiveTab('suppliers'),
+        },
+        {
+            key: 'branches',
+            title: 'Filiali',
+            value: stats.totalBranches.toString(),
+            icon: <Building2 className="w-6 h-6" />,
+            gradient: 'from-emerald-500 via-teal-500 to-cyan-500',
+            subtitle: 'Punti vendita e sedi',
+            onClick: () => setActiveTab('branches'),
+        },
+        {
+            key: 'users',
+            title: 'Utenti',
+            value: stats.totalUsers.toString(),
+            icon: <Users className="w-6 h-6" />,
+            gradient: 'from-blue-500 via-indigo-500 to-purple-500',
+            subtitle: 'Ruoli e permessi',
+            onClick: () => setActiveTab('users'),
+        },
+    ];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200">
             <div className="relative p-4 lg:p-8 space-y-6">
-                {/* Header */}
-                <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-700 text-white shadow-lg">
-                        <Settings className="w-7 h-7" />
-                    </div>
-                    <div>
-                        <h1 className="text-3xl lg:text-4xl font-black text-gray-900">Impostazioni</h1>
-                        <p className="text-gray-600 font-medium mt-1">Gestisci le entità principali della piattaforma</p>
+                {/* Hero */}
+                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-2xl border border-white/10 p-6 lg:p-10">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.35),transparent_55%)]" />
+                    <div className="relative flex flex-col gap-6">
+                        <div className="flex flex-wrap items-center gap-4">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-indigo-900/30 ring-4 ring-white/20">
+                                <Settings className="w-7 h-7 lg:w-8 lg:h-8" />
+                            </div>
+                            <div>
+                                <p className="text-xs uppercase tracking-[0.4em] text-white/70 font-semibold">Control Room</p>
+                                <h1 className="text-3xl lg:text-4xl xl:text-5xl font-black leading-tight">
+                                    Centro Impostazioni
+                                </h1>
+                            </div>
+                        </div>
+                        <p className="text-sm lg:text-base text-white/85 max-w-3xl">{heroDescription}</p>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <span className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.3em] text-white/80">
+                                {activeTabInfo?.label || 'Seleziona un tab'}
+                            </span>
+                            <span className="text-xs font-semibold text-white/80">
+                                Elementi totali: {activeTabCount}
+                            </span>
+                            {canAddOnActiveTab && (
+                                <button
+                                    type="button"
+                                    onClick={handleQuickAdd}
+                                    className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 backdrop-blur-sm transition-all hover:-translate-y-[1px] hover:bg-white/25"
+                                >
+                                    <PlusCircle className="w-4 h-4" />
+                                    {quickAddLabel}
+                                </button>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {heroHighlights.map((highlight) => {
+                                const Icon = highlight.icon;
+                                return (
+                                    <div
+                                        key={highlight.key}
+                                        className="flex items-start gap-3 rounded-2xl bg-white/12 px-4 py-3 backdrop-blur-sm shadow-[0_25px_60px_-40px_rgba(15,23,42,0.6)]"
+                                    >
+                                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white/15 text-white shadow-inner shadow-indigo-900/25">
+                                            <Icon className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-white">{highlight.title}</p>
+                                            <p className="text-xs text-white/75 leading-relaxed">{highlight.description}</p>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
 
-                {/* KPI Cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <KpiCard 
-                        title="Settori" 
-                        value={stats.totalSectors.toString()} 
-                        icon={<Layers className="w-6 h-6" />} 
-                        gradient="from-indigo-500 to-purple-600" 
-                    />
-                    <KpiCard 
-                        title="Fornitori" 
-                        value={stats.totalSuppliers.toString()} 
-                        icon={<ShoppingCart className="w-6 h-6" />} 
-                        gradient="from-amber-500 to-orange-600" 
-                    />
-                    <KpiCard 
-                        title="Filiali" 
-                        value={stats.totalBranches.toString()} 
-                        icon={<Building2 className="w-6 h-6" />} 
-                        gradient="from-emerald-500 to-green-600" 
-                    />
-                    <KpiCard 
-                        title="Utenti" 
-                        value={stats.totalUsers.toString()} 
-                        icon={<Users className="w-6 h-6" />} 
-                        gradient="from-blue-500 to-cyan-600" 
-                    />
-                </div>
-
-                {/* Tabs */}
-                <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 p-3">
-                    <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                        {Object.entries(TABS).map(([key, { label, icon }]) => ( 
-                            <TabButton 
-                                key={key} 
-                                tabKey={key} 
-                                label={label} 
-                                icon={icon} 
-                                activeTab={activeTab} 
-                                setActiveTab={setActiveTab}
-                                count={
-                                    key === 'sector_budgets' ? sectors.length :
-                                    key === 'suppliers' ? suppliers.length :
-                                    key === 'branches' ? branches.length :
-                                    key === 'sectors' ? sectors.length :
-                                    key === 'marketing_channels' ? marketingChannels.length :
-                                    key === 'channel_categories' ? channelCategories.length :
-                                    key === 'users' ? allUsers.length : undefined
-                                }
+                {/* Stat Overview */}
+                <div className="bg-white/85 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-6">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Panoramica</p>
+                            <h2 className="text-xl lg:text-2xl font-black text-slate-900">Struttura organizzativa</h2>
+                            <p className="mt-1 text-sm font-medium text-slate-600">
+                                Accedi rapidamente alle entità più utilizzate della piattaforma.
+                            </p>
+                        </div>
+                        <span className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.24em] text-slate-600">
+                            <Layers className="w-4 h-4" />
+                            Dati aggiornati in tempo reale
+                        </span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        {statCards.map((card) => (
+                            <KpiCard
+                                key={card.key}
+                                title={card.title}
+                                value={card.value}
+                                icon={card.icon}
+                                gradient={card.gradient}
+                                subtitle={card.subtitle}
+                                onClick={card.onClick}
                             />
                         ))}
                     </div>
                 </div>
 
-                {/* Content Area */}
-                <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6">
-                    <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
-                        <div className="relative flex-grow">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                            <input 
-                                type="text" 
-                                placeholder={`Cerca in ${TABS[activeTab].label}...`} 
-                                value={currentSearchTerm} 
-                                onChange={handleSearchChange} 
-                                className="w-full md:w-96 h-12 pl-11 pr-4 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all"
+                {/* Configuratore */}
+                <div className="rounded-3xl border border-white/30 bg-white/90 backdrop-blur-xl shadow-2xl p-5 lg:p-6 space-y-6">
+                    <div className="space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Cataloghi configurabili</p>
+                                <h3 className="text-lg lg:text-xl font-black text-slate-900">Seleziona l'area da gestire</h3>
+                            </div>
+                            <span className="inline-flex items-center gap-2 rounded-2xl bg-indigo-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.24em] text-indigo-600">
+                                <Target className="w-4 h-4" />
+                                {activeTabInfo?.label || '—'}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                            {Object.entries(TABS).map(([key, { label, icon }]) => (
+                                <TabButton
+                                    key={key}
+                                    tabKey={key}
+                                    label={label}
+                                    icon={icon}
+                                    activeTab={activeTab}
+                                    setActiveTab={setActiveTab}
+                                    count={tabCounts[key]}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="relative flex-1 min-w-[220px]">
+                            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder={`Cerca in ${activeTabInfo?.label?.toLowerCase() || 'questa sezione'}...`}
+                                value={currentSearchTerm}
+                                onChange={handleSearchChange}
+                                className="h-12 w-full rounded-2xl border border-slate-200 bg-white/90 pl-12 pr-4 text-sm font-medium text-slate-700 shadow-inner transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
                             />
                         </div>
-                        {activeTab !== 'sector_budgets' && (
-                            <button 
-                                onClick={() => handleOpenModal(TABS[activeTab].addModalType || TABS[activeTab].modalType)} 
-                                className="h-12 flex items-center justify-center gap-2 px-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all hover:scale-105"
-                            >
-                                <PlusCircle size={20} />
-                                <span className="hidden sm:inline">Aggiungi</span>
-                            </button>
-                        )}
+                        <div className="flex flex-wrap items-center gap-3">
+                            <span className="inline-flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                                <span className="uppercase tracking-[0.22em] text-[10px] text-slate-400">Disponibili</span>
+                                <span className="text-sm font-bold text-slate-900">{activeTabCount}</span>
+                            </span>
+                            {canAddOnActiveTab && (
+                                <button
+                                    type="button"
+                                    onClick={handleQuickAdd}
+                                    className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 text-sm font-semibold text-white shadow-lg shadow-slate-900/30 transition-all hover:-translate-y-[1px] hover:bg-slate-800"
+                                >
+                                    <PlusCircle className="w-5 h-5" />
+                                    {quickAddLabel}
+                                </button>
+                            )}
+                        </div>
                     </div>
                     {renderTabContent()}
                 </div>

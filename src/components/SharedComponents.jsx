@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronDown, Check, TrendingUp, TrendingDown } from 'lucide-react';
+import { ChevronDown, Check } from 'lucide-react';
 
 //MultiSelect
 export const MultiSelect = ({
@@ -74,7 +74,7 @@ export const MultiSelect = ({
 };
 
 //KPI Card
-export const KpiCard = React.memo(({ title, value, icon, gradient, subtitle, trend, onClick }) => (
+export const KpiCard = React.memo(({ title, value, icon, gradient, subtitle, onClick }) => (
     <div 
         onClick={onClick}
         className={`group relative bg-white/90 backdrop-blur-2xl rounded-2xl lg:rounded-3xl shadow-lg border border-white/30 p-5 lg:p-6 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden ${onClick ? 'cursor-pointer' : ''}`}
@@ -91,18 +91,6 @@ export const KpiCard = React.memo(({ title, value, icon, gradient, subtitle, tre
             </div>
             <p className="text-2xl lg:text-3xl font-black text-gray-900 leading-tight">{value}</p>
             {subtitle && <p className="text-sm text-gray-500 font-medium mt-1">{subtitle}</p>}
-            {trend && (
-                <div className="flex items-center gap-1 mt-2">
-                    {trend.direction === 'up' ? (
-                        <TrendingUp className="w-3 h-3 text-emerald-600" />
-                    ) : (
-                        <TrendingDown className="w-3 h-3 text-red-600" />
-                    )}
-                    <span className={`text-xs font-bold ${trend.direction === 'up' ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {trend.value}
-                    </span>
-                </div>
-            )}
         </div>
     </div>
 ));

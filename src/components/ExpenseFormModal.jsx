@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { FileText, X, PlusCircle, Trash2, Link, List, Paperclip, ChevronDown, Check, ShoppingCart, FileSignature, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { v4 as uuidv4 } from 'uuid';
+import { COST_DOMAINS, DEFAULT_COST_DOMAIN } from '../constants/costDomains';
 
 // --- Componente MultiSelect ---
 const MultiSelect = ({ options, selected, onChange }) => {
@@ -79,18 +80,43 @@ const formatCurrency = (number) => {
     return number.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 };
 
-export default function ExpenseFormModal({ 
-    isOpen, 
-    onClose, 
-    onSave, 
-    initialData, 
-    suppliers, 
-    sectors, 
-    branches, 
-    contracts, 
-    marketingChannels 
+export default function ExpenseFormModal({
+    isOpen,
+    onClose,
+    onSave,
+    initialData,
+    suppliers,
+    sectors,
+    branches,
+    contracts,
+    marketingChannels,
+    domainConfigs = COST_DOMAINS,
+    defaultCostDomain = DEFAULT_COST_DOMAIN,
+    domainOptions,
+    allowDomainSwitch = false,
 }) {
-    
+    const resolvedDomainOptions = useMemo(() => {
+        if (Array.isArray(domainOptions) && domainOptions.length > 0) {
+            return domainOptions;
+        }
+        return Object.values(domainConfigs).map((config) => ({
+            id: config.id,
+            label: config.label,
+        }));
+    }, [domainOptions, domainConfigs]);
+
+    const defaultDomainId = useMemo(() => {
+        if (defaultCostDomain && domainConfigs[defaultCostDomain]) {
+            return defaultCostDomain;
+        }
+        return DEFAULT_COST_DOMAIN;
+    }, [defaultCostDomain, domainConfigs]);
+
+    const getDomainConfig = useCallback(
+        (domainId) => domainConfigs[domainId] || domainConfigs[DEFAULT_COST_DOMAIN] || COST_DOMAINS[DEFAULT_COST_DOMAIN],
+        [domainConfigs]
+    );
+
     const defaultLineItem = useMemo(() => ({
         _key: Math.random(),
         description: '',
@@ -102,18 +128,22 @@ export default function ExpenseFormModal({
         relatedLineItemId: '', // ⭐ NUOVO CAMPO
     }), []);
 
-    const defaultFormData = useMemo(() => ({
-        supplierId: '',
-        date: new Date().toISOString().split('T')[0],
-        description: '',
-        relatedContractId: '',
-        requiresContract: true,
-        isAmortized: false,
-        amortizationStartDate: '',
-        amortizationEndDate: '',
-        lineItems: [defaultLineItem],
-        contractLinkType: 'single',
-    }), [defaultLineItem]);
+    const defaultFormData = useMemo(() => {
+        const domainConfig = getDomainConfig(defaultDomainId);
+        return {
+            supplierId: '',
+            date: new Date().toISOString().split('T')[0],
+            description: '',
+            relatedContractId: '',
+            requiresContract: domainConfig?.defaultRequiresContract ?? true,
+            isAmortized: false,
+            amortizationStartDate: '',
+            amortizationEndDate: '',
+            lineItems: [defaultLineItem],
+            contractLinkType: 'single',
+            costDomain: domainConfig?.id || defaultDomainId,
+        };
+    }, [defaultDomainId, defaultLineItem, getDomainConfig]);
 
     const [formData, setFormData] = useState(defaultFormData);
     const [invoiceFile, setInvoiceFile] = useState(null);
@@ -122,38 +152,56 @@ export default function ExpenseFormModal({
     const [contractLineItems, setContractLineItems] = useState([]);
     const [selectedContract, setSelectedContract] = useState(null);
 
-    useEffect(() => {
-        if (isOpen) {
-            if (initialData) {
-                const enrichedLineItems = (initialData.lineItems && initialData.lineItems.length > 0)
-                    ? initialData.lineItems.map(item => ({
-                        ...item,
-                        _key: Math.random(),
-                        amount: item.amount || '',
-                        sectorId: item.sectorId || item.sectorld || initialData.sectorId || initialData.sectorld,
-                        branchIds: item.assignmentId ? [item.assignmentId] : [],
-                        marketingChannelId: item.marketingChannelId || item.marketingChannelld,
-                        relatedLineItemId: item.relatedLineItemId || '', // ⭐ NUOVO
-                    }))
-                    : [{ ...defaultLineItem, _key: Math.random() }];
+    const activeDomainConfig = useMemo(
+        () => getDomainConfig(formData.costDomain || defaultDomainId),
+        [formData.costDomain, getDomainConfig, defaultDomainId]
+    );
 
-                const linkType = enrichedLineItems.some(li => li.relatedContractId) ? 'line' : 'single';
-                
-                setFormData({ 
-                    ...initialData,
-                    supplierId: initialData.supplierId || initialData.supplierld,
-                    contractLinkType: linkType,
-                    requiresContract: initialData.requiresContract !== undefined ? initialData.requiresContract : true,
-                    lineItems: enrichedLineItems,
-                });
-            } else {
-                setFormData(defaultFormData);
-            }
-            setInvoiceFile(null);
-            setContractLineItems([]);
-            setSelectedContract(null);
+    const channelLabel = activeDomainConfig?.lineItemChannelLabel || 'Canale Marketing';
+    const channelPlaceholder = activeDomainConfig?.lineItemChannelPlaceholder || 'Seleziona...';
+    const channelRequired = activeDomainConfig?.lineItemChannelRequired !== false;
+
+    useEffect(() => {
+        if (!isOpen) return;
+
+        if (initialData) {
+            const initialCostDomain = initialData.costDomain && domainConfigs[initialData.costDomain]
+                ? initialData.costDomain
+                : defaultDomainId;
+            const domainConfig = getDomainConfig(initialCostDomain);
+
+            const enrichedLineItems = (initialData.lineItems && initialData.lineItems.length > 0)
+                ? initialData.lineItems.map(item => ({
+                    ...item,
+                    _key: Math.random(),
+                    amount: item.amount || '',
+                    sectorId: item.sectorId || item.sectorld || initialData.sectorId || initialData.sectorld,
+                    branchIds: item.assignmentId ? [item.assignmentId] : [],
+                    marketingChannelId: item.marketingChannelId || item.marketingChannelld || '',
+                    relatedLineItemId: item.relatedLineItemId || '',
+                }))
+                : [{ ...defaultLineItem, _key: Math.random() }];
+
+            const linkType = enrichedLineItems.some(li => li.relatedContractId) ? 'line' : 'single';
+
+            setFormData({
+                ...initialData,
+                supplierId: initialData.supplierId || initialData.supplierld,
+                contractLinkType: linkType,
+                requiresContract: initialData.requiresContract !== undefined
+                    ? initialData.requiresContract
+                    : (domainConfig?.defaultRequiresContract ?? true),
+                lineItems: enrichedLineItems,
+                costDomain: initialCostDomain,
+            });
+        } else {
+            setFormData(defaultFormData);
         }
-    }, [isOpen, initialData, defaultFormData, defaultLineItem]);
+
+        setInvoiceFile(null);
+        setContractLineItems([]);
+        setSelectedContract(null);
+    }, [isOpen, initialData, defaultFormData, defaultLineItem, defaultDomainId, domainConfigs, getDomainConfig]);
     
     // ⭐ NUOVO useEffect: Carica i lineItems quando si seleziona un contratto
     useEffect(() => {
@@ -201,6 +249,296 @@ export default function ExpenseFormModal({
         setFormData(prev => ({ ...prev, lineItems: updatedLineItems }));
     };
 
+    const handleDomainChange = (domainId) => {
+        setFormData(prev => {
+            const nextDomainConfig = getDomainConfig(domainId);
+            const resetLineItems = (prev.lineItems || []).map(item => ({
+                ...item,
+                marketingChannelId: '',
+                relatedContractId: '',
+                relatedLineItemId: '',
+            }));
+            return {
+                ...prev,
+                costDomain: domainId,
+                requiresContract:
+                    nextDomainConfig?.defaultRequiresContract !== undefined
+                        ? nextDomainConfig.defaultRequiresContract
+                        : prev.requiresContract,
+                relatedContractId: '',
+                contractLinkType: 'single',
+                lineItems: resetLineItems.length > 0 ? resetLineItems : [{ ...defaultLineItem, _key: Math.random() }],
+            };
+        });
+        setContractLineItems([]);
+        setSelectedContract(null);
+    };
+
+    const renderContractControls = () => {
+        const contractsAllowed = activeDomainConfig?.supportsContracts !== false;
+        const toggleActive = contractsAllowed && formData.requiresContract;
+
+        return (
+            <div className="space-y-4">
+                <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-indigo-100 rounded-lg">
+                                <FileSignature className="w-4 h-4 text-indigo-600" />
+                            </div>
+                            <div>
+                                <p className="font-bold text-slate-900">Questa spesa richiede un contratto?</p>
+                                <p className="text-xs text-slate-600 mt-0.5">
+                                        Disattiva per spese che non necessitano contratto (es. spese una tantum)
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (!contractsAllowed) return;
+                                    setFormData(prev => ({ ...prev, requiresContract: !prev.requiresContract }));
+                                }}
+                                disabled={!contractsAllowed}
+                                className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors ${
+                                    toggleActive ? 'bg-indigo-600' : 'bg-slate-300'
+                                } ${contractsAllowed ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}
+                            >
+                                <span
+                                    className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                                        toggleActive ? 'translate-x-8' : 'translate-x-1'
+                                    }`}
+                                />
+                            </button>
+                        </div>
+                    </div>
+
+                {!contractsAllowed && (
+                    <div className="rounded-lg border-2 border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                        Questa area di costo non richiede contratti. Cambia area per collegare un contratto.
+                    </div>
+                )}
+
+                {toggleActive && (
+                    <div className="space-y-4">
+                        <div className="p-3 bg-slate-100 rounded-xl">
+                            <p className="text-xs font-bold text-slate-600 mb-2">Tipo di collegamento:</p>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => handleInputChange({ target: { name: 'contractLinkType', value: 'single' } })}
+                                    className={`flex-1 py-2.5 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${
+                                        formData.contractLinkType === 'single'
+                                            ? 'bg-white shadow-lg text-slate-900'
+                                            : 'text-slate-600 hover:bg-slate-200'
+                                    }`}
+                                >
+                                    <Link size={16} />
+                                    Contratto Unico
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleInputChange({ target: { name: 'contractLinkType', value: 'line' } })}
+                                    className={`flex-1 py-2.5 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${
+                                        formData.contractLinkType === 'line'
+                                            ? 'bg-white shadow-lg text-slate-900'
+                                            : 'text-slate-600 hover:bg-slate-200'
+                                    }`}
+                                >
+                                    <List size={16} />
+                                    Per Singola Voce
+                                </button>
+                            </div>
+                        </div>
+
+                        {formData.contractLinkType === 'single' && (
+                            <div>
+                                <label className="text-sm font-semibold text-slate-700 block mb-2">
+                                    Collega Contratto (intera spesa)
+                                </label>
+                                <select
+                                    name="relatedContractId"
+                                    value={formData.relatedContractId || ''}
+                                    onChange={handleInputChange}
+                                    className="w-full h-11 px-3 bg-white border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all"
+                                    disabled={!formData.supplierId}
+                                >
+                                    <option value="">Nessun contratto</option>
+                                    {availableContracts.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.description}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {formData.contractLinkType === 'line' && (
+                            <div className="p-4 bg-gradient-to-br from-indigo-50 to-white rounded-xl border-2 border-indigo-100">
+                                <div className="flex items-start gap-3 mb-3">
+                                    <div className="p-2 bg-indigo-100 rounded-lg">
+                                        <List className="w-4 h-4 text-indigo-600" />
+                                    </div>
+                                    <div className="flex-1 space-y-1">
+                                        <p className="text-sm font-bold text-slate-900">Collega contratto per ogni voce</p>
+                                        <p className="text-xs text-slate-600">
+                                            Seleziona il contratto corrispondente per ogni voce di spesa per garantire la tracciabilità con i plafond.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    {formData.lineItems.map((item, index) => (
+                                        <div
+                                            key={item._key}
+                                            className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:border-indigo-200 transition-all"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="font-semibold text-slate-900">{item.description || `Voce #${index + 1}`}</p>
+                                                    <p className="text-xs text-slate-500">Importo: {formatCurrency(parseFloat(item.amount || 0))}</p>
+                                                </div>
+                                                <div className="text-xs text-slate-500">Filiali: {item.branchIds?.length || 0}</div>
+                                            </div>
+
+                                            <div className="mt-3 space-y-2">
+                                                <label className="text-xs font-semibold text-slate-600 block">Contratto collegato</label>
+                                                <select
+                                                    value={item.relatedContractId || ''}
+                                                    onChange={e => {
+                                                        handleLineItemChange(index, 'relatedContractId', e.target.value);
+                                                        handleLineItemChange(index, 'relatedLineItemId', '');
+                                                    }}
+                                                    className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all"
+                                                    disabled={!formData.supplierId}
+                                                >
+                                                    <option value="">Seleziona contratto...</option>
+                                                    {availableContracts.map(contract => (
+                                                        <option key={contract.id} value={contract.id}>
+                                                            {contract.description}
+                                                        </option>
+                                                    ))}
+                                                </select>
+
+                                                {item.relatedContractId && getLineItemsForContract(item.relatedContractId).length > 0 && (
+                                                    <div className="p-3 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border-2 border-blue-200">
+                                                        <label className="text-xs font-bold text-slate-700 flex items-center gap-2 mb-2">
+                                                            <Info className="w-4 h-4 text-blue-600" />
+                                                            Seleziona LineItem specifico (opzionale)
+                                                        </label>
+                                                        <select
+                                                            value={item.relatedLineItemId || ''}
+                                                            onChange={e => handleLineItemChange(index, 'relatedLineItemId', e.target.value)}
+                                                            className="w-full h-10 px-3 border-2 border-blue-200 rounded-lg bg-white hover:border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                                                        >
+                                                            <option value="">Nessun lineItem (usa distribuzione automatica)</option>
+                                                            {getLineItemsForContract(item.relatedContractId).map(li => (
+                                                                <option key={li.id} value={li.id}>
+                                                                    {li.description} • {formatCurrency(li.totalAmount)} • {new Date(li.startDate).toLocaleDateString('it-IT')} → {new Date(li.endDate).toLocaleDateString('it-IT')}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <p className="text-xs text-slate-600 mt-2 flex items-start gap-1">
+                                                            <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                                                            <span>Seleziona un lineItem per tracking preciso. Se non selezioni, verrà usata la distribuzione temporale.</span>
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {formData.contractLinkType === 'single' && formData.relatedContractId && contractLineItems.length > 0 && (
+                            <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
+                                <div className="flex items-start gap-3 mb-3">
+                                    <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                                    <div className="flex-1">
+                                        <p className="text-sm font-bold text-slate-900 mb-1">
+                                            📋 LineItems del contratto "{selectedContract?.description}"
+                                        </p>
+                                        <p className="text-xs text-slate-600 mb-3">
+                                            Seleziona quale lineItem del contratto stai pagando con questa spesa per un tracking preciso del budget
+                                        </p>
+
+                                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                                            {contractLineItems.map((lineItem) => {
+                                                const isSelected = formData.lineItems[0]?.relatedLineItemId === lineItem.id;
+                                                const remaining = calculateLineItemRemaining(lineItem);
+                                                const percentage = ((lineItem.totalAmount - remaining) / lineItem.totalAmount) * 100;
+
+                                                return (
+                                                    <button
+                                                        key={lineItem.id}
+                                                        type="button"
+                                                        onClick={() => handleLineItemChange(0, 'relatedLineItemId', lineItem.id)}
+                                                        className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
+                                                            isSelected
+                                                                ? 'border-blue-500 bg-blue-100'
+                                                                : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start justify-between mb-2">
+                                                            <div className="flex-1">
+                                                                <p className="text-sm font-semibold text-slate-900">
+                                                                    {lineItem.description}
+                                                                </p>
+                                                                <p className="text-xs text-slate-600 mt-1">
+                                                                    {new Date(lineItem.startDate).toLocaleDateString('it-IT')} → {new Date(lineItem.endDate).toLocaleDateString('it-IT')}
+                                                                </p>
+                                                            </div>
+                                                            <div
+                                                                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ml-2 ${
+                                                                    isSelected ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'
+                                                                }`}
+                                                            >
+                                                                {isSelected && <Check className="w-3 h-3 text-white" />}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center justify-between text-xs mb-1">
+                                                            <span className="text-slate-600">Budget:</span>
+                                                            <span className="font-bold text-slate-900">
+                                                                {formatCurrency(lineItem.totalAmount)}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="flex items-center justify-between text-xs">
+                                                            <span className="text-slate-600">Residuo stimato:</span>
+                                                            <span className="font-bold text-emerald-600">
+                                                                {formatCurrency(remaining)}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="mt-2 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all"
+                                                                style={{ width: `${Math.min(percentage, 100)}%` }}
+                                                            />
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        <div className="mt-3 p-2 bg-amber-50 rounded-lg border border-amber-200">
+                                            <p className="text-xs text-amber-800 flex items-start gap-2">
+                                                <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                                                <span>Seleziona il lineItem per un tracking preciso. Se non selezioni nulla, verrà usata la distribuzione temporale automatica.</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     const addLineItem = () => {
         setFormData(prev => ({
             ...prev,
@@ -230,21 +568,32 @@ export default function ExpenseFormModal({
     };
     
     const availableContracts = useMemo(() => {
+        if (activeDomainConfig?.supportsContracts === false) return [];
         if (!formData.supplierId || !contracts) return [];
         return contracts.filter(c => c.supplierld === formData.supplierId);
-    }, [formData.supplierId, contracts]);
+    }, [formData.supplierId, contracts, activeDomainConfig]);
 
     const filteredMarketingChannels = useMemo(() => {
-        if (!formData.supplierId || !suppliers || !marketingChannels) {
-            return marketingChannels;
+        if (!marketingChannels) return [];
+
+        const domainFiltered = marketingChannels.filter(channel => {
+            const channelDomain = channel.domain || DEFAULT_COST_DOMAIN;
+            return channelDomain === (formData.costDomain || defaultDomainId);
+        });
+
+        const supplierRestricted = (activeDomainConfig?.id || DEFAULT_COST_DOMAIN) === DEFAULT_COST_DOMAIN;
+
+        if (!formData.supplierId || !suppliers || !supplierRestricted) {
+            return domainFiltered;
         }
+
         const selectedSupplier = suppliers.find(s => s.id === formData.supplierId);
         const offeredIds = selectedSupplier?.offeredMarketingChannels || [];
         
-        if (offeredIds.length === 0) return marketingChannels;
+        if (offeredIds.length === 0 || !supplierRestricted) return domainFiltered;
 
-        return marketingChannels.filter(mc => offeredIds.includes(mc.id));
-    }, [formData.supplierId, suppliers, marketingChannels]);
+        return domainFiltered.filter(mc => offeredIds.includes(mc.id));
+    }, [formData.supplierId, suppliers, marketingChannels, formData.costDomain, defaultDomainId, activeDomainConfig]);
 
     // ⭐ NUOVA FUNZIONE: Ottieni i lineItems per un contratto specifico (per modalità "Per Singola Voce")
     const getLineItemsForContract = (contractId) => {
@@ -272,8 +621,15 @@ export default function ExpenseFormModal({
         formData.lineItems.forEach((item, index) => {
             if (hasError) return;
             const branches = item.branchIds || [];
-            if (!item.description || !item.amount || !item.sectorId || branches.length === 0 || !item.marketingChannelId) {
-                toast.error(`Tutti i campi nella voce di spesa #${index + 1} sono obbligatori.`);
+            const channelRequired = activeDomainConfig?.lineItemChannelRequired !== false;
+            const missingChannel = channelRequired && !item.marketingChannelId;
+
+            if (!item.description || !item.amount || !item.sectorId || branches.length === 0 || missingChannel) {
+                const channelLabel = activeDomainConfig?.lineItemChannelLabel || 'Canale Marketing';
+                const errorLabel = missingChannel
+                    ? `${channelLabel} obbligatorio`
+                    : 'Tutti i campi sono obbligatori';
+                toast.error(`${errorLabel} nella voce di spesa #${index + 1}.`);
                 hasError = true;
                 return;
             }
@@ -289,9 +645,9 @@ export default function ExpenseFormModal({
                         amount: amountPerBranch,
                         sectorId: item.sectorId,
                         assignmentId: branchId,
-                        marketingChannelId: item.marketingChannelId,
+                        marketingChannelId: item.marketingChannelId || null,
                         relatedContractId: formData.contractLinkType === 'line' ? (item.relatedContractId || null) : (formData.relatedContractId || null),
-                        relatedLineItemId: item.relatedLineItemId || null, // ⭐ NUOVO: Salva il lineItem collegato
+                        relatedLineItemId: item.relatedLineItemId || null,
                         splitGroupId,
                     });
                 });
@@ -301,9 +657,9 @@ export default function ExpenseFormModal({
                     amount,
                     sectorId: item.sectorId,
                     assignmentId: branches[0],
-                    marketingChannelId: item.marketingChannelId,
+                    marketingChannelId: item.marketingChannelId || null,
                     relatedContractId: formData.contractLinkType === 'line' ? (item.relatedContractId || null) : (formData.relatedContractId || null),
-                    relatedLineItemId: item.relatedLineItemId || null, // ⭐ NUOVO: Salva il lineItem collegato
+                    relatedLineItemId: item.relatedLineItemId || null,
                 });
             }
         });
@@ -316,6 +672,7 @@ export default function ExpenseFormModal({
             lineItems: finalLineItems,
             requiresContract: formData.requiresContract,
             invoiceFile: invoiceFile || null,
+            costDomain: formData.costDomain || defaultDomainId,
         };
 
         onSave(finalData);
@@ -326,7 +683,7 @@ export default function ExpenseFormModal({
     return (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center px-4" onClick={onClose}>
             <div className="w-full max-w-5xl max-h-[90vh] bg-white/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/30 overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <div className="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white px-6 py-5 flex items-center justify-between">
+                <div className="bg-gradient-to-br from-amber-600 via-orange-600 to-amber-500 text-white px-6 py-5 flex items-center justify-between">
                     <div>
                         <p className="text-xs uppercase tracking-[0.4em] text-white/70 font-semibold">Spese</p>
                         <h2 className="text-2xl font-black">{formData.id ? 'Modifica Spesa' : 'Nuova Spesa'}</h2>
@@ -353,6 +710,31 @@ export default function ExpenseFormModal({
                             </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="md:col-span-2">
+                                    <label className="text-sm font-semibold text-slate-700 block mb-2">Area di costo *</label>
+                                    {allowDomainSwitch ? (
+                                        <select
+                                            value={formData.costDomain || defaultDomainId}
+                                            onChange={e => handleDomainChange(e.target.value)}
+                                            className="w-full h-11 px-3 bg-white border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all"
+                                        >
+                                            {resolvedDomainOptions.map(option => (
+                                                <option key={option.id} value={option.id}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <div className="w-full h-11 px-3 flex items-center bg-slate-100 border-2 border-slate-200 rounded-xl text-slate-700 font-semibold">
+                                            {activeDomainConfig?.label || resolvedDomainOptions?.[0]?.label}
+                                        </div>
+                                    )}
+                                    {activeDomainConfig?.description && (
+                                        <p className="text-xs text-slate-500 mt-2">
+                                            {activeDomainConfig.description}
+                                        </p>
+                                    )}
+                                </div>
                                 <div>
                                     <label className="text-sm font-semibold text-slate-700 block mb-2">Fornitore *</label>
                                     <select 
@@ -461,14 +843,17 @@ export default function ExpenseFormModal({
                                                 />
                                             </div>
                                             <div>
-                                                <label className="text-xs font-semibold text-slate-600 block mb-1.5">Canale Marketing *</label>
-                                                <select 
-                                                    value={item.marketingChannelId || ''} 
-                                                    onChange={e => handleLineItemChange(index, 'marketingChannelId', e.target.value)} 
-                                                    className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg hover:border-amber-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all" 
-                                                    required
+                                                <label className="text-xs font-semibold text-slate-600 block mb-1.5">
+                                                    {channelLabel}
+                                                    {channelRequired ? ' *' : ''}
+                                                </label>
+                                                <select
+                                                    value={item.marketingChannelId || ''}
+                                                    onChange={e => handleLineItemChange(index, 'marketingChannelId', e.target.value)}
+                                                    className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg hover:border-amber-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all"
+                                                    required={channelRequired}
                                                 >
-                                                    <option value="">Seleziona...</option>
+                                                    <option value="">{channelPlaceholder}</option>
                                                     {filteredMarketingChannels.map(mc => (
                                                         <option key={mc.id} value={mc.id}>{mc.name}</option>
                                                     ))}
@@ -477,7 +862,7 @@ export default function ExpenseFormModal({
                                         </div>
                                         
                                         {/* ⭐ NUOVO: Dropdown contratto e lineItems per modalità "Per Singola Voce" */}
-                                        {formData.contractLinkType === 'line' && formData.requiresContract && (
+                                        {activeDomainConfig?.supportsContracts !== false && formData.contractLinkType === 'line' && formData.requiresContract && (
                                             <div className="col-span-2 pt-3 mt-3 border-t-2 border-slate-200">
                                                 <div className="space-y-3">
                                                     {/* Dropdown Contratto */}
@@ -554,173 +939,7 @@ export default function ExpenseFormModal({
                             </div>
                             
                             <div className="space-y-4">
-                                {/* Toggle Richiede Contratto */}
-                                <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-indigo-100 rounded-lg">
-                                                <FileSignature className="w-4 h-4 text-indigo-600" />
-                                            </div>
-                                            <div>
-                                                <p className="font-bold text-slate-900">Questa spesa richiede un contratto?</p>
-                                                <p className="text-xs text-slate-600 mt-0.5">
-                                                    Disattiva per spese che non necessitano contratto (es. spese una tantum)
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setFormData(prev => ({ ...prev, requiresContract: !prev.requiresContract }))}
-                                            className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors ${
-                                                formData.requiresContract ? 'bg-indigo-600' : 'bg-slate-300'
-                                            }`}
-                                        >
-                                            <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                                                formData.requiresContract ? 'translate-x-8' : 'translate-x-1'
-                                            }`} />
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                {/* Selezione contratto */}
-                                {formData.requiresContract && (
-                                    <>
-                                        {/* Toggle tipo collegamento */}
-                                        <div className="p-3 bg-slate-100 rounded-xl">
-                                            <p className="text-xs font-bold text-slate-600 mb-2">Tipo di collegamento:</p>
-                                            <div className="flex gap-2">
-                                                <button 
-                                                    type="button" 
-                                                    onClick={() => handleInputChange({target: {name: 'contractLinkType', value: 'single'}})} 
-                                                    className={`flex-1 py-2.5 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${
-                                                        formData.contractLinkType === 'single' 
-                                                            ? 'bg-white shadow-lg text-slate-900' 
-                                                            : 'text-slate-600 hover:bg-slate-200'
-                                                    }`}
-                                                >
-                                                    <Link size={16}/> 
-                                                    Contratto Unico
-                                                </button>
-                                                <button 
-                                                    type="button" 
-                                                    onClick={() => handleInputChange({target: {name: 'contractLinkType', value: 'line'}})} 
-                                                    className={`flex-1 py-2.5 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${
-                                                        formData.contractLinkType === 'line' 
-                                                            ? 'bg-white shadow-lg text-slate-900' 
-                                                            : 'text-slate-600 hover:bg-slate-200'
-                                                    }`}
-                                                >
-                                                    <List size={16}/> 
-                                                    Per Singola Voce
-                                                </button>
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Dropdown contratto */}
-                                        {formData.contractLinkType === 'single' && (
-                                            <div>
-                                                <label className="text-sm font-semibold text-slate-700 block mb-2">
-                                                    Collega Contratto (intera spesa)
-                                                </label>
-                                                <select 
-                                                    name="relatedContractId" 
-                                                    value={formData.relatedContractId || ''} 
-                                                    onChange={handleInputChange} 
-                                                    className="w-full h-11 px-3 bg-white border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 transition-all" 
-                                                    disabled={!formData.supplierId}
-                                                >
-                                                    <option value="">Nessun contratto</option>
-                                                    {availableContracts.map(c => (
-                                                        <option key={c.id} value={c.id}>{c.description}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        )}
-                                        
-                                        {/* ⭐ NUOVO: Box selezione LineItems quando c'è un contratto selezionato */}
-                                        {formData.contractLinkType === 'single' && formData.relatedContractId && contractLineItems.length > 0 && (
-                                            <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
-                                                <div className="flex items-start gap-3 mb-3">
-                                                    <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                                                    <div className="flex-1">
-                                                        <p className="text-sm font-bold text-slate-900 mb-1">
-                                                            📋 LineItems del contratto "{selectedContract?.description}"
-                                                        </p>
-                                                        <p className="text-xs text-slate-600 mb-3">
-                                                            Seleziona quale lineItem del contratto stai pagando con questa spesa per un tracking preciso del budget
-                                                        </p>
-                                                        
-                                                        <div className="space-y-2 max-h-64 overflow-y-auto">
-                                                            {contractLineItems.map((lineItem) => {
-                                                                const isSelected = formData.lineItems[0]?.relatedLineItemId === lineItem.id;
-                                                                const remaining = calculateLineItemRemaining(lineItem);
-                                                                const percentage = ((lineItem.totalAmount - remaining) / lineItem.totalAmount) * 100;
-                                                                
-                                                                return (
-                                                                    <button
-                                                                        key={lineItem.id}
-                                                                        type="button"
-                                                                        onClick={() => handleLineItemChange(0, 'relatedLineItemId', lineItem.id)}
-                                                                        className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
-                                                                            isSelected 
-                                                                                ? 'border-blue-500 bg-blue-100' 
-                                                                                : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50'
-                                                                        }`}
-                                                                    >
-                                                                        <div className="flex items-start justify-between mb-2">
-                                                                            <div className="flex-1">
-                                                                                <p className="text-sm font-semibold text-slate-900">
-                                                                                    {lineItem.description}
-                                                                                </p>
-                                                                                <p className="text-xs text-slate-600 mt-1">
-                                                                                    {new Date(lineItem.startDate).toLocaleDateString('it-IT')} → {new Date(lineItem.endDate).toLocaleDateString('it-IT')}
-                                                                                </p>
-                                                                            </div>
-                                                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ml-2 ${
-                                                                                isSelected ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'
-                                                                            }`}>
-                                                                                {isSelected && <Check className="w-3 h-3 text-white" />}
-                                                                            </div>
-                                                                        </div>
-                                                                        
-                                                                        <div className="flex items-center justify-between text-xs mb-1">
-                                                                            <span className="text-slate-600">Budget:</span>
-                                                                            <span className="font-bold text-slate-900">
-                                                                                {formatCurrency(lineItem.totalAmount)}
-                                                                            </span>
-                                                                        </div>
-                                                                        
-                                                                        <div className="flex items-center justify-between text-xs">
-                                                                            <span className="text-slate-600">Residuo stimato:</span>
-                                                                            <span className="font-bold text-emerald-600">
-                                                                                {formatCurrency(remaining)}
-                                                                            </span>
-                                                                        </div>
-                                                                        
-                                                                        {/* Barra progresso */}
-                                                                        <div className="mt-2 h-2 bg-slate-200 rounded-full overflow-hidden">
-                                                                            <div 
-                                                                                className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all"
-                                                                                style={{ width: `${Math.min(percentage, 100)}%` }}
-                                                                            />
-                                                                        </div>
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                        
-                                                        <div className="mt-3 p-2 bg-amber-50 rounded-lg border border-amber-200">
-                                                            <p className="text-xs text-amber-800 flex items-start gap-2">
-                                                                <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                                                                <span>Seleziona il lineItem per un tracking preciso. Se non selezioni nulla, verrà usata la distribuzione temporale automatica.</span>
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
+                                {renderContractControls()}
                                 
                                 {/* Upload PDF */}
                                 <div>

@@ -95,17 +95,21 @@ export default function ContractFormModal({ isOpen, onClose, onSave, initialData
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4 transition-opacity duration-300">
             <div className="bg-white/95 backdrop-blur-2xl rounded-3xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh] border border-white/30 overflow-hidden">
 
-                <div className="p-6 border-b border-gray-200/80 flex justify-between items-center flex-shrink-0 bg-gradient-to-r from-purple-50 to-pink-50">
+                <div className="p-6 border-b border-blue-200/30 flex justify-between items-center flex-shrink-0 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-xl bg-gradient-to-br from-purple-600 to-pink-700 text-white shadow-lg">
+                        <div className="p-2.5 rounded-xl bg-white/15 text-white shadow-lg shadow-blue-900/30">
                             <FileSignature className="w-6 h-6" />
                         </div>
                         <div>
-                            <h3 className="text-2xl font-black text-gray-900">{formData.id ? 'Modifica Contratto' : 'Nuovo Contratto'}</h3>
-                            <p className="text-sm text-gray-600 font-medium">Compila i dati per creare o aggiornare un contratto</p>
+                            <h3 className="text-2xl font-black">{formData.id ? 'Modifica Contratto' : 'Nuovo Contratto'}</h3>
+                            <p className="text-sm text-white/80 font-medium">Compila i dati per creare o aggiornare un contratto</p>
                         </div>
                     </div>
-                    <button type="button" onClick={onClose} className="p-2.5 text-gray-400 hover:text-gray-600 rounded-xl hover:bg-white/80 transition-all">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="p-2.5 text-white/70 hover:text-white rounded-xl hover:bg-white/15 transition-all"
+                    >
                         <X className="w-5 h-5" />
                     </button>
                 </div>
@@ -118,19 +122,19 @@ export default function ContractFormModal({ isOpen, onClose, onSave, initialData
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-sm font-semibold text-gray-700 block mb-2">Fornitore *</label>
-                                    <select name="supplierld" value={formData.supplierld || ''} onChange={handleInputChange} className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/20 transition-all font-medium" required>
+                                    <select name="supplierld" value={formData.supplierld || ''} onChange={handleInputChange} className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all font-medium" required>
                                         <option value="">Seleziona Fornitore</option>
                                         {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                     </select>
                                 </div>
                                 <div>
                                     <label className="text-sm font-semibold text-gray-700 block mb-2">Data Firma Contratto *</label>
-                                    <input type="date" name="signingDate" value={formData.signingDate || ''} onChange={handleInputChange} className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/20 transition-all font-medium" required />
+                                    <input type="date" name="signingDate" value={formData.signingDate || ''} onChange={handleInputChange} className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all font-medium" required />
                                 </div>
                             </div>
                             <div>
                                 <label className="text-sm font-semibold text-gray-700 block mb-2">Descrizione Generale Contratto *</label>
-                                <input type="text" name="description" value={formData.description || ''} onChange={handleInputChange} className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-500/20 transition-all" placeholder="Es. Accordo Quadro Subito.it 2025" required />
+                                <input type="text" name="description" value={formData.description || ''} onChange={handleInputChange} className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all" placeholder="Es. Accordo Quadro Subito.it 2025" required />
                             </div>
                         </div>
 
@@ -177,7 +181,7 @@ export default function ContractFormModal({ isOpen, onClose, onSave, initialData
                                     </div>
                                 ))}
                             </div>
-                            <button type="button" onClick={addLineItem} className="mt-4 text-purple-600 font-bold flex items-center gap-2 hover:text-purple-700 transition-colors">
+                            <button type="button" onClick={addLineItem} className="mt-4 text-blue-600 font-bold flex items-center gap-2 hover:text-blue-700 transition-colors">
                                 <PlusCircle size={18} /> Aggiungi Voce al Contratto
                             </button>
                         </div>
@@ -188,7 +192,7 @@ export default function ContractFormModal({ isOpen, onClose, onSave, initialData
                                 <label htmlFor="contractUpload" className="text-sm font-semibold text-gray-700 block mb-2">PDF Contratto</label>
                                 {formData.contractPdfUrl && !contractFile && (
                                     <div className="flex items-center gap-2 text-sm mb-2">
-                                        <a href={formData.contractPdfUrl} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline font-semibold">Visualizza contratto corrente</a>
+                                        <a href={formData.contractPdfUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-semibold">Visualizza contratto corrente</a>
                                     </div>
                                 )}
                                 <div className="flex items-center gap-4">
@@ -206,11 +210,11 @@ export default function ContractFormModal({ isOpen, onClose, onSave, initialData
                     <div className="p-6 bg-gradient-to-r from-gray-50 to-gray-100 flex justify-between items-center border-t border-gray-200 flex-shrink-0">
                         <div className="flex items-center gap-3">
                             <span className="text-sm text-gray-600 font-medium">Valore Totale:</span>
-                            <span className="text-2xl font-black text-purple-700">{formatCurrency(contractTotal)}</span>
+                            <span className="text-2xl font-black text-blue-700">{formatCurrency(contractTotal)}</span>
                         </div>
                         <div className="flex gap-3">
                             <button type="button" onClick={onClose} className="px-6 py-3 rounded-xl bg-white text-gray-800 font-semibold border-2 border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition-all">Annulla</button>
-                            <button type="submit" className="px-7 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold hover:shadow-lg transition-all">
+                            <button type="submit" className="px-7 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold hover:shadow-lg transition-all">
                                 Salva Contratto
                             </button>
                         </div>

@@ -7,13 +7,14 @@ import {
     PlusCircle, Search, Wallet, Car, Sailboat, Caravan, Building2, Layers, MapPin,
     DollarSign, FileText, Paperclip, Copy, Pencil, Trash2, AlertTriangle, CheckCircle2, 
     SlidersHorizontal, Activity, ArrowUpDown, TrendingUp, TrendingDown,
-    FileSignature, Info, X, Check
+    FileSignature, Info, X, XCircle, Check
 } from 'lucide-react';
 import ExpenseFormModal from '../components/ExpenseFormModal';
 import toast from 'react-hot-toast';
-import { MultiSelect } from '../components/SharedComponents';
+import { MultiSelect, KpiCard } from '../components/SharedComponents';
 import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
 import { deriveBranchesForLineItem, computeExpenseBranchShares } from '../utils/branchAssignments';
+import { COST_DOMAINS, DEFAULT_COST_DOMAIN } from '../constants/costDomains';
 
 const storage = getStorage();
 
@@ -41,39 +42,6 @@ const formatDate = (dateString) => {
     });
 };
 
-const KpiCard = React.memo(({ title, value, icon, gradient, subtitle, trend }) => (
-    <div className="group relative flex flex-col gap-4 rounded-3xl border border-slate-200/60 bg-white/95 p-5 lg:p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl overflow-hidden">
-        <div className={`absolute inset-x-0 top-0 h-[6px] bg-gradient-to-r ${gradient}`} />
-        <div className="flex items-center gap-4">
-            <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${gradient} text-white shadow-lg shadow-indigo-500/20 ring-4 ring-white/60`}>
-                {React.cloneElement(icon, { className: "w-6 h-6" })}
-            </div>
-            <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-semibold tracking-[0.2em] text-slate-500 uppercase">
-                    {title}
-                </p>
-                <div className="mt-1 flex items-baseline gap-2">
-                    <span className="text-2xl lg:text-3xl font-black text-slate-900">
-                        {value}
-                    </span>
-                    {trend && (
-                        <span className={`inline-flex items-center gap-1 text-xs font-bold ${
-                            trend.direction === 'up'
-                                ? 'text-emerald-500'
-                                : trend.direction === 'down'
-                                    ? 'text-rose-500'
-                                    : 'text-slate-400'
-                        }`}>
-                            {trend.direction === 'up' ? '▲' : trend.direction === 'down' ? '▼' : '■'} {trend.label || trend.value || ''}
-                        </span>
-                    )}
-                </div>
-                {subtitle && <p className="text-sm font-semibold text-slate-500">{subtitle}</p>}
-            </div>
-        </div>
-    </div>
-));
-
 const getDefaultStartDate = () => {
     const currentYear = new Date().getFullYear();
     return new Date(currentYear, 0, 1).toISOString().split('T')[0];
@@ -91,9 +59,9 @@ const ProgressBar = ({ value, max, showOverrun = true }) => {
     
     const getGradient = () => {
         if (percentage > 100) return 'from-red-500 to-rose-600';
-        if (percentage >= 100) return 'from-green-500 to-emerald-600';
+        if (percentage >= 100) return 'from-emerald-500 to-green-600';
         if (percentage >= 85) return 'from-amber-500 to-orange-600';
-        if (percentage > 0) return 'from-blue-500 to-indigo-600';
+        if (percentage > 0) return 'from-orange-400 to-amber-500';
         return 'from-gray-300 to-gray-400';
     };
     
@@ -173,7 +141,7 @@ const ExpenseTableView = React.memo(({
             return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />;
         }
         return sortState.direction === 'asc'
-            ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+            ? <TrendingUp className="w-3.5 h-3.5 text-amber-500" />
             : <TrendingDown className="w-3.5 h-3.5 text-rose-500" />;
     };
 
@@ -197,11 +165,28 @@ const ExpenseTableView = React.memo(({
         return 'Più Filiali';
     };
 
+    const resolveSectorKey = (expense) => {
+        const sectorIds = new Set();
+        if (expense.sectorId) {
+            sectorIds.add(expense.sectorId);
+        }
+        (expense.lineItems || []).forEach(item => {
+            const itemSector = item.sectorId || item.sectorld;
+            if (itemSector) {
+                sectorIds.add(itemSector);
+            }
+        });
+        const ids = Array.from(sectorIds).filter(Boolean);
+        if (ids.length === 0) return null;
+        if (ids.length === 1) return ids[0];
+        return 'default';
+    };
+
     return (
-        <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl shadow-slate-200/60">
+        <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl shadow-amber-200/60">
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-slate-700">
-                    <thead className="bg-slate-900/95 text-white uppercase text-[11px] font-bold tracking-[0.16em]">
+                    <thead className="bg-amber-600/95 text-white uppercase text-[11px] font-bold tracking-[0.16em]">
                         <tr>
                             <th className="px-4 py-3 text-left">
                                 <button type="button" onClick={() => handleSort('supplier')} className="inline-flex items-center gap-2">
@@ -236,13 +221,19 @@ const ExpenseTableView = React.memo(({
                             const hasInvoice = !!expense.invoicePdfUrl;
                             const hasContract = expense.isContractSatisfied;
                             const requiresContract = expense.requiresContract !== false;
+                            const sectorKey = resolveSectorKey(expense);
+                            const iconKey = sectorKey === 'default'
+                                ? 'default'
+                                : sectorKey
+                                    ? sectorMap.get(sectorKey) || 'default'
+                                    : sectorName;
 
                             return (
-                                <tr key={expense.id} className="bg-white/70 hover:bg-indigo-50/20 transition-colors">
+                                <tr key={expense.id} className="bg-white/80 hover:bg-amber-50/30 transition-colors">
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-3">
-                                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 shadow-inner">
-                                                <Wallet className="w-4 h-4" />
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-600 shadow-inner">
+                                                {getSectorIcon(iconKey || 'default', "w-4 h-4")}
                                             </div>
                                             <div>
                                                 <p className="font-semibold text-slate-900 truncate max-w-[220px]">
@@ -287,7 +278,7 @@ const ExpenseTableView = React.memo(({
                                                         href={expense.contractPdfUrl || contractMap.get(expense.relatedContractId)?.contractPdfUrl}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50"
+                                                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-amber-600 hover:border-amber-200 hover:bg-amber-50"
                                                         title="Apri contratto"
                                                     >
                                                         <FileSignature className="w-4 h-4" />
@@ -343,7 +334,12 @@ const ExpenseTableView = React.memo(({
 });
 
 // ===== MAIN COMPONENT - EXPENSES PAGE =====
-export default function ExpensesPage({ user, initialFilters }) {
+export default function ExpensesPage({
+    user,
+    initialFilters,
+    costDomain = DEFAULT_COST_DOMAIN,
+    domainConfigs = COST_DOMAINS,
+}) {
     const location = useLocation();
     
     // Stati principali
@@ -374,11 +370,29 @@ export default function ExpensesPage({ user, initialFilters }) {
     const [invoiceFilter, setInvoiceFilter] = useState('');
     const [contractFilter, setContractFilter] = useState('');
     const [branchFilter, setBranchFilter] = useState([]);
-    const [specialFilter, setSpecialFilter] = useState(null);
     const [sortOrder, setSortOrder] = useState('date_desc');
     const [statusFilter, setStatusFilter] = useState('all');
     const [filterPresets, setFilterPresets] = useState(() => loadFilterPresets());
     const [presetName, setPresetName] = useState('');
+
+    const resolvedCostDomain = useMemo(
+        () => (domainConfigs[costDomain] ? costDomain : DEFAULT_COST_DOMAIN),
+        [costDomain, domainConfigs]
+    );
+    const currentDomainConfig = domainConfigs[resolvedCostDomain] || domainConfigs[DEFAULT_COST_DOMAIN];
+    const domainOptions = useMemo(
+        () => Object.values(domainConfigs).map(config => ({ id: config.id, label: config.label })),
+        [domainConfigs]
+    );
+    const canChangeDomain = user.role === 'admin' || user.role === 'manager';
+    const heroBadge = currentDomainConfig?.shortLabel || 'Spese';
+    const heroDescription = useMemo(() => {
+        const suffix = ' Salva preset per riutilizzarli rapidamente nelle altre sezioni.';
+        if (currentDomainConfig?.description) {
+            return `${currentDomainConfig.description}${suffix}`;
+        }
+        return 'Analizza e controlla le spese con gli stessi filtri condivisi della dashboard. Salva preset per riutilizzarli rapidamente nelle altre sezioni.';
+    }, [currentDomainConfig]);
     
     // Debounce search per performance
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
@@ -469,9 +483,6 @@ export default function ExpensesPage({ user, initialFilters }) {
             if (filters.branchFilter) { 
                 setBranchFilter(filters.branchFilter); 
             }
-            if (filters.specialFilter) { 
-                setSpecialFilter(filters.specialFilter); 
-            }
         }
     }, [initialFilters, location.state]);
 
@@ -532,10 +543,20 @@ export default function ExpensesPage({ user, initialFilters }) {
         return () => unsubscribes.forEach(unsub => unsub());
     }, [user]);
     
+    const filteredExpenses = useMemo(() => {
+        return rawExpenses.filter(expense => {
+            const expenseDomain = expense.costDomain || DEFAULT_COST_DOMAIN;
+            if (resolvedCostDomain === DEFAULT_COST_DOMAIN) {
+                return expenseDomain === DEFAULT_COST_DOMAIN || !expense.costDomain;
+            }
+            return expenseDomain === resolvedCostDomain;
+        });
+    }, [rawExpenses, resolvedCostDomain]);
+
     // PROCESSAMENTO SPESE OTTIMIZZATO con memoizzazione aggressiva
     const processedExpenses = useMemo(() => {
         // 1. NORMALIZZAZIONE
-        let normalized = rawExpenses.map(expense => {
+        let normalized = filteredExpenses.map(expense => {
             // Normalizza IDs
             let supplierId = expense.supplierId || expense.supplierld || expense.channelId || expense.channelld;
             let sectorId = expense.sectorId || expense.sectorld;
@@ -866,21 +887,6 @@ if (supplierFilter.length > 0) {
             });
         }
         
-        // Filtri speciali
-        if (specialFilter === 'unassigned') {
-            normalized = normalized.filter(exp => {
-                if (exp.lineItems && exp.lineItems.length > 0) {
-                    return exp.lineItems.some(item => !item.assignedBranches || item.assignedBranches.length === 0);
-                }
-                return !exp.branchId || !branchMap.has(exp.branchId);
-            });
-        } else if (specialFilter === 'withissues') {
-            normalized = normalized.filter(exp => {
-                const requiresContract = exp.requiresContract !== false;
-                return !exp.invoicePdfUrl || (requiresContract && !exp.isContractSatisfied);
-            });
-        }
-        
         // 3. ORDINAMENTO
         normalized.sort((a, b) => {
             switch (sortOrder) {
@@ -903,7 +909,7 @@ if (supplierFilter.length > 0) {
         
         return normalized;
     }, [
-        rawExpenses, 
+        filteredExpenses, 
         selectedSector, 
         supplierFilter, 
         dateFilter, 
@@ -912,7 +918,6 @@ if (supplierFilter.length > 0) {
         contractFilter,
         effectiveBranchFilter, 
         debouncedSearchTerm, 
-        specialFilter,
         sortOrder,
         supplierMap, 
         marketingChannelMap, 
@@ -920,6 +925,89 @@ if (supplierFilter.length > 0) {
         branchesPerSector,
         budgetInfoMap
     ]);
+    
+    const expenseAlerts = useMemo(() => {
+        if (processedExpenses.length === 0) return [];
+
+        const alerts = [];
+
+        const missingInvoices = processedExpenses.filter(exp => !exp.invoicePdfUrl);
+        if (missingInvoices.length > 0) {
+            const totalMissingInvoice = missingInvoices.reduce((sum, exp) => sum + (exp.displayAmount || exp.amount || 0), 0);
+            alerts.push({
+                key: 'missingInvoices',
+                type: 'critical',
+                title: `${missingInvoices.length} spese senza fattura`,
+                description: 'Carica la documentazione fiscale per completare il ciclo di approvazione.',
+                totalLabel: 'Importo senza fattura',
+                totalAmount: totalMissingInvoice,
+                items: missingInvoices
+                    .sort((a, b) => (b.displayAmount || b.amount || 0) - (a.displayAmount || a.amount || 0))
+                    .slice(0, 6)
+                    .map(exp => ({
+                        id: exp.id,
+                        name: supplierMap.get(exp.supplierId) || exp.description || 'N/D',
+                        amount: exp.displayAmount || exp.amount || 0,
+                        subtitle: exp.date ? new Date(exp.date).toLocaleDateString('it-IT') : undefined
+                    }))
+            });
+        }
+
+        const contractIssues = processedExpenses.filter(exp => {
+            const requiresContract = exp.requiresContract !== false;
+            return requiresContract && !exp.isContractSatisfied;
+        });
+        if (contractIssues.length > 0) {
+            const totalContractIssues = contractIssues.reduce((sum, exp) => sum + (exp.displayAmount || exp.amount || 0), 0);
+            alerts.push({
+                key: 'contractIssues',
+                type: 'warning',
+                title: `${contractIssues.length} spese con contratto mancante`,
+                description: 'Collega un contratto valido per completare la rendicontazione.',
+                totalLabel: 'Importo non coperto da contratto',
+                totalAmount: totalContractIssues,
+                items: contractIssues
+                    .sort((a, b) => (b.displayAmount || b.amount || 0) - (a.displayAmount || a.amount || 0))
+                    .slice(0, 6)
+                    .map(exp => ({
+                        id: exp.id,
+                        name: supplierMap.get(exp.supplierId) || exp.description || 'N/D',
+                        amount: exp.displayAmount || exp.amount || 0,
+                        subtitle: exp.date ? new Date(exp.date).toLocaleDateString('it-IT') : undefined
+                    }))
+            });
+        }
+
+        const unassignedBranchExpenses = processedExpenses.filter(exp => {
+            const lineItems = exp.lineItems || [];
+            if (lineItems.length > 0) {
+                return lineItems.some(item => !item.assignedBranches || item.assignedBranches.length === 0);
+            }
+            return !exp.branchId || !branchMap.has(exp.branchId);
+        });
+        if (unassignedBranchExpenses.length > 0) {
+            const totalUnassigned = unassignedBranchExpenses.reduce((sum, exp) => sum + (exp.displayAmount || exp.amount || 0), 0);
+            alerts.push({
+                key: 'unassignedBranches',
+                type: 'info',
+                title: `${unassignedBranchExpenses.length} spese senza filiale associata`,
+                description: 'Completa l’assegnazione per migliorare il controllo per territorio.',
+                totalLabel: 'Importo senza filiale',
+                totalAmount: totalUnassigned,
+                items: unassignedBranchExpenses
+                    .sort((a, b) => (b.displayAmount || b.amount || 0) - (a.displayAmount || a.amount || 0))
+                    .slice(0, 6)
+                    .map(exp => ({
+                        id: exp.id,
+                        name: supplierMap.get(exp.supplierId) || exp.description || 'N/D',
+                        amount: exp.displayAmount || exp.amount || 0,
+                        subtitle: exp.date ? new Date(exp.date).toLocaleDateString('it-IT') : undefined
+                    }))
+            });
+        }
+
+        return alerts;
+    }, [processedExpenses, supplierMap, branchMap]);
     
     // Calcolo KPI ottimizzato
     const kpiData = useMemo(() => {
@@ -950,22 +1038,6 @@ if (supplierFilter.length > 0) {
         
         const budgetUtilization = totalBudget > 0 ? (totalSpend / totalBudget) * 100 : 0;
         
-        // Calcolo trend
-        const currentMonth = new Date().getMonth();
-        const currentMonthSpend = processedExpenses.filter(exp => {
-            const expDate = exp.date ? new Date(exp.date) : null;
-            return expDate && expDate.getMonth() === currentMonth;
-        }).reduce((sum, exp) => sum + exp.displayAmount, 0);
-        
-        const lastMonth = currentMonth - 1;
-        const lastMonthSpend = processedExpenses.filter(exp => {
-            const expDate = exp.date ? new Date(exp.date) : null;
-            return expDate && expDate.getMonth() === lastMonth;
-        }).reduce((sum, exp) => sum + exp.displayAmount, 0);
-        
-        const trend = lastMonthSpend > 0 ? 
-            ((currentMonthSpend - lastMonthSpend) / lastMonthSpend * 100).toFixed(1) : 0;
-        
         return {
             totalExpenses: total,
             totalSpend,
@@ -975,11 +1047,7 @@ if (supplierFilter.length > 0) {
             withContractPercentage: total > 0 ? ((withContract / total) * 100).toFixed(1) : 0,
             complete,
             completePercentage: total > 0 ? ((complete / total) * 100).toFixed(1) : 0,
-            incomplete,
-            trend: {
-                direction: parseFloat(trend) >= 0 ? 'up' : 'down',
-                value: `${Math.abs(parseFloat(trend))}%`
-            }
+            incomplete
         };
     }, [processedExpenses, effectiveBranchFilter, sectorBudgets, selectedSector]);
     
@@ -1030,13 +1098,23 @@ if (supplierFilter.length > 0) {
                 contractURL = await getDownloadURL(contractRef);
             }
             
+            const safeLineItems = (expenseData.lineItems || []).map(item => ({
+                ...item,
+                amount: typeof item.amount === 'number' ? item.amount : parseFloat(item.amount) || 0,
+            }));
+
+            const primarySectorId =
+                expenseData.sectorId ||
+                safeLineItems.find(item => item.sectorId)?.sectorId ||
+                null;
+
             const dataToSave = {
                 date: expenseData.date,
                 description: expenseData.description,
-                sectorId: expenseData.sectorId,
+                sectorId: primarySectorId,
                 supplierId: expenseData.supplierId,
-                amount: expenseData.lineItems.reduce((sum, item) => sum + item.amount, 0),
-                lineItems: expenseData.lineItems,
+                amount: safeLineItems.reduce((sum, item) => sum + (item.amount || 0), 0),
+                lineItems: safeLineItems,
                 invoicePdfUrl: invoiceURL,
                 contractPdfUrl: contractURL,
                 relatedContractId: expenseData.relatedContractId || null,
@@ -1044,6 +1122,7 @@ if (supplierFilter.length > 0) {
                 isAmortized: expenseData.isAmortized || false,
                 amortizationStartDate: expenseData.isAmortized ? expenseData.amortizationStartDate : null,
                 amortizationEndDate: expenseData.isAmortized ? expenseData.amortizationEndDate : null,
+                costDomain: expenseData.costDomain || resolvedCostDomain,
             };
             
             if (isEditing) {
@@ -1064,7 +1143,7 @@ if (supplierFilter.length > 0) {
             console.error("Errore nel salvare la spesa:", error);
             toast.error(error.message || 'Errore imprevisto.', { id: toastId });
         }
-    }, [user.uid, user.name, handleCloseModal]);
+    }, [user.uid, user.name, handleCloseModal, resolvedCostDomain]);
     
     const handleDeleteExpense = useCallback(async (expense) => {
         if (!canEditOrDelete(expense)) {
@@ -1131,7 +1210,6 @@ if (supplierFilter.length > 0) {
             statusFilter,
             invoiceFilter,
             contractFilter,
-            specialFilter,
             sortOrder
         };
         setFilterPresets(prev => {
@@ -1140,7 +1218,7 @@ if (supplierFilter.length > 0) {
         });
         setPresetName('');
         toast.success('Preset salvato');
-    }, [presetName, dateFilter.startDate, dateFilter.endDate, selectedSector, selectedBranch, supplierFilter, branchFilter, statusFilter, invoiceFilter, contractFilter, specialFilter, sortOrder]);
+    }, [presetName, dateFilter.startDate, dateFilter.endDate, selectedSector, selectedBranch, supplierFilter, branchFilter, statusFilter, invoiceFilter, contractFilter, sortOrder]);
 
     const applyPreset = useCallback((preset) => {
         setDateFilter({
@@ -1154,7 +1232,6 @@ if (supplierFilter.length > 0) {
         setInvoiceFilter(preset.invoiceFilter || '');
         setContractFilter(preset.contractFilter || '');
         setStatusFilter(preset.statusFilter || 'all');
-        setSpecialFilter(preset.specialFilter || null);
         setSortOrder(preset.sortOrder || 'date_desc');
         toast.success(`Preset "${preset.name}" applicato`);
     }, [defaultStartDate, defaultEndDate]);
@@ -1173,7 +1250,6 @@ if (supplierFilter.length > 0) {
         setInvoiceFilter('');
         setContractFilter('');
         setBranchFilter([]);
-        setSpecialFilter(null);
         setStatusFilter('all');
         setSortOrder('date_desc');
         setPresetName('');
@@ -1193,14 +1269,13 @@ if (supplierFilter.length > 0) {
         invoiceFilter ||
         contractFilter ||
         branchFilter.length > 0 ||
-        specialFilter ||
         statusFilter !== 'all' ||
         sortOrder !== 'date_desc'
     );
     
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-amber-100 flex items-center justify-center">
                 <div className="text-center space-y-4">
                     <div className="w-16 h-16 border-4 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
                     <div className="text-xl font-semibold text-gray-700">Caricamento spese...</div>
@@ -1210,32 +1285,32 @@ if (supplierFilter.length > 0) {
     }
     
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-amber-100 relative">
             <div className="relative p-4 lg:p-8 space-y-6">
                 {/* HERO & FILTERS */}
                 <div className="space-y-6">
-                    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
+                    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-600 via-orange-600 to-rose-500 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.35),transparent_55%)]" />
                         <div className="relative flex flex-col gap-5">
                             <div className="flex items-center gap-4">
-                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-indigo-900/30 ring-4 ring-white/25">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-amber-900/30 ring-4 ring-white/25">
                                     <Wallet className="w-7 h-7 lg:w-8 lg:h-8" />
                                 </div>
                                 <div>
-                                    <p className="text-xs uppercase tracking-[0.4em] text-white/70 font-semibold">Spese</p>
+                                    <p className="text-xs uppercase tracking-[0.4em] text-white/70 font-semibold">{heroBadge}</p>
                                     <h1 className="text-3xl lg:text-4xl xl:text-5xl font-black leading-tight">
                                         Centro di Controllo Spese
                                     </h1>
                                 </div>
                             </div>
                             <p className="text-sm lg:text-base text-white/85 max-w-3xl">
-                                Analizza le spese operative con gli stessi filtri condivisi della dashboard. Salva preset per riutilizzarli rapidamente nelle altre sezioni.
+                                {heroDescription}
                             </p>
                             <div className="flex flex-wrap items-center gap-3">
                                 <button
                                     type="button"
                                     onClick={handleOpenAddModal}
-                                    className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
+                                    className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-amber-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
                                 >
                                     <PlusCircle className="w-4 h-4" />
                                     Nuova spesa
@@ -1247,15 +1322,15 @@ if (supplierFilter.length > 0) {
                         </div>
                     </div>
 
-                    <div className="w-full bg-gradient-to-br from-slate-50 via-white to-white backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-5 lg:p-6 space-y-6">
+                    <div className="w-full bg-gradient-to-br from-orange-50 via-white to-white backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-5 lg:p-6 space-y-6">
                         <div className="flex items-start gap-4">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-600 text-white shadow-lg shadow-indigo-500/20 ring-4 ring-indigo-500/15">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 text-white shadow-lg shadow-amber-500/20 ring-4 ring-amber-400/20">
                                 <SlidersHorizontal className="w-5 h-5" />
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
                                     <h2 className="text-lg font-black text-slate-900">Filtri Spesa</h2>
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-1 text-[11px] font-bold text-indigo-700">
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-700">
                                         <Info className="w-3 h-3" />
                                         Sincronizzati con la dashboard
                                     </span>
@@ -1275,7 +1350,7 @@ if (supplierFilter.length > 0) {
                                         placeholder="Cerca per descrizione, fornitore, canale..."
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="w-full h-12 rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-sm font-medium text-slate-700 shadow-inner focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                        className="w-full h-12 rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-sm font-medium text-slate-700 shadow-inner focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
                                     />
                                 </div>
                                 <div className="flex-1 min-w-[220px]">
@@ -1308,14 +1383,14 @@ if (supplierFilter.length > 0) {
                                             type="date"
                                             value={dateFilter.startDate}
                                             onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                                            className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-600 shadow-inner focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                            className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-600 shadow-inner focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
                                         />
                                         <span className="text-slate-400 font-semibold text-sm">→</span>
                                         <input
                                             type="date"
                                             value={dateFilter.endDate}
                                             onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                                            className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-600 shadow-inner focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                            className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-600 shadow-inner focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
                                         />
                                     </div>
                                 </div>
@@ -1324,32 +1399,32 @@ if (supplierFilter.length > 0) {
                                         Settori
                                     </span>
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedSector('all')}
-                                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
-                                                selectedSector === 'all'
-                                                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/30'
-                                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                            }`}
-                                        >
-                                            <Layers className="w-4 h-4" />
-                                            Tutti i Settori
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedSector('all')}
+                                    className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
+                                        selectedSector === 'all'
+                                            ? 'bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-lg shadow-amber-500/30'
+                                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    <Layers className={`w-4 h-4 ${selectedSector === 'all' ? 'text-white' : 'text-amber-600'}`} />
+                                    Tutti i Settori
                                         </button>
                                         {orderedSectors.map(sector => {
                                             const isActive = selectedSector === sector.id;
                                             return (
-                                                <button
-                                                    key={sector.id}
-                                                    type="button"
-                                                    onClick={() => setSelectedSector(sector.id)}
-                                                    className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
-                                                        isActive
-                                                            ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/30'
-                                                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                                    }`}
-                                                >
-                                                    {getSectorIcon(sector.name, `w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`)}
+                                    <button
+                                        key={sector.id}
+                                        type="button"
+                                        onClick={() => setSelectedSector(sector.id)}
+                                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
+                                            isActive
+                                                ? 'bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-lg shadow-amber-500/30'
+                                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                                    {getSectorIcon(sector.name, `w-4 h-4 ${isActive ? 'text-white' : 'text-amber-600'}`)}
                                                     {sector.name}
                                                 </button>
                                             );
@@ -1395,7 +1470,7 @@ if (supplierFilter.length > 0) {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
                                 <div className="flex flex-col gap-3">
                                     <span className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
                                         Stato fattura
@@ -1417,7 +1492,7 @@ if (supplierFilter.length > 0) {
                                             onClick={() => setInvoiceFilter('present')}
                                             className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${
                                                 invoiceFilter === 'present'
-                                                    ? 'bg-indigo-100 text-indigo-700 shadow'
+                                                    ? 'bg-amber-100 text-amber-700 shadow'
                                                     : 'text-slate-500 hover:bg-slate-100'
                                             }`}
                                         >
@@ -1457,7 +1532,7 @@ if (supplierFilter.length > 0) {
                                             onClick={() => setContractFilter('present')}
                                             className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${
                                                 contractFilter === 'present'
-                                                    ? 'bg-indigo-100 text-indigo-700 shadow'
+                                                    ? 'bg-amber-100 text-amber-700 shadow'
                                                     : 'text-slate-500 hover:bg-slate-100'
                                             }`}
                                         >
@@ -1476,64 +1551,74 @@ if (supplierFilter.length > 0) {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex flex-col gap-3">
-                                    <span className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
-                                        Stato documentazione
+                            </div>
+
+                            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                                <div className="flex flex-col gap-2">
+                                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                        Stato spese
                                     </span>
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    <div className="flex flex-wrap gap-2">
                                         <button
                                             type="button"
-                                            onClick={() => setSpecialFilter(null)}
-                                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 ${
-                                                !specialFilter
-                                                    ? 'bg-slate-900 text-white shadow-lg shadow-slate-500/30'
-                                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                            }`}
-                                        >
-                                            Tutte
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setSpecialFilter('withissues')}
-                                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
-                                                specialFilter === 'withissues'
+                                            onClick={() => setStatusFilter('all')}
+                                            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                                                statusFilter === 'all'
                                                     ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/30'
                                                     : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                                             }`}
                                         >
-                                            <AlertTriangle className="w-4 h-4" />
-                                            Documenti mancanti
+                                            Tutte ({kpiData.totalExpenses})
                                         </button>
+                                        {kpiData.incomplete > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setStatusFilter('incomplete')}
+                                                className={`px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all ${
+                                                    statusFilter === 'incomplete'
+                                                        ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/30'
+                                                        : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                <AlertTriangle className="w-4 h-4" />
+                                                Incomplete ({kpiData.incomplete})
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
-                                            onClick={() => setSpecialFilter('unassigned')}
-                                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
-                                                specialFilter === 'unassigned'
-                                                    ? 'bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-lg shadow-rose-500/30'
+                                            onClick={() => setStatusFilter('complete')}
+                                            className={`px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all ${
+                                                statusFilter === 'complete'
+                                                    ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-500/30'
                                                     : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                                             }`}
                                         >
-                                            <AlertTriangle className="w-4 h-4" />
-                                            Senza filiale
+                                            <CheckCircle2 className="w-4 h-4" />
+                                            Complete ({kpiData.complete})
                                         </button>
                                     </div>
                                 </div>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <span className="text-sm font-bold text-slate-600 flex items-center gap-1.5">
+                                        <ArrowUpDown className="w-4 h-4" />
+                                        Ordina:
+                                    </span>
+                                    <select
+                                        value={sortOrder}
+                                        onChange={(e) => setSortOrder(e.target.value)}
+                                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-inner focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                                    >
+                                        <option value="date_desc">Data ↓</option>
+                                        <option value="date_asc">Data ↑</option>
+                                        <option value="amount_desc">Importo ↓</option>
+                                        <option value="amount_asc">Importo ↑</option>
+                                        <option value="name_asc">Nome A-Z</option>
+                                        <option value="name_desc">Nome Z-A</option>
+                                    </select>
+                                </div>
                             </div>
 
-                            {hasActiveFilters && (
-                                <div className="flex flex-wrap items-center justify-end gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={resetFilters}
-                                        className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-red-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-rose-500/30 transition-all hover:scale-105"
-                                    >
-                                        <X className="w-4 h-4" />
-                                        Reset filtri
-                                    </button>
-                                </div>
-                            )}
-
-                            <div className="space-y-3">
+                            <div className="border-t border-slate-200 pt-4 space-y-3">
                                 <span className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
                                     Preset salvati
                                 </span>
@@ -1543,13 +1628,13 @@ if (supplierFilter.length > 0) {
                                         value={presetName}
                                         onChange={(e) => setPresetName(e.target.value)}
                                         placeholder="Nome preset (es. Q1 Board)"
-                                        className="flex-1 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-slate-700 shadow-inner focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                        className="flex-1 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-slate-700 shadow-inner focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
                                     />
                                     <button
                                         type="button"
                                         onClick={savePreset}
                                         disabled={!presetName.trim()}
-                                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-amber-500/30 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         <Check className="w-4 h-4" />
                                         Salva preset
@@ -1562,7 +1647,7 @@ if (supplierFilter.length > 0) {
                                                 <button
                                                     type="button"
                                                     onClick={() => applyPreset(preset)}
-                                                    className="text-sm font-semibold text-slate-600 hover:text-indigo-600"
+                                                    className="text-sm font-semibold text-slate-600 hover:text-amber-600"
                                                 >
                                                     {preset.name}
                                                 </button>
@@ -1578,101 +1663,126 @@ if (supplierFilter.length > 0) {
                                     </div>
                                 ) : (
                                     <p className="text-xs font-medium text-slate-400">
-                                        Salva una combinazione di filtri per riutilizzarla rapidamente nelle altre pagine.
+                                        Salva le combinazioni di filtri per riutilizzarle rapidamente nelle altre pagine.
                                     </p>
                                 )}
                             </div>
 
-                            <div className="border-t border-slate-200 pt-4">
-                                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setStatusFilter('all')}
-                                            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                                                statusFilter === 'all'
-                                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
-                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                            }`}
-                                        >
-                                            Tutte ({kpiData.totalExpenses})
-                                        </button>
-                                        {kpiData.incomplete > 0 && (
-                                            <button
-                                                type="button"
-                                                onClick={() => setStatusFilter('incomplete')}
-                                                className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-1 transition-all ${
-                                                    statusFilter === 'incomplete'
-                                                        ? 'bg-rose-600 text-white shadow-lg shadow-rose-500/30'
-                                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                                }`}
-                                            >
-                                                <AlertTriangle className="w-3 h-3" />
-                                                Incomplete ({kpiData.incomplete})
-                                            </button>
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={() => setStatusFilter('complete')}
-                                            className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-1 transition-all ${
-                                                statusFilter === 'complete'
-                                                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/30'
-                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                            }`}
-                                        >
-                                            <CheckCircle2 className="w-3 h-3" />
-                                            Complete ({kpiData.complete})
-                                        </button>
+                            {hasActiveFilters && (
+                                <div className="flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={resetFilters}
+                                        className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-red-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-rose-500/30 transition-all hover:scale-105"
+                                    >
+                                        <XCircle className="w-4 h-4" />
+                                        Resetta filtri
+                                    </button>
+                                </div>
+                    )}
+                </div>
+            </div>
+        </div>
+
+        {expenseAlerts.length > 0 && (
+            <div className="space-y-4">
+                {expenseAlerts.map(alert => {
+                    const isCritical = alert.type === 'critical';
+                    const isWarning = alert.type === 'warning';
+                    const accentText = isCritical
+                        ? 'text-rose-600'
+                        : isWarning
+                            ? 'text-amber-600'
+                            : 'text-sky-600';
+                    const badgeBorder = isCritical
+                        ? 'border-rose-100'
+                        : isWarning
+                            ? 'border-amber-100'
+                            : 'border-sky-100';
+                    const iconBg = isCritical
+                        ? 'bg-gradient-to-br from-rose-500 to-red-500'
+                        : isWarning
+                            ? 'bg-gradient-to-br from-amber-500 to-orange-500'
+                            : 'bg-gradient-to-br from-sky-500 to-blue-500';
+                    const iconElement = isWarning ? <AlertTriangle className="w-6 h-6" /> : (isCritical ? <AlertTriangle className="w-6 h-6" /> : <Info className="w-6 h-6" />);
+
+                    return (
+                        <div
+                            key={alert.key}
+                            className="rounded-3xl border border-white/40 bg-white/95 p-5 lg:p-6 shadow-xl shadow-amber-200/40 space-y-4"
+                        >
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-start gap-3">
+                                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg ${iconBg} shadow-amber-500/20`}>
+                                        {iconElement}
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-3">
-                                        <select
-                                            value={sortOrder}
-                                            onChange={(e) => setSortOrder(e.target.value)}
-                                            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 shadow-inner focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                                        >
-                                            <option value="date_desc">Data ↓</option>
-                                            <option value="date_asc">Data ↑</option>
-                                            <option value="amount_desc">Importo ↓</option>
-                                            <option value="amount_asc">Importo ↑</option>
-                                            <option value="name_asc">Nome A-Z</option>
-                                            <option value="name_desc">Nome Z-A</option>
-                                        </select>
+                                    <div>
+                                        <h4 className="text-base font-black text-slate-900">{alert.title}</h4>
+                                        <p className="text-sm font-medium text-slate-600">{alert.description}</p>
                                     </div>
                                 </div>
+                                <div className={`rounded-2xl px-4 py-3 text-right shadow-inner border ${badgeBorder}`}>
+                                    <p className={`text-[10px] font-semibold uppercase tracking-[0.22em] ${accentText}`}>
+                                        {alert.totalLabel}
+                                    </p>
+                                    <p className={`text-xl font-black ${accentText}`}>
+                                        {formatCurrency(alert.totalAmount)}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {alert.items.map(item => (
+                                    <span
+                                        key={item.id || item.name}
+                                        className="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm"
+                                    >
+                                        <div className="flex flex-col">
+                                            <span className="truncate max-w-[160px]">{item.name}</span>
+                                            {item.subtitle && (
+                                                <span className="text-[10px] font-semibold text-slate-400">{item.subtitle}</span>
+                                            )}
+                                        </div>
+                                        <span className={`font-bold ${accentText}`}>
+                                            {formatCurrency(item.amount)}
+                                        </span>
+                                    </span>
+                                ))}
                             </div>
                         </div>
-                    </div>
-                </div>
+                    );
+                })}
+            </div>
+        )}
 
-                {/* KPI Cards migliorate */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6">
-                    <KpiCard 
-                        title="Spese Totali" 
-                        value={kpiData.totalExpenses.toString()}
+        {/* KPI Cards migliorate */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6">
+            <KpiCard 
+                title="Spese Totali" 
+                value={kpiData.totalExpenses.toString()}
                         subtitle={`${processedExpenses.length} spese filtrate`}
                         icon={<FileText className="w-6 h-6" />}
-                        gradient="from-amber-500 to-orange-600"
+                        gradient="from-orange-500 to-amber-600"
                     />
                     <KpiCard 
                         title="Importo Totale" 
                         value={formatCurrency(kpiData.totalSpend)}
                         subtitle={`Budget: ${formatCurrency(kpiData.totalBudget)}`}
                         icon={<DollarSign className="w-6 h-6" />}
-                        gradient="from-emerald-500 to-green-600"
+                        gradient="from-orange-600 to-amber-700"
                     />
                     <KpiCard 
                         title="Con Fattura" 
                         value={`${kpiData.withInvoicePercentage}%`}
                         subtitle="Documenti fiscali"
                         icon={<CheckCircle2 className="w-6 h-6" />}
-                        gradient="from-blue-500 to-indigo-600"
+                        gradient="from-amber-400 to-yellow-500"
                     />
                     <KpiCard 
                         title="Complete" 
                         value={`${kpiData.completePercentage}%`}
                         subtitle="Tutti i documenti"
                         icon={<Activity className="w-6 h-6" />}
-                        gradient="from-purple-500 to-pink-600"
+                        gradient="from-orange-400 to-amber-500"
                     />
                 </div>
                 
@@ -1721,6 +1831,10 @@ if (supplierFilter.length > 0) {
                     marketingChannels={marketingChannels} 
                     contracts={contracts} 
                     geographicAreas={geographicAreas} 
+                    domainConfigs={domainConfigs}
+                    defaultCostDomain={resolvedCostDomain}
+                    domainOptions={domainOptions}
+                    allowDomainSwitch={canChangeDomain}
                 />
             )}
             

@@ -7,8 +7,10 @@ import {
     ChevronRight, ChevronDown, Activity, Award, XCircle, ArrowUpDown, MapPin, Calendar, X, HelpCircle, PieChart
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { KpiCard } from '../components/SharedComponents';
 import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
 import { deriveBranchesForLineItem } from '../utils/branchAssignments';
+import { DEFAULT_COST_DOMAIN } from '../constants/costDomains';
 
 // ===== UTILITY FUNCTIONS =====
 const formatCurrency = (number) => {
@@ -49,39 +51,6 @@ const getSectorIcon = (sectorName, className = "w-5 h-5") => {
 };
 
 // ===== UI COMPONENTS =====
-
-const KpiCard = React.memo(({ title, value, icon, gradient, subtitle, trend }) => (
-    <div className="group relative flex flex-col gap-4 rounded-3xl border border-slate-200/60 bg-white/95 p-5 lg:p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl overflow-hidden">
-        <div className={`absolute inset-x-0 top-0 h-[6px] bg-gradient-to-r ${gradient}`} />
-        <div className="flex items-center gap-4">
-            <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${gradient} text-white shadow-lg shadow-indigo-500/20 ring-4 ring-white/60`}>
-                {React.cloneElement(icon, { className: "w-6 h-6" })}
-            </div>
-            <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-semibold tracking-[0.2em] text-slate-500 uppercase">
-                    {title}
-                </p>
-                <div className="mt-1 flex items-baseline gap-2">
-                    <span className="text-2xl lg:text-3xl font-black text-slate-900">
-                        {value}
-                    </span>
-                    {trend && (
-                        <span className={`inline-flex items-center gap-1 text-xs font-bold ${
-                            trend.direction === 'up'
-                                ? 'text-emerald-500'
-                                : trend.direction === 'down'
-                                    ? 'text-rose-500'
-                                    : 'text-slate-400'
-                        }`}>
-                            {trend.direction === 'up' ? '▲' : trend.direction === 'down' ? '▼' : '■'} {trend.label}
-                        </span>
-                    )}
-                </div>
-                {subtitle && <p className="text-sm font-semibold text-slate-500">{subtitle}</p>}
-            </div>
-        </div>
-    </div>
-));
 
 const InfoTooltip = ({ message }) => {
     const [open, setOpen] = useState(false);
@@ -524,7 +493,19 @@ export default function DashboardPage({ navigate, user }) {
     const [selectedSector, setSelectedSector] = useState('all');
     const [showProjections, setShowProjections] = useState(true);
     const [selectedBranch, setSelectedBranch] = useState('all');
-    const [filterPresets, setFilterPresets] = useState(() => loadFilterPresets());
+    const marketingExpenses = useMemo(
+        () =>
+            allExpenses.filter(
+                expense => (expense.costDomain || DEFAULT_COST_DOMAIN) === DEFAULT_COST_DOMAIN
+            ),
+        [allExpenses]
+    );
+    const [filterPresets, setFilterPresets] = useState(() =>
+        loadFilterPresets().map(preset => {
+            const { showProjections: _ignored, ...rest } = preset;
+            return rest;
+        })
+    );
     const [presetName, setPresetName] = useState('');
     const [isOverdueExpanded, setIsOverdueExpanded] = useState(false);
     
@@ -698,7 +679,7 @@ export default function DashboardPage({ navigate, user }) {
         };
 
         // Processa spese
-        allExpenses.forEach((expense) => {
+        marketingExpenses.forEach((expense) => {
             const supplierId = expense.supplierId || expense.supplierld || expense.channelId || expense.channelld;
             const expenseSectorId = normalizeSectorId(expense.sectorId || expense.sectorld);
             
@@ -845,7 +826,7 @@ export default function DashboardPage({ navigate, user }) {
             });
         };
 
-        allExpenses.forEach(expense => {
+        marketingExpenses.forEach(expense => {
             const lineItems = expense.lineItems || [];
             if (lineItems.length > 0) {
                 lineItems.forEach(item => {
@@ -1148,7 +1129,7 @@ export default function DashboardPage({ navigate, user }) {
             totalBranchesSpent,
             overdueEntries
         };
-    }, [isLoading, allExpenses, allContracts, sectorBudgets, startDate, endDate, selectedSector, selectedBranch, sectors, branches, showProjections, supplierMap, sectorMap, sectorNameToId, branchMap, orderedSectors]);
+    }, [isLoading, marketingExpenses, allContracts, sectorBudgets, startDate, endDate, selectedSector, selectedBranch, sectors, branches, showProjections, supplierMap, sectorMap, sectorNameToId, branchMap, orderedSectors]);
     
     const overdueList = useMemo(() => {
         return (metrics.overdueEntries || []).slice().sort((a, b) => (b.overdueAmount || 0) - (a.overdueAmount || 0));
@@ -1180,7 +1161,6 @@ export default function DashboardPage({ navigate, user }) {
     }, [overdueList]);
 
     const totalForecast = metrics.spesaSostenuta + (showProjections ? metrics.spesaPrevistaTotale : 0);
-    const utilizationRate = metrics.budgetTotale > 0 ? (totalForecast / metrics.budgetTotale) * 100 : 0;
     const remainingBudget = metrics.budgetTotale - totalForecast;
     const isOverBudgetRisk = totalForecast > metrics.budgetTotale;
     const topSuppliersProjections = Math.max(0, (metrics.totalSuppliersSpent || 0) - (metrics.topSuppliersSpentOnly || 0));
@@ -1251,8 +1231,7 @@ export default function DashboardPage({ navigate, user }) {
             startDate,
             endDate,
             selectedSector,
-            selectedBranch,
-            showProjections
+            selectedBranch
         };
         setFilterPresets(prev => {
             const withoutDuplicates = prev.filter(p => p.name.toLowerCase() !== name.toLowerCase());
@@ -1267,7 +1246,7 @@ export default function DashboardPage({ navigate, user }) {
         setEndDate(preset.endDate || defaultEndDate);
         setSelectedSector(preset.selectedSector || 'all');
         setSelectedBranch(preset.selectedBranch || 'all');
-        setShowProjections(preset.showProjections !== undefined ? preset.showProjections : true);
+        setShowProjections(true);
         toast.success(`Preset "${preset.name}" applicato`);
     };
 
@@ -1314,7 +1293,7 @@ export default function DashboardPage({ navigate, user }) {
                     </div>
                     
                     {/* FILTERS */}
-                    <div className="w-full lg:w-auto bg-gradient-to-br from-slate-50 via-white to-white backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-5 lg:p-6 space-y-5">
+                    <div className="w-full lg:w-auto bg-gradient-to-br from-indigo-50 via-white to-white backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-5 lg:p-6 space-y-5">
                         <div className="flex items-start gap-4">
                             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-600 text-white shadow-lg shadow-indigo-500/20 ring-4 ring-indigo-500/15">
                                 <Calendar className="w-5 h-5" />
@@ -1364,7 +1343,7 @@ export default function DashboardPage({ navigate, user }) {
                                                 : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                                         }`}
                                     >
-                                        <Layers className="w-4 h-4" />
+                                        <Layers className={`w-4 h-4 ${selectedSector === 'all' ? 'text-white' : 'text-indigo-600'}`} />
                                         Tutti i Settori
                                     </button>
                                     {orderedSectors.map(sector => {
@@ -1375,11 +1354,11 @@ export default function DashboardPage({ navigate, user }) {
                                                 onClick={() => setSelectedSector(sector.id)}
                                                 className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
                                                     isActive
-                                                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/30'
-                                                        : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                                }`}
-                                            >
-                                                {getSectorIcon(sector.name, `w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`)}
+                                                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/30'
+                                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                                {getSectorIcon(sector.name, `w-4 h-4 ${isActive ? 'text-white' : 'text-indigo-600'}`)}
                                                 {sector.name}
                                             </button>
                                         );
@@ -1468,21 +1447,8 @@ export default function DashboardPage({ navigate, user }) {
                             )}
                         </div>
 
-                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setShowProjections(prev => !prev)}
-                                className="inline-flex items-center gap-3 rounded-2xl border border-indigo-200 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:border-indigo-300"
-                                aria-pressed={showProjections}
-                            >
-                                <TrendingUp className={`w-4 h-4 ${showProjections ? 'text-indigo-600' : 'text-slate-400'}`} />
-                                <span>Includi proiezioni</span>
-                                <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${showProjections ? 'bg-indigo-500/90' : 'bg-slate-300'}`}>
-                                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${showProjections ? 'translate-x-5' : 'translate-x-1'}`} />
-                                </span>
-                            </button>
-
-                            {hasActiveFilters && (
+                        {hasActiveFilters && (
+                            <div className="flex justify-end">
                                 <button
                                     onClick={resetFilters}
                                     className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-rose-500/30 transition-all hover:scale-105"
@@ -1490,8 +1456,8 @@ export default function DashboardPage({ navigate, user }) {
                                     <X className="w-4 h-4" />
                                     Reset filtri
                                 </button>
-                            )}
-                        </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -1502,28 +1468,28 @@ export default function DashboardPage({ navigate, user }) {
                             value={formatCurrency(metrics.budgetTotale)}
                             subtitle={`${metrics.sectorData.length} settori attivi`}
                             icon={<Target />}
-                            gradient="from-indigo-500 via-indigo-500 to-purple-600"
+                            gradient="from-emerald-500 to-green-600"
                         />
                         <KpiCard
                             title="Spesa effettiva"
                             value={formatCurrency(metrics.spesaSostenuta)}
-                            subtitle={`${utilizationRate.toFixed(1)}% utilizzato`}
+                            subtitle="Importo registrato"
                             icon={<DollarSign />}
-                            gradient="from-emerald-500 via-emerald-500 to-green-600"
+                            gradient="from-orange-500 to-amber-600"
                         />
                         <KpiCard
                             title="Proiezioni contratti"
                             value={formatCurrency(showProjections ? metrics.spesaPrevistaTotale : 0)}
-                            subtitle={showProjections ? "Da contratti attivi" : "Disabilitate"}
+                            subtitle={showProjections ? "Da contratti attivi" : "Proiezioni disattivate"}
                             icon={<TrendingUp />}
-                            gradient="from-cyan-500 via-cyan-500 to-blue-600"
+                            gradient="from-teal-500 to-cyan-500"
                         />
                         <KpiCard
                             title={isOverBudgetRisk ? "Sforamento previsto" : "Budget residuo"}
                             value={formatCurrency(Math.abs(remainingBudget))}
-                            subtitle={isOverBudgetRisk ? "⚠️ Attenzione richiesta" : "Disponibile"}
+                            subtitle={isOverBudgetRisk ? "Attenzione richiesta" : "Disponibile"}
                             icon={isOverBudgetRisk ? <AlertTriangle /> : <CheckCircle />}
-                            gradient={isOverBudgetRisk ? "from-red-500 via-red-500 to-rose-600" : "from-amber-500 via-amber-500 to-orange-500"}
+                            gradient={isOverBudgetRisk ? "from-rose-500 to-red-600" : "from-slate-600 to-slate-800"}
                         />
                     </div>
                 )}
