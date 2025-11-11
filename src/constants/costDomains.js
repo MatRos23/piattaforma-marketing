@@ -13,14 +13,15 @@ export const COST_DOMAINS = {
     },
     operations: {
         id: 'operations',
-        label: 'Gestione sedi & personale',
-        shortLabel: 'Gestione sedi',
+        label: 'Sedi',
+        shortLabel: 'Sedi',
         description:
-            'Costi strutturali (affitti, mutui, utilities) e spese HR che non devono impattare il budget marketing.',
+            'Monitoraggio dei costi immobiliari e delle utilities per ogni filiale aziendale.',
         lineItemChannelLabel: 'Categoria costo',
         lineItemChannelPlaceholder: 'Seleziona una categoria',
         lineItemChannelRequired: false,
         supportsContracts: false,
+        supportsAttachments: false,
         defaultRequiresContract: false,
     },
 };

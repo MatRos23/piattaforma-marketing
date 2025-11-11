@@ -88,16 +88,19 @@ const ProgressBar = ({ value, max, showOverrun = true }) => {
 
 // Status Badge aggiornato con supporto requiresContract
 // Vista Tabella
-const ExpenseTableView = React.memo(({ 
-    expenses, 
-    sectorMap, 
-    supplierMap, 
+const ExpenseTableView = React.memo(({
+    expenses,
+    sectorMap,
+    supplierMap,
     branchMap,
     contractMap,
-    onEdit, 
+    onEdit,
     onDelete,
     onDuplicate,
-    canEditOrDelete
+    canEditOrDelete,
+    showDocuments = true,
+    splitByBranch = false,
+    limitBranchId = null,
 }) => {
     const [sortState, setSortState] = useState({ column: null, direction: null });
 
@@ -184,6 +187,36 @@ const ExpenseTableView = React.memo(({
         return 'default';
     };
 
+    const getBranchSegments = (expense) => {
+        if (!splitByBranch) {
+            return [{
+                key: expense.id,
+                branchId: expense.branchId || expense.branchld || 'unassigned',
+                branchName: buildBranchName(expense),
+                amount: expense.displayAmount || expense.amount || 0,
+            }];
+        }
+
+        const shares = expense.branchShares || {};
+        const entries = Object.entries(shares);
+
+        if (entries.length === 0) {
+            return [{
+                key: `${expense.id}-unassigned`,
+                branchId: 'unassigned',
+                branchName: 'Non assegnata',
+                amount: expense.displayAmount || expense.amount || 0,
+            }];
+        }
+
+        return entries.map(([branchId, value]) => ({
+            key: `${expense.id}-${branchId}`,
+            branchId,
+            branchName: branchMap.get(branchId) || 'Filiale non assegnata',
+            amount: value,
+        }));
+    };
+
     return (
         <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl shadow-amber-200/60">
             <div className="overflow-x-auto">
@@ -211,15 +244,14 @@ const ExpenseTableView = React.memo(({
                                     {getSortIndicator('amount')}
                                 </button>
                             </th>
-                            <th className="px-4 py-3 text-center">Documenti</th>
+                            {showDocuments && <th className="px-4 py-3 text-center">Documenti</th>}
                             <th className="px-4 py-3 text-center">Azioni</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {sortedExpenses.map((expense) => {
+                        {sortedExpenses.flatMap((expense) => {
                             const sectorIdentifier = expense.sectorId || expense.lineItems?.[0]?.sectorId || null;
                             const sectorName = sectorMap.get(sectorIdentifier) || '—';
-                            const branchName = buildBranchName(expense);
                             const hasInvoice = !!expense.invoicePdfUrl;
                             const hasContract = expense.isContractSatisfied;
                             const requiresContract = expense.requiresContract !== false;
@@ -229,75 +261,113 @@ const ExpenseTableView = React.memo(({
                                 : sectorKey
                                     ? sectorMap.get(sectorKey) || 'default'
                                     : sectorName;
+                            const supplierName = supplierMap.get(expense.supplierId) || 'N/D';
+                            const segments = getBranchSegments(expense);
+                            const filteredSegments = limitBranchId
+                                ? segments.filter(segment => (segment.branchId || 'unassigned') === limitBranchId)
+                                : segments;
 
-                            return (
-                                <tr key={expense.id} className="bg-white/80 hover:bg-amber-50/30 transition-colors">
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-600 shadow-inner">
-                                                {getSectorIcon(iconKey || 'default', "w-4 h-4")}
-                                            </div>
-                                            <div>
-                                                <p className="font-semibold text-slate-900 truncate max-w-[220px]">
-                                                    {supplierMap.get(expense.supplierId) || 'N/D'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3 hidden lg:table-cell">
-                                        <p className="text-sm text-slate-600 truncate max-w-xs">
-                                            {expense.description || '—'}
-                                        </p>
-                                    </td>
-                                    <td className="px-4 py-3 hidden xl:table-cell text-sm text-slate-600">{sectorName}</td>
-                                    <td className="px-4 py-3 hidden xl:table-cell text-sm text-slate-600">{branchName}</td>
-                            <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
-                                {formatDate(expense.date)}
-                            </td>
-                            <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">
-                                {formatCurrency(expense.displayAmount || expense.amount)}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center justify-center gap-2">
-                                            {hasInvoice ? (
-                                                <a
-                                                    href={expense.invoicePdfUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50"
-                                                    title="Apri fattura"
-                                                >
-                                                    <FileText className="w-4 h-4" />
-                                                </a>
+                            if (limitBranchId && filteredSegments.length === 0) {
+                                return [];
+                            }
+
+                            return filteredSegments.map((segment, index) => {
+                                const rowKey = segment.key || `${expense.id}-${index}`;
+                                const branchLabel = segment.branchName ?? buildBranchName(expense);
+                                const amountValue = segment.amount ?? expense.displayAmount ?? expense.amount ?? 0;
+                                const isPrimaryRow = !splitByBranch || index === 0;
+
+                                return (
+                                    <tr key={rowKey} className="bg-white/80 hover:bg-amber-50/30 transition-colors">
+                                        <td className="px-4 py-3">
+                                            {isPrimaryRow ? (
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-600 shadow-inner">
+                                                        {getSectorIcon(iconKey || 'default', "w-4 h-4")}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-slate-900 truncate max-w-[220px]">
+                                                            {supplierName}
+                                                        </p>
+                                                    </div>
+                                                </div>
                                             ) : (
-                                                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-dashed border-slate-200 text-slate-300">
-                                                    <FileText className="w-4 h-4" />
-                                                </span>
+                                                <div className="pl-14 text-xs font-semibold text-slate-400 uppercase tracking-[0.18em]">
+                                                    ↳ {supplierName}
+                                                </div>
                                             )}
-                                            {requiresContract && (
-                                                hasContract ? (
-                                                    <a
-                                                        href={expense.contractPdfUrl || contractMap.get(expense.relatedContractId)?.contractPdfUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-amber-600 hover:border-amber-200 hover:bg-amber-50"
-                                                        title="Apri contratto"
-                                                    >
-                                                        <FileSignature className="w-4 h-4" />
-                                                    </a>
+                                        </td>
+                                        <td className="px-4 py-3 hidden lg:table-cell">
+                                            {isPrimaryRow ? (
+                                                <p className="text-sm text-slate-600 truncate max-w-xs">
+                                                    {expense.description || '—'}
+                                                </p>
+                                            ) : (
+                                                <span className="text-xs font-semibold text-slate-400">Quota filiale</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 hidden xl:table-cell text-sm text-slate-600">
+                                            {sectorName}
+                                        </td>
+                                        <td className="px-4 py-3 hidden xl:table-cell text-sm text-slate-600">
+                                            {branchLabel}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
+                                            {formatDate(expense.date)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">
+                                            {formatCurrency(amountValue)}
+                                        </td>
+                                        {showDocuments && (
+                                            <td className="px-4 py-3">
+                                                {isPrimaryRow ? (
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        {hasInvoice ? (
+                                                            <a
+                                                                href={expense.invoicePdfUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50"
+                                                                title="Apri fattura"
+                                                            >
+                                                                <FileText className="w-4 h-4" />
+                                                            </a>
+                                                        ) : (
+                                                            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-dashed border-slate-200 text-slate-300">
+                                                                <FileText className="w-4 h-4" />
+                                                            </span>
+                                                        )}
+                                                        {requiresContract && (
+                                                            hasContract ? (
+                                                                <a
+                                                                    href={expense.contractPdfUrl || contractMap.get(expense.relatedContractId)?.contractPdfUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-amber-600 hover:border-amber-200 hover:bg-amber-50"
+                                                                    title="Apri contratto"
+                                                                >
+                                                                    <FileSignature className="w-4 h-4" />
+                                                                </a>
+                                                            ) : (
+                                                                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-dashed border-slate-200 text-slate-300">
+                                                                    <FileSignature className="w-4 h-4" />
+                                                                </span>
+                                                            )
+                                                        )}
+                                                    </div>
                                                 ) : (
-                                                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-dashed border-slate-200 text-slate-300">
-                                                        <FileSignature className="w-4 h-4" />
-                                                    </span>
-                                                )
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center justify-center gap-1.5">
-                                            {canEditOrDelete(expense) && (
-                                                <>
-                                                    <button 
+                                                    <div className="flex items-center justify-center">
+                                                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-dashed border-slate-200 text-slate-200">
+                                                            —
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        )}
+                                        <td className="px-4 py-3">
+                                            {isPrimaryRow && canEditOrDelete(expense) ? (
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    <button
                                                         onClick={() => onDuplicate(expense)}
                                                         className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all"
                                                         title="Duplica spesa"
@@ -305,7 +375,7 @@ const ExpenseTableView = React.memo(({
                                                         <Copy className="w-3.5 h-3.5" />
                                                         Duplica
                                                     </button>
-                                                    <button 
+                                                    <button
                                                         onClick={() => onEdit(expense)}
                                                         className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 transition-all"
                                                         title="Modifica spesa"
@@ -313,7 +383,7 @@ const ExpenseTableView = React.memo(({
                                                         <Pencil className="w-3.5 h-3.5" />
                                                         Modifica
                                                     </button>
-                                                    <button 
+                                                    <button
                                                         onClick={() => onDelete(expense)}
                                                         className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all"
                                                         title="Elimina spesa"
@@ -321,12 +391,16 @@ const ExpenseTableView = React.memo(({
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                         Elimina
                                                     </button>
-                                                </>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center justify-center h-9">
+                                                    <span className="text-slate-200 text-xs font-semibold">{splitByBranch ? '—' : ''}</span>
+                                                </div>
                                             )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
+                                        </td>
+                                    </tr>
+                                );
+                            });
                         })}
                     </tbody>
                 </table>
@@ -382,12 +456,15 @@ export default function ExpensesPage({
         [costDomain, domainConfigs]
     );
     const currentDomainConfig = domainConfigs[resolvedCostDomain] || domainConfigs[DEFAULT_COST_DOMAIN];
+    const isOperationsDomain = resolvedCostDomain === 'operations';
     const domainOptions = useMemo(
         () => Object.values(domainConfigs).map(config => ({ id: config.id, label: config.label })),
         [domainConfigs]
     );
     const canChangeDomain = user.role === 'admin' || user.role === 'manager';
     const heroBadge = currentDomainConfig?.shortLabel || 'Spese';
+    const heroTitle = isOperationsDomain ? 'Controllo Costi Sedi' : 'Centro di Controllo Spese';
+    const newExpenseLabel = isOperationsDomain ? 'Nuovo costo sede' : 'Nuova spesa';
     const heroDescription = useMemo(() => {
         const suffix = ' Salva preset per riutilizzarli rapidamente nelle altre sezioni.';
         if (currentDomainConfig?.description) {
@@ -929,6 +1006,7 @@ if (supplierFilter.length > 0) {
     ]);
     
     const expenseAlerts = useMemo(() => {
+        if (isOperationsDomain) return [];
         if (processedExpenses.length === 0) return [];
 
         const alerts = [];
@@ -1009,7 +1087,7 @@ if (supplierFilter.length > 0) {
         }
 
         return alerts;
-    }, [processedExpenses, supplierMap, branchMap]);
+    }, [isOperationsDomain, processedExpenses, supplierMap, branchMap]);
     
     // Calcolo KPI ottimizzato
     const kpiData = useMemo(() => {
@@ -1056,6 +1134,47 @@ if (supplierFilter.length > 0) {
 
     // Callbacks ottimizzati
 
+    const operationsBranchSummary = useMemo(() => {
+        if (!isOperationsDomain) return [];
+        const totals = new Map();
+
+        processedExpenses.forEach(exp => {
+            const shares = exp.branchShares || {};
+            const entries = Object.entries(shares);
+            if (entries.length > 0) {
+                entries.forEach(([branchId, value]) => {
+                    totals.set(branchId, (totals.get(branchId) || 0) + value);
+                });
+            } else {
+                const fallbackBranch = exp.branchId || exp.branchld || 'unassigned';
+                const amount = exp.displayAmount || exp.amount || 0;
+                totals.set(fallbackBranch, (totals.get(fallbackBranch) || 0) + amount);
+            }
+        });
+
+        return Array.from(totals.entries())
+            .map(([branchId, amount]) => ({
+                branchId,
+                name: branchMap.get(branchId) || (branchId === 'unassigned' ? 'Non assegnata' : 'Filiale non assegnata'),
+                amount,
+            }))
+            .sort((a, b) => b.amount - a.amount);
+    }, [isOperationsDomain, processedExpenses, branchMap]);
+
+    const operationsTotalSpend = useMemo(() => {
+        if (!isOperationsDomain) return 0;
+        return operationsBranchSummary.reduce((sum, item) => sum + (item.amount || 0), 0);
+    }, [isOperationsDomain, operationsBranchSummary]);
+
+    const operationsAveragePerBranch = useMemo(() => {
+        if (!isOperationsDomain || operationsBranchSummary.length === 0) return 0;
+        return operationsTotalSpend / operationsBranchSummary.length;
+    }, [isOperationsDomain, operationsTotalSpend, operationsBranchSummary]);
+
+    const operationsTopBranch = isOperationsDomain && operationsBranchSummary.length > 0
+        ? operationsBranchSummary[0]
+        : null;
+
     
     const canEditOrDelete = useCallback((expense) => {
         return user.role === 'manager' || user.role === 'admin' || expense.authorId === user.uid;
@@ -1079,24 +1198,26 @@ if (supplierFilter.length > 0) {
         setIsModalOpen(true);
     }, [canEditOrDelete]);
     
-    const handleSaveExpense = useCallback(async (expenseData, invoiceFile, contractFile) => {
+    const handleSaveExpense = useCallback(async (expenseData, invoiceFileArg, contractFileArg) => {
         const isEditing = !!expenseData.id;
         const toastId = toast.loading(isEditing ? 'Aggiornamento...' : 'Salvataggio...');
+        const effectiveInvoiceFile = invoiceFileArg || expenseData?.invoiceFile || null;
+        const effectiveContractFile = contractFileArg || expenseData?.contractFile || null;
         
         try {
             const expenseId = isEditing ? expenseData.id : doc(collection(db, 'expenses')).id;
             let invoiceURL = expenseData.invoicePdfUrl || "";
             let contractURL = expenseData.contractPdfUrl || "";
             
-            if (invoiceFile) {
-                const invoiceRef = ref(storage, `invoices/${expenseId}/${invoiceFile.name}`);
-                await uploadBytes(invoiceRef, invoiceFile);
+            if (effectiveInvoiceFile) {
+                const invoiceRef = ref(storage, `invoices/${expenseId}/${effectiveInvoiceFile.name}`);
+                await uploadBytes(invoiceRef, effectiveInvoiceFile);
                 invoiceURL = await getDownloadURL(invoiceRef);
             }
             
-            if (contractFile) {
-                const contractRef = ref(storage, `contracts_on_expenses/${expenseId}/${contractFile.name}`);
-                await uploadBytes(contractRef, contractFile);
+            if (effectiveContractFile) {
+                const contractRef = ref(storage, `contracts_on_expenses/${expenseId}/${effectiveContractFile.name}`);
+                await uploadBytes(contractRef, effectiveContractFile);
                 contractURL = await getDownloadURL(contractRef);
             }
             
@@ -1301,7 +1422,7 @@ if (supplierFilter.length > 0) {
                                 <div>
                                     <p className="text-xs uppercase tracking-[0.4em] text-white/70 font-semibold">{heroBadge}</p>
                                     <h1 className="text-3xl lg:text-4xl xl:text-5xl font-black leading-tight">
-                                        Centro di Controllo Spese
+                                        {heroTitle}
                                     </h1>
                                 </div>
                             </div>
@@ -1315,7 +1436,7 @@ if (supplierFilter.length > 0) {
                                     className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-amber-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
                                 >
                                     <PlusCircle className="w-4 h-4" />
-                                    Nuova spesa
+                                    {newExpenseLabel}
                                 </button>
                                 <span className="text-xs font-semibold uppercase tracking-[0.25em] text-white/70">
                                     Aggiorna in tempo reale
@@ -1324,7 +1445,8 @@ if (supplierFilter.length > 0) {
                         </div>
                     </div>
 
-                    <div className="w-full bg-gradient-to-br from-orange-50 via-white to-white backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-5 lg:p-6 space-y-6">
+                    {!isOperationsDomain && (
+                        <div className="w-full bg-gradient-to-br from-orange-50 via-white to-white backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-5 lg:p-6 space-y-6">
                         <div className="flex items-start gap-4">
                             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 text-white shadow-lg shadow-amber-500/20 ring-4 ring-amber-400/20">
                                 <SlidersHorizontal className="w-5 h-5" />
@@ -1681,12 +1803,99 @@ if (supplierFilter.length > 0) {
                                         Resetta filtri
                                     </button>
                                 </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+                {isOperationsDomain && (
+                        <div className="w-full bg-gradient-to-br from-white via-amber-50 to-orange-50 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-5 lg:p-6 space-y-6">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-sky-500 to-blue-500 text-white shadow-lg shadow-indigo-500/20 ring-4 ring-indigo-400/20">
+                                    <Building2 className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h2 className="text-lg font-black text-slate-900">Distribuzione per Filiale</h2>
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-1 text-[11px] font-bold text-indigo-700">
+                                            <Info className="w-3 h-3" />
+                                            Vista dedicata alle sedi
+                                        </span>
+                                    </div>
+                                    <p className="mt-1 text-sm font-medium text-slate-600">
+                                        Ogni spesa viene ripartita automaticamente sulle filiali: monitora gli importi senza utilizzare i filtri avanzati.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="rounded-2xl bg-white/90 border border-slate-200 p-4 shadow-sm">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Filiali con costi</p>
+                                    <p className="mt-2 text-2xl font-black text-slate-900">{operationsBranchSummary.length}</p>
+                                    <p className="text-xs text-slate-500 mt-1">Dati aggiornati dalle spese registrate</p>
+                                </div>
+                                <div className="rounded-2xl bg-white/90 border border-slate-200 p-4 shadow-sm">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Spesa media</p>
+                                    <p className="mt-2 text-2xl font-black text-slate-900">{formatCurrency(operationsAveragePerBranch || 0)}</p>
+                                    <p className="text-xs text-slate-500 mt-1">Per filiale con costi attivi</p>
+                                </div>
+                                <div className="rounded-2xl bg-white/90 border border-slate-200 p-4 shadow-sm">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Top filiale</p>
+                                    <p className="mt-2 text-base font-bold text-slate-900 truncate">
+                                        {operationsTopBranch ? operationsTopBranch.name : '—'}
+                                    </p>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        {operationsTopBranch
+                                            ? `${formatCurrency(operationsTopBranch.amount)} • ${operationsTotalSpend > 0 ? ((operationsTopBranch.amount / operationsTotalSpend) * 100).toFixed(1) : '0'}% del totale`
+                                            : 'Nessuna spesa registrata'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                {operationsBranchSummary.length > 0 ? (
+                                    operationsBranchSummary.slice(0, 8).map(branch => {
+                                        const branchShare = operationsTotalSpend > 0
+                                            ? ((branch.amount / operationsTotalSpend) * 100)
+                                            : 0;
+                                        return (
+                                            <div
+                                                key={branch.branchId || 'unassigned'}
+                                                className="rounded-2xl bg-white/95 border border-slate-200 p-4 shadow-sm hover:border-indigo-200 transition-colors"
+                                            >
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-slate-900">{branch.name}</p>
+                                                        <p className="text-xs text-slate-500">{branchShare.toFixed(1)}% del totale</p>
+                                                    </div>
+                                                    <span className="text-sm font-bold text-slate-900">
+                                                        {formatCurrency(branch.amount)}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-3">
+                                                    <ProgressBar
+                                                        value={branch.amount}
+                                                        max={operationsTotalSpend || branch.amount || 1}
+                                                        showOverrun={false}
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                ) : (
+                                    <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white/80 p-6 text-center text-sm font-medium text-slate-500">
+                                        Nessuna spesa registrata per le sedi in questo periodo.
+                                    </div>
+                                )}
+                                {operationsBranchSummary.length > 8 && (
+                                    <p className="text-xs text-slate-500">
+                                        Sono mostrate le prime 8 filiali per importo. Esporta le spese per analizzare tutto il dettaglio.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
                     )}
                 </div>
-            </div>
-        </div>
-
-        {expenseAlerts.length > 0 && (
+                {expenseAlerts.length > 0 && (
             <div className="space-y-4">
                 {expenseAlerts.map(alert => {
                     const isCritical = alert.type === 'critical';
@@ -1757,50 +1966,126 @@ if (supplierFilter.length > 0) {
         )}
 
         {/* KPI Cards migliorate */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 xl:gap-6">
             <KpiCard 
                 title="Spese Totali" 
                 value={kpiData.totalExpenses.toString()}
-                        subtitle={`${processedExpenses.length} spese filtrate`}
+                        subtitle={isOperationsDomain ? 'Voci registrate per le sedi' : `${processedExpenses.length} spese filtrate`}
                         icon={<FileText className="w-6 h-6" />}
                         gradient="from-orange-500 to-amber-600"
                     />
-                    <KpiCard 
-                        title="Importo Totale" 
-                        value={formatCurrency(kpiData.totalSpend)}
-                        subtitle={`Budget: ${formatCurrency(kpiData.totalBudget)}`}
+            <KpiCard 
+                title="Importo Totale" 
+                value={formatCurrency(kpiData.totalSpend)}
+                        subtitle={isOperationsDomain ? 'Ripartite automaticamente per filiale' : `Budget: ${formatCurrency(kpiData.totalBudget)}`}
                         icon={<DollarSign className="w-6 h-6" />}
                         gradient="from-orange-600 to-amber-700"
                     />
-                    <KpiCard 
-                        title="Con Fattura" 
-                        value={`${kpiData.withInvoicePercentage}%`}
-                        subtitle="Documenti fiscali"
-                        icon={<CheckCircle2 className="w-6 h-6" />}
-                        gradient="from-amber-400 to-yellow-500"
-                    />
-                    <KpiCard 
-                        title="Complete" 
-                        value={`${kpiData.completePercentage}%`}
-                        subtitle="Tutti i documenti"
-                        icon={<Activity className="w-6 h-6" />}
-                        gradient="from-orange-400 to-amber-500"
-                    />
+                    {isOperationsDomain ? (
+                        <>
+                            <KpiCard
+                                title="Filiali Attive"
+                                value={operationsBranchSummary.length.toString()}
+                                subtitle="Con costi registrati"
+                                icon={<MapPin className="w-6 h-6" />}
+                                gradient="from-indigo-500 to-sky-600"
+                            />
+                            <KpiCard
+                                title="Spesa Media"
+                                value={formatCurrency(operationsAveragePerBranch || 0)}
+                                subtitle="Per filiale attiva"
+                                icon={<Layers className="w-6 h-6" />}
+                                gradient="from-blue-500 to-indigo-600"
+                            />
+                        </>
+                    ) : (
+                        <>
+                            <KpiCard 
+                                title="Con Fattura" 
+                                value={`${kpiData.withInvoicePercentage}%`}
+                                subtitle="Documenti fiscali"
+                                icon={<CheckCircle2 className="w-6 h-6" />}
+                                gradient="from-amber-400 to-yellow-500"
+                            />
+                            <KpiCard 
+                                title="Complete" 
+                                value={`${kpiData.completePercentage}%`}
+                                subtitle="Tutti i documenti"
+                                icon={<Activity className="w-6 h-6" />}
+                                gradient="from-orange-400 to-amber-500"
+                            />
+                        </>
+                    )}
                 </div>
                 
                 {/* Lista Spese */}
                 {processedExpenses.length > 0 ? (
-                    <ExpenseTableView
-                        expenses={processedExpenses}
-                        sectorMap={sectorMap}
-                        supplierMap={supplierMap}
-                        branchMap={branchMap}
-                        contractMap={contractMap}
-                        onEdit={handleOpenEditModal}
-                        onDelete={handleDeleteExpense}
-                        onDuplicate={handleDuplicateExpense}
-                        canEditOrDelete={canEditOrDelete}
-                    />
+                    isOperationsDomain ? (
+                        operationsBranchSummary.length > 0 ? (
+                            <div className="space-y-10">
+                                {operationsBranchSummary.map((branch) => (
+                                    <div
+                                        key={branch.branchId || 'unassigned'}
+                                        className="space-y-4 rounded-3xl border border-white/40 bg-white/90 p-4 lg:p-6 shadow-lg shadow-amber-200/30"
+                                    >
+                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-400">
+                                                    Filiale
+                                                </p>
+                                                <h3 className="text-xl font-black text-slate-900">{branch.name}</h3>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                                                    Totale filiale
+                                                </p>
+                                                <p className="text-xl font-black text-slate-900">
+                                                    {formatCurrency(branch.amount)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <ExpenseTableView
+                                            expenses={processedExpenses}
+                                            sectorMap={sectorMap}
+                                            supplierMap={supplierMap}
+                                            branchMap={branchMap}
+                                            contractMap={contractMap}
+                                            onEdit={handleOpenEditModal}
+                                            onDelete={handleDeleteExpense}
+                                            onDuplicate={handleDuplicateExpense}
+                                            canEditOrDelete={canEditOrDelete}
+                                            showDocuments={false}
+                                            splitByBranch
+                                            limitBranchId={branch.branchId || 'unassigned'}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center">
+                                <div className="p-4 rounded-2xl bg-amber-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
+                                    <Search className="w-8 h-8 text-amber-600" />
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-800 mb-4">Nessuna Spesa Trovata</h3>
+                                <p className="text-gray-600">
+                                    Non ci sono costi associati alle sedi in questo periodo.
+                                </p>
+                            </div>
+                        )
+                    ) : (
+                        <ExpenseTableView
+                            expenses={processedExpenses}
+                            sectorMap={sectorMap}
+                            supplierMap={supplierMap}
+                            branchMap={branchMap}
+                            contractMap={contractMap}
+                            onEdit={handleOpenEditModal}
+                            onDelete={handleDeleteExpense}
+                            onDuplicate={handleDuplicateExpense}
+                            canEditOrDelete={canEditOrDelete}
+                            showDocuments
+                        />
+                    )
                 ) : (
                     <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center">
                         <div className="p-4 rounded-2xl bg-amber-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">

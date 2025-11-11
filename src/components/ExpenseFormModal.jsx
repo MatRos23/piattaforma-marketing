@@ -160,6 +160,8 @@ export default function ExpenseFormModal({
     const channelLabel = activeDomainConfig?.lineItemChannelLabel || 'Canale Marketing';
     const channelPlaceholder = activeDomainConfig?.lineItemChannelPlaceholder || 'Seleziona...';
     const channelRequired = activeDomainConfig?.lineItemChannelRequired !== false;
+    const supportsContracts = activeDomainConfig?.supportsContracts !== false;
+    const supportsAttachments = activeDomainConfig?.supportsAttachments !== false;
 
     useEffect(() => {
         if (!isOpen) return;
@@ -202,6 +204,12 @@ export default function ExpenseFormModal({
         setContractLineItems([]);
         setSelectedContract(null);
     }, [isOpen, initialData, defaultFormData, defaultLineItem, defaultDomainId, domainConfigs, getDomainConfig]);
+
+    useEffect(() => {
+        if (!supportsAttachments) {
+            setInvoiceFile(null);
+        }
+    }, [supportsAttachments]);
     
     // ⭐ NUOVO useEffect: Carica i lineItems quando si seleziona un contratto
     useEffect(() => {
@@ -226,6 +234,78 @@ export default function ExpenseFormModal({
             return sum + (isNaN(amount) ? 0 : amount);
         }, 0) || 0;
     }, [formData.lineItems]);
+
+    const selectedSupplier = useMemo(() => {
+        if (!formData.supplierId || !suppliers) return null;
+        return suppliers.find(s => s.id === formData.supplierId) || null;
+    }, [formData.supplierId, suppliers]);
+
+    const availableSectors = useMemo(() => {
+        if (!sectors || sectors.length === 0) return [];
+        if (!selectedSupplier || !Array.isArray(selectedSupplier.associatedSectors) || selectedSupplier.associatedSectors.length === 0) {
+            return sectors;
+        }
+        const allowed = sectors.filter(sector => selectedSupplier.associatedSectors.includes(sector.id));
+        return allowed.length > 0 ? allowed : sectors;
+    }, [sectors, selectedSupplier]);
+
+    const getBranchesForSector = useCallback((sectorId) => {
+        if (!branches || branches.length === 0) return [];
+        if (!sectorId) return branches;
+        const filtered = branches.filter(branch => branch.associatedSectors?.includes(sectorId));
+        return filtered.length > 0 ? filtered : branches;
+    }, [branches]);
+
+    const defaultSectorIdForSupplier = useMemo(() => {
+        if (!availableSectors || availableSectors.length === 0) return '';
+        if (availableSectors.length === 1) return availableSectors[0].id;
+        const preferred = availableSectors.find(sector => selectedSupplier?.associatedSectors?.[0] === sector.id);
+        return preferred?.id || availableSectors[0].id;
+    }, [availableSectors, selectedSupplier]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (!selectedSupplier) return;
+
+        setFormData(prev => {
+            const currentLineItems = Array.isArray(prev.lineItems) ? prev.lineItems : [];
+            let hasChanges = false;
+
+            const updatedLineItems = currentLineItems.map(item => {
+                let updatedItem = item;
+                let itemChanged = false;
+
+                if (availableSectors.length > 0 && !availableSectors.some(sector => sector.id === item.sectorId)) {
+                    updatedItem = { ...updatedItem, sectorId: defaultSectorIdForSupplier };
+                    itemChanged = true;
+                }
+
+                const sectorBranches = getBranchesForSector(updatedItem.sectorId || defaultSectorIdForSupplier || '');
+
+                const currentBranchIds = Array.isArray(updatedItem.branchIds) ? updatedItem.branchIds : [];
+                const validBranchIds = currentBranchIds.filter(id => sectorBranches.some(branch => branch.id === id));
+
+                if (sectorBranches.length === 1) {
+                    const singleBranchId = sectorBranches[0].id;
+                    if (validBranchIds.length !== 1 || validBranchIds[0] !== singleBranchId) {
+                        updatedItem = { ...updatedItem, branchIds: [singleBranchId] };
+                        itemChanged = true;
+                    }
+                } else if (validBranchIds.length !== currentBranchIds.length) {
+                    updatedItem = { ...updatedItem, branchIds: validBranchIds };
+                    itemChanged = true;
+                }
+
+                if (itemChanged) {
+                    hasChanges = true;
+                    return updatedItem;
+                }
+                return item;
+            });
+
+            return hasChanges ? { ...prev, lineItems: updatedLineItems } : prev;
+        });
+    }, [isOpen, selectedSupplier, availableSectors, defaultSectorIdForSupplier, getBranchesForSector]);
 
     const handleInputChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -275,8 +355,10 @@ export default function ExpenseFormModal({
     };
 
     const renderContractControls = () => {
-        const contractsAllowed = activeDomainConfig?.supportsContracts !== false;
-        const toggleActive = contractsAllowed && formData.requiresContract;
+        if (!supportsContracts) {
+            return null;
+        }
+        const toggleActive = formData.requiresContract;
 
         return (
             <div className="space-y-4">
@@ -289,35 +371,27 @@ export default function ExpenseFormModal({
                             <div>
                                 <p className="font-bold text-slate-900">Questa spesa richiede un contratto?</p>
                                 <p className="text-xs text-slate-600 mt-0.5">
-                                        Disattiva per spese che non necessitano contratto (es. spese una tantum)
-                                    </p>
-                                </div>
+                                    Disattiva per spese che non necessitano contratto (es. spese una tantum)
+                                </p>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (!contractsAllowed) return;
-                                    setFormData(prev => ({ ...prev, requiresContract: !prev.requiresContract }));
-                                }}
-                                disabled={!contractsAllowed}
-                                className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors ${
-                                    toggleActive ? 'bg-indigo-600' : 'bg-slate-300'
-                                } ${contractsAllowed ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}
-                            >
-                                <span
-                                    className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                                        toggleActive ? 'translate-x-8' : 'translate-x-1'
-                                    }`}
-                                />
-                            </button>
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setFormData(prev => ({ ...prev, requiresContract: !prev.requiresContract }));
+                            }}
+                            className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors ${
+                                toggleActive ? 'bg-indigo-600' : 'bg-slate-300'
+                            } cursor-pointer`}
+                        >
+                            <span
+                                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                                    toggleActive ? 'translate-x-8' : 'translate-x-1'
+                                }`}
+                            />
+                        </button>
                     </div>
-
-                {!contractsAllowed && (
-                    <div className="rounded-lg border-2 border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-                        Questa area di costo non richiede contratti. Cambia area per collegare un contratto.
-                    </div>
-                )}
+                </div>
 
                 {toggleActive && (
                     <div className="space-y-4">
@@ -540,9 +614,21 @@ export default function ExpenseFormModal({
     };
 
     const addLineItem = () => {
+        const baseItem = { ...defaultLineItem, _key: Math.random() };
+        const sectorId = baseItem.sectorId || defaultSectorIdForSupplier || '';
+        const sectorBranches = sectorId ? getBranchesForSector(sectorId) : [];
+        const branchIds = sectorBranches.length === 1 ? [sectorBranches[0].id] : [];
+
         setFormData(prev => ({
             ...prev,
-            lineItems: [...prev.lineItems, { ...defaultLineItem, _key: Math.random() }]
+            lineItems: [
+                ...prev.lineItems,
+                {
+                    ...baseItem,
+                    sectorId,
+                    branchIds,
+                }
+            ]
         }));
     };
 
@@ -568,10 +654,10 @@ export default function ExpenseFormModal({
     };
     
     const availableContracts = useMemo(() => {
-        if (activeDomainConfig?.supportsContracts === false) return [];
+        if (!supportsContracts) return [];
         if (!formData.supplierId || !contracts) return [];
         return contracts.filter(c => c.supplierld === formData.supplierId);
-    }, [formData.supplierId, contracts, activeDomainConfig]);
+    }, [formData.supplierId, contracts, supportsContracts]);
 
     const filteredMarketingChannels = useMemo(() => {
         if (!marketingChannels) return [];
@@ -675,7 +761,7 @@ export default function ExpenseFormModal({
             costDomain: formData.costDomain || defaultDomainId,
         };
 
-        onSave(finalData);
+        onSave(finalData, invoiceFile || null, null);
     };
 
     if (!isOpen) return null;
@@ -831,13 +917,13 @@ export default function ExpenseFormModal({
                                                     required
                                                 >
                                                     <option value="">Seleziona...</option>
-                                                    {sectors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                    {availableSectors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                                 </select>
                                             </div>
                                             <div>
                                                 <label className="text-xs font-semibold text-slate-600 block mb-1.5">Filiali *</label>
                                                 <MultiSelect 
-                                                    options={branches}
+                                                    options={getBranchesForSector(item.sectorId)}
                                                     selected={item.branchIds}
                                                     onChange={(branchId) => handleBranchMultiSelectChange(index, branchId)}
                                                 />
@@ -929,47 +1015,49 @@ export default function ExpenseFormModal({
                             </button>
                         </div>
                         
-                        {/* Sezione Contratti e Allegati */}
-                        <div className="bg-white rounded-2xl border-2 border-slate-200 p-5 shadow-sm">
-                            <div className="flex items-center gap-2 mb-4">
-                                <FileSignature className="w-5 h-5 text-amber-600" />
-                                <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
-                                    Documenti e Contratti
-                                </h4>
-                            </div>
-                            
-                            <div className="space-y-4">
-                                {renderContractControls()}
+                        {(supportsContracts || supportsAttachments) && (
+                            <div className="bg-white rounded-2xl border-2 border-slate-200 p-5 shadow-sm">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <FileSignature className="w-5 h-5 text-amber-600" />
+                                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
+                                        Documenti e Contratti
+                                    </h4>
+                                </div>
                                 
-                                {/* Upload PDF */}
-                                <div>
-                                    <label className="text-sm font-semibold text-slate-700 block mb-2">
-                                        <Paperclip className="w-4 h-4 inline mr-1" />
-                                        Allega Fattura PDF
-                                    </label>
-                                    <input 
-                                        type="file" 
-                                        accept="application/pdf" 
-                                        onChange={handleFileChange} 
-                                        className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 transition-all"
-                                    />
-                                    <div className="mt-2 text-sm">
-                                        <span className="text-slate-600">File selezionato: </span>
-                                        <span className="font-medium">
-                                            {invoiceFile ? (
-                                                <span className="font-medium text-emerald-600">
-                                                    ✓ {invoiceFile.name}
+                                <div className="space-y-4">
+                                    {supportsContracts && renderContractControls()}
+                                    
+                                    {supportsAttachments && (
+                                        <div>
+                                            <label className="text-sm font-semibold text-slate-700 block mb-2">
+                                                <Paperclip className="w-4 h-4 inline mr-1" />
+                                                Allega Fattura PDF
+                                            </label>
+                                            <input 
+                                                type="file" 
+                                                accept="application/pdf" 
+                                                onChange={handleFileChange} 
+                                                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 transition-all"
+                                            />
+                                            <div className="mt-2 text-sm">
+                                                <span className="text-slate-600">File selezionato: </span>
+                                                <span className="font-medium">
+                                                    {invoiceFile ? (
+                                                        <span className="font-medium text-emerald-600">
+                                                            ✓ {invoiceFile.name}
+                                                        </span>
+                                                    ) : formData.invoicePdfUrl ? (
+                                                        <span className="text-slate-500">File PDF già caricato</span>
+                                                    ) : (
+                                                        <span className="text-slate-400">Nessun file selezionato</span>
+                                                    )}
                                                 </span>
-                                            ) : formData.invoicePdfUrl ? (
-                                                <span className="text-slate-500">File PDF già caricato</span>
-                                            ) : (
-                                                <span className="text-slate-400">Nessun file selezionato</span>
-                                            )}
-                                        </span>
-                                    </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                        </div>
+                        )}
                     </div>
 
                     {/* Footer */}

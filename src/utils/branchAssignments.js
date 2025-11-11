@@ -49,7 +49,7 @@ export const deriveBranchesForLineItem = ({
     }
 
     const expenseBranch = expense.branchId || expense.branchld;
-    if (expenseBranch && branchMap.has(expenseBranch)) {
+    if (branchIds.size === 0 && expenseBranch && branchMap.has(expenseBranch)) {
         branchIds.add(expenseBranch);
     }
 

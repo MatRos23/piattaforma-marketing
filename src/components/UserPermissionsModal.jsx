@@ -17,36 +17,34 @@ export default function UserPermissionsModal({ isOpen, onClose, onSave, userData
         }
     }, [isOpen, userData]);
 
-    // Carica la lista fornitori
     useEffect(() => {
-        if (isOpen) {
-            setLoadingSuppliers(true);
-            const unsubscribe = onSnapshot(
-                query(collection(db, 'channels'), orderBy('name')),
-                (snapshot) => {
-                    const suppliersList = snapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...doc.data()
-                    }));
-                    setSuppliers(suppliersList);
-                    setLoadingSuppliers(false);
-                },
-                (error) => {
-                    console.error("Errore caricamento fornitori:", error);
-                    toast.error("Errore nel caricamento dei fornitori");
-                    setLoadingSuppliers(false);
-                }
-            );
+        if (!isOpen) return;
 
-            return () => unsubscribe();
-        }
+        setLoadingSuppliers(true);
+        const unsubscribe = onSnapshot(
+            query(collection(db, 'channels'), orderBy('name')),
+            (snapshot) => {
+                const list = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                }));
+                setSuppliers(list);
+                setLoadingSuppliers(false);
+            },
+            (error) => {
+                console.error('Errore caricamento fornitori:', error);
+                toast.error('Errore nel caricamento dei fornitori');
+                setLoadingSuppliers(false);
+            }
+        );
+
+        return () => unsubscribe();
     }, [isOpen]);
 
     const handleSave = () => {
-        // Se il ruolo non è collaborator, svuota assignedChannels
         const dataToSave = {
             role,
-            assignedChannels: role === 'collaborator' ? assignedChannels : []
+            assignedChannels: role === 'collaborator' ? assignedChannels : [],
         };
         onSave(userData.id, dataToSave);
     };
@@ -59,72 +57,77 @@ export default function UserPermissionsModal({ isOpen, onClose, onSave, userData
         );
     };
 
-    const selectAllChannels = () => {
-        setAssignedChannels(suppliers.map(s => s.id));
-    };
-
-    const deselectAllChannels = () => {
-        setAssignedChannels([]);
-    };
+    const selectAllChannels = () => setAssignedChannels(suppliers.map(s => s.id));
+    const deselectAllChannels = () => setAssignedChannels([]);
 
     if (!isOpen || !userData) return null;
 
+    const isCollaborator = role === 'collaborator';
+
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4 transition-opacity duration-300">
-            <div className="bg-white/90 backdrop-blur-2xl rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] border border-white/30">
-                {/* Header */}
-                <div className="p-5 border-b border-gray-200/80 flex justify-between items-center flex-shrink-0">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-gradient-to-br from-slate-700 to-gray-900 text-white">
-                            <Users className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm">
+            <div className="w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-200/60 bg-white/98 shadow-[0_35px_95px_-45px_rgba(15,23,42,0.75)]">
+                <div className="flex items-start justify-between gap-4 border-b border-slate-200/60 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-6 py-5 text-white">
+                    <div className="flex items-start gap-4">
+                        <div className="rounded-2xl border border-white/15 bg-white/10 p-3 text-white shadow-inner shadow-black/20">
+                            <Users className="h-5 w-5" />
                         </div>
                         <div>
-                            <h3 className="text-xl font-bold text-gray-800">Modifica Permessi Utente</h3>
-                            <p className="text-sm text-gray-500 font-medium">Gestisci ruolo e accessi</p>
+                            <h3 className="text-xl font-black">Modifica permessi utente</h3>
+                            <p className="text-sm font-medium text-white/80">
+                                Assegna ruolo e visibilità ai fornitori della piattaforma
+                            </p>
                         </div>
                     </div>
-                    <button type="button" onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
-                        <X />
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-white/80 transition-all hover:bg-white/20 hover:text-white"
+                    >
+                        <X className="h-4 w-4" />
                     </button>
                 </div>
                 
-                {/* Body */}
-                <div className="p-6 space-y-6 overflow-y-auto flex-1">
-                    {/* Info Utente */}
-                    <div className="p-4 bg-gray-50/70 rounded-xl border border-gray-200/80">
-                        <p className="text-sm text-gray-500">Stai modificando l'utente:</p>
-                        <p className="font-semibold text-gray-800 text-lg">{userData.name}</p>
-                        <p className="text-sm text-gray-600">{userData.email}</p>
+                <div className="space-y-6 overflow-y-auto bg-white px-6 py-6">
+                    <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-5 shadow-inner shadow-white/60">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Utente selezionato
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-slate-900">{userData.name}</p>
+                        <p className="text-sm font-medium text-slate-600">{userData.email}</p>
                     </div>
 
-                    {/* Ruolo */}
-                    <div>
-                        <label className="text-sm font-semibold text-gray-700 block mb-2">Ruolo</label>
+                    <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 block">Ruolo</label>
                         <select 
                             value={role} 
                             onChange={(e) => setRole(e.target.value)} 
-                            className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-slate-500 focus:ring-4 focus:ring-slate-500/20 transition-all"
+                            className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm transition-all focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                         >
                             <option value="collaborator">Collaborator</option>
                             <option value="manager">Manager</option>
                             <option value="admin">Admin</option>
                         </select>
-                        <p className="text-xs text-gray-500 mt-2">
-                            {role === 'admin' && '• Accesso completo a tutte le funzionalità'}
-                            {role === 'manager' && '• Può visualizzare e gestire tutte le spese e contratti'}
-                            {role === 'collaborator' && '• Accesso limitato ai fornitori assegnati'}
+                        <p className="text-xs text-slate-500">
+                            {role === 'admin' && '• Accesso completo a tutte le sezioni e alle configurazioni.'}
+                            {role === 'manager' && '• Supervisione di budget, spese e contratti con facoltà di modifica.'}
+                            {role === 'collaborator' && '• Accesso operativo ai soli fornitori assegnati.'}
                         </p>
                     </div>
 
-                    {/* Fornitori Assegnati - Solo per Collaborator */}
-                    {role === 'collaborator' && (
-                        <div>
-                            <div className="flex items-center justify-between mb-3">
-                                <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                                    <ShoppingCart className="w-4 h-4" />
-                                    Fornitori Assegnati ({assignedChannels.length})
-                                </label>
-                                <div className="flex gap-2">
+                    {isCollaborator && (
+                        <div className="space-y-3">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                                        <ShoppingCart className="h-4 w-4" />
+                                        Fornitori assegnati ({assignedChannels.length})
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                        Seleziona a quali fornitori questo collaboratore potrà accedere
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
                                     <button
                                         type="button"
                                         onClick={selectAllChannels}
@@ -132,7 +135,7 @@ export default function UserPermissionsModal({ isOpen, onClose, onSave, userData
                                     >
                                         Seleziona tutti
                                     </button>
-                                    <span className="text-gray-300">|</span>
+                                    <span className="text-slate-400">|</span>
                                     <button
                                         type="button"
                                         onClick={deselectAllChannels}
@@ -143,75 +146,72 @@ export default function UserPermissionsModal({ isOpen, onClose, onSave, userData
                                 </div>
                             </div>
                             
-                            <p className="text-sm text-gray-600 mb-3">
-                                Seleziona i fornitori a cui questo collaboratore avrà accesso
-                            </p>
-                            
                             {loadingSuppliers ? (
                                 <div className="flex items-center justify-center py-8">
-                                    <div className="w-8 h-8 border-4 border-slate-600 border-t-transparent rounded-full animate-spin"></div>
+                                    <div className="h-8 w-8 animate-spin rounded-full border-3 border-slate-600 border-t-transparent" />
                                 </div>
                             ) : suppliers.length === 0 ? (
-                                <div className="p-4 bg-amber-50 border-2 border-amber-200 rounded-xl">
-                                    <p className="text-sm text-amber-800 font-medium">
-                                        ⚠️ Nessun fornitore disponibile. Aggiungili dalla pagina Impostazioni.
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+                                    <p className="text-sm font-semibold text-amber-800">
+                                        Nessun fornitore disponibile. Aggiungili dalla pagina Impostazioni.
                                     </p>
                                 </div>
                             ) : (
-                                <div className="space-y-2 max-h-64 overflow-y-auto border-2 border-gray-200 rounded-xl p-3 bg-gray-50/30">
+                                <div className="max-h-64 space-y-2 overflow-y-auto rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3">
                                     {suppliers.map(supplier => (
                                         <label
                                             key={supplier.id}
-                                            className="flex items-center gap-3 p-3 bg-white border-2 border-gray-200 rounded-lg hover:border-slate-400 hover:bg-slate-50/50 cursor-pointer transition-all"
+                                            className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm transition-all hover:border-slate-400 hover:bg-slate-100/60"
                                         >
                                             <input
                                                 type="checkbox"
                                                 checked={assignedChannels.includes(supplier.id)}
                                                 onChange={() => toggleChannel(supplier.id)}
-                                                className="w-5 h-5 text-slate-600 border-gray-300 rounded focus:ring-2 focus:ring-slate-500"
+                                                className="h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-2 focus:ring-slate-500"
                                             />
-                                            <span className="font-medium text-gray-800">{supplier.name}</span>
+                                            <span className="text-sm font-semibold text-slate-800">{supplier.name}</span>
                                         </label>
                                     ))}
                                 </div>
                             )}
 
                             {assignedChannels.length === 0 && !loadingSuppliers && suppliers.length > 0 && (
-                                <div className="mt-3 p-3 bg-red-50 border-2 border-red-200 rounded-xl">
-                                    <p className="text-sm text-red-800 font-medium">
-                                        ⚠️ Attenzione: senza fornitori assegnati, l'utente non potrà visualizzare alcun dato
+                                <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-3">
+                                    <p className="text-sm font-medium text-rose-700">
+                                        ⚠️ Senza fornitori assegnati il collaboratore non potrà visualizzare alcun dato.
                                     </p>
                                 </div>
                             )}
                         </div>
                     )}
 
-                    {/* Info per Manager/Admin */}
-                    {role !== 'collaborator' && (
-                        <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-xl">
-                            <p className="text-sm text-blue-800 font-medium">
-                                ℹ️ Manager e Admin hanno accesso automatico a tutti i fornitori
+                    {!isCollaborator && (
+                        <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4">
+                            <p className="text-sm font-medium text-blue-800">
+                                ℹ️ Manager e Admin dispongono automaticamente dell’accesso a tutti i fornitori.
                             </p>
                         </div>
                     )}
                 </div>
 
-                {/* Footer */}
-                <div className="p-5 bg-gray-50/70 flex justify-end items-center rounded-b-2xl border-t border-gray-200/80 flex-shrink-0">
-                    <div className="flex gap-3">
+                <div className="flex flex-col gap-3 border-t border-slate-200/60 bg-slate-50/80 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
+                        Operazione impostazioni
+                    </div>
+                    <div className="flex flex-col-reverse gap-3 sm:flex-row">
                         <button 
                             type="button" 
                             onClick={onClose} 
-                            className="px-5 py-2.5 rounded-xl bg-white text-gray-800 font-semibold border-2 border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition-all"
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:border-slate-400 hover:bg-slate-100"
                         >
                             Annulla
                         </button>
                         <button 
                             type="button" 
                             onClick={handleSave} 
-                            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-slate-800 to-slate-900 text-white font-bold hover:shadow-lg transition-all"
+                            className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition-transform hover:-translate-y-[1px] hover:bg-slate-800"
                         >
-                            Salva Modifiche
+                            Salva permessi
                         </button>
                     </div>
                 </div>

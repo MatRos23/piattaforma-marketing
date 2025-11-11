@@ -21,56 +21,62 @@ export default function AddUserModal({ isOpen, onClose, onSave }) {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4 transition-opacity duration-300">
-            <div className="bg-white/90 backdrop-blur-2xl rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh] border border-white/30">
-                <div className="p-5 border-b border-gray-200/80 flex justify-between items-center flex-shrink-0">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-gradient-to-br from-slate-700 to-gray-900 text-white">
-                            <Users className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm">
+            <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-slate-200/60 bg-white/98 shadow-[0_35px_95px_-45px_rgba(15,23,42,0.75)] transition-transform">
+                <div className="flex items-start justify-between gap-4 border-b border-slate-200/60 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-6 py-5 text-white">
+                    <div className="flex items-start gap-4">
+                        <div className="rounded-2xl border border-white/15 bg-white/10 p-3 text-white shadow-inner shadow-black/20">
+                            <Users className="h-5 w-5" />
                         </div>
                         <div>
-                            <h3 className="text-xl font-bold text-gray-800">Nuovo Utente</h3>
-                            <p className="text-sm text-gray-500 font-medium">Inserisci i dati per creare un nuovo account</p>
+                            <h3 className="text-xl font-black">Nuovo utente</h3>
+                            <p className="text-sm font-medium text-white/80">Crea un profilo e assegna immediatamente il ruolo operativo</p>
                         </div>
                     </div>
-                    <button type="button" onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"><X /></button>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-white/80 transition-all hover:bg-white/20 hover:text-white"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
                 </div>
                 
-                <div className="p-6 space-y-4 overflow-y-auto flex-1">
-                    <div>
-                        <label className="text-sm font-semibold text-gray-700 block mb-1">Nome Completo</label>
+                <div className="space-y-5 overflow-y-auto bg-white px-6 py-6">
+                    <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 block">Nome completo</label>
                         <input 
                             type="text" 
                             value={name} 
                             onChange={(e) => setName(e.target.value)} 
-                            className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-slate-500 focus:ring-4 focus:ring-slate-500/20 transition-all" 
+                            className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm transition-all focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500/20" 
                         />
                     </div>
-                    <div>
-                        <label className="text-sm font-semibold text-gray-700 block mb-1">Email</label>
+                    <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 block">Email</label>
                         <input 
                             type="email" 
                             value={email} 
                             onChange={(e) => setEmail(e.target.value)} 
-                            className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-slate-500 focus:ring-4 focus:ring-slate-500/20 transition-all" 
+                            className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm transition-all focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500/20" 
                         />
                     </div>
-                    <div>
-                        <label className="text-sm font-semibold text-gray-700 block mb-1">Password</label>
+                    <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 block">Password</label>
                         <input 
                             type="password" 
                             value={password} 
                             onChange={(e) => setPassword(e.target.value)} 
-                            className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-slate-500 focus:ring-4 focus:ring-slate-500/20 transition-all" 
+                            className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm transition-all focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500/20" 
                             placeholder="Minimo 6 caratteri" 
                         />
                     </div>
-                    <div>
-                        <label className="text-sm font-semibold text-gray-700 block mb-1">Ruolo</label>
+                    <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 block">Ruolo</label>
                         <select 
                             value={role} 
                             onChange={(e) => setRole(e.target.value)} 
-                            className="w-full h-11 px-3 bg-white border-2 border-gray-200 rounded-xl focus:border-slate-500 focus:ring-4 focus:ring-slate-500/20 transition-all"
+                            className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm transition-all focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500/20"
                         >
                             <option value="collaborator">Collaborator</option>
                             <option value="manager">Manager</option>
@@ -79,15 +85,18 @@ export default function AddUserModal({ isOpen, onClose, onSave }) {
                     </div>
                 </div>
 
-                <div className="p-5 bg-gray-50/70 flex justify-end items-center rounded-b-2xl border-t border-gray-200/80 flex-shrink-0">
-                    <div className="flex gap-3">
-                        <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl bg-white text-gray-800 font-semibold border-2 border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition-all">Annulla</button>
+                <div className="flex flex-col gap-3 border-t border-slate-200/60 bg-slate-50/80 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
+                        Operazione impostazioni
+                    </div>
+                    <div className="flex flex-col-reverse gap-3 sm:flex-row">
+                        <button type="button" onClick={onClose} className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:border-slate-400 hover:bg-slate-100">Annulla</button>
                         <button 
                             type="button" 
                             onClick={handleSave} 
-                            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-slate-800 to-slate-900 text-white font-bold hover:shadow-lg transition-all"
+                            className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition-transform hover:-translate-y-[1px] hover:bg-slate-800"
                         >
-                            Crea Utente
+                            Crea utente
                         </button>
                     </div>
                 </div>

@@ -55,8 +55,8 @@ const NAVIGATION = [
         items: [
             {
                 key: 'operations',
-                label: 'Sedi & Personale',
-                description: 'Affitti, mutui e costi HR',
+                label: 'Sedi',
+                description: 'Affitti, mutui e costi fissi delle filiali',
                 icon: Building2,
                 roles: ['admin', 'manager'],
             },
