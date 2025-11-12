@@ -88,6 +88,10 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if isManagerOrAdmin();
     }
+
+    match /employees/{employeeId} {
+      allow read, write: if isManagerOrAdmin();
+    }
     
     match /channels/{docId} {
       allow read: if request.auth != null;

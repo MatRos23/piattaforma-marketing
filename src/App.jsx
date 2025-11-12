@@ -11,6 +11,7 @@ import BudgetPage from './pages/BudgetPage';
 import SettingsPage from './pages/SettingsPage';
 import Spinner from './components/Spinner';
 import ContractsPage from './pages/ContractsPage';
+import EmployeesPage from './pages/EmployeesPage';
 
 export default function App() {
     const [user, setUser] = useState(null);
@@ -28,9 +29,9 @@ export default function App() {
 
     const renderPage = (page, user, filters) => {
         const userPermissions = {
-            manager: ['dashboard', 'budget', 'expenses', 'operations', 'settings', 'contracts'],
+            manager: ['dashboard', 'budget', 'expenses', 'operations', 'hr', 'settings', 'contracts'],
             collaborator: ['dashboard', 'expenses'],
-            admin: ['dashboard', 'expenses', 'operations', 'budget', 'settings', 'contracts'],
+            admin: ['dashboard', 'expenses', 'operations', 'hr', 'budget', 'settings', 'contracts'],
         };
         const allowedPages = userPermissions[user.role] || [];
         if (!allowedPages.includes(page)) {
@@ -50,6 +51,8 @@ export default function App() {
                 return <SettingsPage user={user} />;
             case 'contracts':
                 return <ContractsPage user={user} />;
+            case 'hr':
+                return <EmployeesPage user={user} />;
             default:
                 return <DashboardPage user={user} navigate={navigate} />;
         }

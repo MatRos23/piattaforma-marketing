@@ -1220,8 +1220,6 @@ export default function BudgetPage() {
                                     ? 'bg-gradient-to-br from-amber-500 to-orange-500'
                                     : 'bg-gradient-to-br from-emerald-500 to-teal-500';
                             const iconElement = isCritical ? <AlertTriangle className="w-6 h-6" /> : <Info className="w-6 h-6" />;
-                            const amountLabel = isCritical ? 'Sforamento' : 'Spesa';
-
                             return (
                                 <div
                                     key={alert.key}

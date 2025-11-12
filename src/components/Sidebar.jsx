@@ -9,6 +9,7 @@ import {
     BarChart3,
     ChevronRight,
     Building2,
+    Users,
 } from 'lucide-react';
 
 const NAVIGATION = [
@@ -60,6 +61,13 @@ const NAVIGATION = [
                 icon: Building2,
                 roles: ['admin', 'manager'],
             },
+            {
+                key: 'hr',
+                label: 'Dipendenti',
+                description: 'Organico, costi HR e headcount',
+                icon: Users,
+                roles: ['admin', 'manager'],
+            },
         ],
     },
     {
@@ -82,56 +90,59 @@ const ROLE_LABELS = {
     collaborator: 'Collaboratore',
 };
 
-const NavItem = ({ icon: Icon, label, description, isActive, onClick }) => (
-    <li>
-        <button
-            type="button"
-            onClick={onClick}
-            className={`group relative w-full overflow-hidden rounded-2xl border transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
-                isActive
-                    ? 'bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-600 text-white border-transparent shadow-[0_15px_40px_-20px_rgba(88,81,219,0.8)]'
-                    : 'bg-slate-900/70 border-slate-800 text-slate-300 hover:-translate-y-0.5 hover:border-slate-700 hover:bg-slate-900'
-            }`}
-        >
-            <div className="flex items-center gap-3 p-3.5 lg:p-4">
-                <div
-                    className={`flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-300 ${
-                        isActive
-                            ? 'border-white/20 bg-white/10 text-white shadow-inner'
-                            : 'border-slate-800 bg-slate-900 text-indigo-300 shadow-sm group-hover:border-indigo-400/60 group-hover:text-indigo-300'
-                    }`}
-                >
-                    <Icon className="w-5 h-5" strokeWidth={2.2} />
-                </div>
-                <div className="flex-1 text-left">
-                    <p
-                        className={`text-sm font-semibold tracking-tight ${
-                            isActive ? 'text-white' : 'text-slate-100 group-hover:text-white'
+const NavItem = ({ icon, label, description, isActive, onClick }) => {
+    const IconComponent = icon;
+    return (
+        <li>
+            <button
+                type="button"
+                onClick={onClick}
+                className={`group relative w-full overflow-hidden rounded-2xl border transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+                    isActive
+                        ? 'bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-600 text-white border-transparent shadow-[0_15px_40px_-20px_rgba(88,81,219,0.8)]'
+                        : 'bg-slate-900/70 border-slate-800 text-slate-300 hover:-translate-y-0.5 hover:border-slate-700 hover:bg-slate-900'
+                }`}
+            >
+                <div className="flex items-center gap-3 p-3.5 lg:p-4">
+                    <div
+                        className={`flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-300 ${
+                            isActive
+                                ? 'border-white/20 bg-white/10 text-white shadow-inner'
+                                : 'border-slate-800 bg-slate-900 text-indigo-300 shadow-sm group-hover:border-indigo-400/60 group-hover:text-indigo-300'
                         }`}
                     >
-                        {label}
-                    </p>
-                    {description && (
+                        <IconComponent className="w-5 h-5" strokeWidth={2.2} />
+                    </div>
+                    <div className="flex-1 text-left">
                         <p
-                            className={`mt-0.5 text-xs font-medium transition-colors ${
-                                isActive ? 'text-indigo-100/80' : 'text-slate-500 group-hover:text-slate-300'
+                            className={`text-sm font-semibold tracking-tight ${
+                                isActive ? 'text-white' : 'text-slate-100 group-hover:text-white'
                             }`}
                         >
-                            {description}
+                            {label}
                         </p>
-                    )}
+                        {description && (
+                            <p
+                                className={`mt-0.5 text-xs font-medium transition-colors ${
+                                    isActive ? 'text-indigo-100/80' : 'text-slate-500 group-hover:text-slate-300'
+                                }`}
+                            >
+                                {description}
+                            </p>
+                        )}
+                    </div>
+                    <ChevronRight
+                        className={`w-4 h-4 transition-all duration-300 ${
+                            isActive
+                                ? 'translate-x-1 text-white drop-shadow'
+                                : 'text-slate-300 opacity-0 group-hover:translate-x-1 group-hover:text-indigo-400 group-hover:opacity-100'
+                        }`}
+                    />
                 </div>
-                <ChevronRight
-                    className={`w-4 h-4 transition-all duration-300 ${
-                        isActive
-                            ? 'translate-x-1 text-white drop-shadow'
-                            : 'text-slate-300 opacity-0 group-hover:translate-x-1 group-hover:text-indigo-400 group-hover:opacity-100'
-                    }`}
-                />
-            </div>
-        </button>
-    </li>
-);
+            </button>
+        </li>
+    );
+};
 
 export default function Sidebar({
     user,

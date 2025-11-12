@@ -15,8 +15,53 @@ import { MultiSelect, KpiCard } from '../components/SharedComponents';
 import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
 import { deriveBranchesForLineItem, computeExpenseBranchShares } from '../utils/branchAssignments';
 import { COST_DOMAINS, DEFAULT_COST_DOMAIN } from '../constants/costDomains';
+import EmptyState from '../components/EmptyState';
+import {
+    ResponsiveContainer,
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    Cell,
+    PieChart,
+    Pie,
+} from 'recharts';
 
 const storage = getStorage();
+
+const MONTHS = [
+    { id: '01', label: 'Gennaio' },
+    { id: '02', label: 'Febbraio' },
+    { id: '03', label: 'Marzo' },
+    { id: '04', label: 'Aprile' },
+    { id: '05', label: 'Maggio' },
+    { id: '06', label: 'Giugno' },
+    { id: '07', label: 'Luglio' },
+    { id: '08', label: 'Agosto' },
+    { id: '09', label: 'Settembre' },
+    { id: '10', label: 'Ottobre' },
+    { id: '11', label: 'Novembre' },
+    { id: '12', label: 'Dicembre' },
+];
+
+const branchColorPalette = [
+    '#6366F1',
+    '#EC4899',
+    '#F97316',
+    '#10B981',
+    '#0EA5E9',
+    '#F59E0B',
+];
+
+const TARGET_BRANCH_NAMES = ['Filiale Vicenza', 'Filiale Garbagnate', 'Filiale Altivole'];
+
+const normalizeBranchLabel = (value = '') =>
+    value
+        .toLowerCase()
+        .replace(/filiale/g, '')
+        .replace(/[^a-z0-9]/g, '');
 
 // ===== SHARED COMPONENTS =====
 const getSectorIcon = (sectorName, className = "w-4 h-4") => {
@@ -101,6 +146,7 @@ const ExpenseTableView = React.memo(({
     showDocuments = true,
     splitByBranch = false,
     limitBranchId = null,
+    actionVariant = 'default',
 }) => {
     const [sortState, setSortState] = useState({ column: null, direction: null });
 
@@ -170,23 +216,6 @@ const ExpenseTableView = React.memo(({
         return 'Più Filiali';
     };
 
-    const resolveSectorKey = (expense) => {
-        const sectorIds = new Set();
-        if (expense.sectorId) {
-            sectorIds.add(expense.sectorId);
-        }
-        (expense.lineItems || []).forEach(item => {
-            const itemSector = item.sectorId || item.sectorld;
-            if (itemSector) {
-                sectorIds.add(itemSector);
-            }
-        });
-        const ids = Array.from(sectorIds).filter(Boolean);
-        if (ids.length === 0) return null;
-        if (ids.length === 1) return ids[0];
-        return 'default';
-    };
-
     const getBranchSegments = (expense) => {
         if (!splitByBranch) {
             return [{
@@ -221,31 +250,31 @@ const ExpenseTableView = React.memo(({
         <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl shadow-amber-200/60">
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-slate-700">
-                    <thead className="bg-amber-600/95 text-white uppercase text-[11px] font-bold tracking-[0.16em]">
+                    <thead className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white uppercase text-[11px] font-black tracking-[0.16em]">
                         <tr>
                             <th className="px-4 py-3 text-left">
                                 <button type="button" onClick={() => handleSort('supplier')} className="inline-flex items-center gap-2">
-                                    Fornitore
+                                    FORNITORE
                                     {getSortIndicator('supplier')}
                                 </button>
                             </th>
-                            <th className="px-4 py-3 text-left hidden lg:table-cell">Descrizione</th>
-                            <th className="px-4 py-3 text-left hidden xl:table-cell">Settore</th>
-                            <th className="px-4 py-3 text-left hidden xl:table-cell">Filiale</th>
+                            <th className="px-4 py-3 text-left hidden lg:table-cell">DESCRIZIONE</th>
+                            <th className="px-4 py-3 text-left hidden xl:table-cell">SETTORE</th>
+                            <th className="px-4 py-3 text-left hidden xl:table-cell">FILIALE</th>
                             <th className="px-4 py-3 text-left">
                                 <button type="button" onClick={() => handleSort('date')} className="inline-flex items-center gap-2">
-                                    Data
+                                    DATA
                                     {getSortIndicator('date')}
                                 </button>
                             </th>
                             <th className="px-4 py-3 text-right">
                                 <button type="button" onClick={() => handleSort('amount')} className="inline-flex items-center gap-2">
-                                    Importo
+                                    IMPORTO
                                     {getSortIndicator('amount')}
                                 </button>
                             </th>
-                            {showDocuments && <th className="px-4 py-3 text-center">Documenti</th>}
-                            <th className="px-4 py-3 text-center">Azioni</th>
+                            {showDocuments && <th className="px-4 py-3 text-center">DOCUMENTI</th>}
+                            <th className="px-4 py-3 text-center">AZIONI</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -255,16 +284,10 @@ const ExpenseTableView = React.memo(({
                             const hasInvoice = !!expense.invoicePdfUrl;
                             const hasContract = expense.isContractSatisfied;
                             const requiresContract = expense.requiresContract !== false;
-                            const sectorKey = resolveSectorKey(expense);
-                            const iconKey = sectorKey === 'default'
-                                ? 'default'
-                                : sectorKey
-                                    ? sectorMap.get(sectorKey) || 'default'
-                                    : sectorName;
                             const supplierName = supplierMap.get(expense.supplierId) || 'N/D';
                             const segments = getBranchSegments(expense);
                             const filteredSegments = limitBranchId
-                                ? segments.filter(segment => (segment.branchId || 'unassigned') === limitBranchId)
+                                ? segments.filter((segment) => (segment.branchId || 'unassigned') === limitBranchId)
                                 : segments;
 
                             if (limitBranchId && filteredSegments.length === 0) {
@@ -281,18 +304,11 @@ const ExpenseTableView = React.memo(({
                                     <tr key={rowKey} className="bg-white/80 hover:bg-amber-50/30 transition-colors">
                                         <td className="px-4 py-3">
                                             {isPrimaryRow ? (
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-600 shadow-inner">
-                                                        {getSectorIcon(iconKey || 'default', "w-4 h-4")}
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-semibold text-slate-900 truncate max-w-[220px]">
-                                                            {supplierName}
-                                                        </p>
-                                                    </div>
-                                                </div>
+                                                <p className="font-semibold text-slate-900 truncate max-w-[220px]">
+                                                    {supplierName}
+                                                </p>
                                             ) : (
-                                                <div className="pl-14 text-xs font-semibold text-slate-400 uppercase tracking-[0.18em]">
+                                                <div className="pl-8 text-xs font-semibold text-slate-400 uppercase tracking-[0.18em]">
                                                     ↳ {supplierName}
                                                 </div>
                                             )}
@@ -366,32 +382,62 @@ const ExpenseTableView = React.memo(({
                                         )}
                                         <td className="px-4 py-3">
                                             {isPrimaryRow && canEditOrDelete(expense) ? (
-                                                <div className="flex items-center justify-center gap-1.5">
-                                                    <button
-                                                        onClick={() => onDuplicate(expense)}
-                                                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all"
-                                                        title="Duplica spesa"
-                                                    >
-                                                        <Copy className="w-3.5 h-3.5" />
-                                                        Duplica
-                                                    </button>
-                                                    <button
-                                                        onClick={() => onEdit(expense)}
-                                                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 transition-all"
-                                                        title="Modifica spesa"
-                                                    >
-                                                        <Pencil className="w-3.5 h-3.5" />
-                                                        Modifica
-                                                    </button>
-                                                    <button
-                                                        onClick={() => onDelete(expense)}
-                                                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all"
-                                                        title="Elimina spesa"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                        Elimina
-                                                    </button>
-                                                </div>
+                                                actionVariant === 'icon' ? (
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        {onDuplicate && (
+                                                            <button
+                                                                onClick={() => onDuplicate(expense)}
+                                                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-amber-300 bg-white text-amber-600 transition-all hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700"
+                                                                title="Duplica spesa"
+                                                            >
+                                                                <Copy className="h-4 w-4" />
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => onEdit(expense)}
+                                                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-amber-300 bg-white text-amber-600 transition-all hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700"
+                                                            title="Modifica spesa"
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => onDelete(expense)}
+                                                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-amber-300 bg-white text-amber-600 transition-all hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700"
+                                                            title="Elimina spesa"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        {onDuplicate && (
+                                                            <button
+                                                                onClick={() => onDuplicate(expense)}
+                                                                className="inline-flex items-center gap-2 rounded-xl border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-600 bg-white hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700 transition-all"
+                                                                title="Duplica spesa"
+                                                            >
+                                                                <Copy className="w-3.5 h-3.5" />
+                                                                Duplica
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => onEdit(expense)}
+                                                            className="inline-flex items-center gap-2 rounded-xl border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-600 bg-white hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700 transition-all"
+                                                            title="Modifica spesa"
+                                                        >
+                                                            <Pencil className="w-3.5 h-3.5" />
+                                                            Modifica
+                                                        </button>
+                                                        <button
+                                                            onClick={() => onDelete(expense)}
+                                                            className="inline-flex items-center gap-2 rounded-xl border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-600 bg-white hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700 transition-all"
+                                                            title="Elimina spesa"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                            Elimina
+                                                        </button>
+                                                    </div>
+                                                )
                                             ) : (
                                                 <div className="flex items-center justify-center h-9">
                                                     <span className="text-slate-200 text-xs font-semibold">{splitByBranch ? '—' : ''}</span>
@@ -1171,9 +1217,169 @@ if (supplierFilter.length > 0) {
         return operationsTotalSpend / operationsBranchSummary.length;
     }, [isOperationsDomain, operationsTotalSpend, operationsBranchSummary]);
 
-    const operationsTopBranch = isOperationsDomain && operationsBranchSummary.length > 0
-        ? operationsBranchSummary[0]
-        : null;
+    const selectedOperationsYear = useMemo(() => {
+        if (!isOperationsDomain) return new Date().getFullYear();
+        if (dateFilter?.startDate) {
+            const year = new Date(`${dateFilter.startDate}T00:00:00`).getFullYear();
+            if (!Number.isNaN(year)) return year;
+        }
+        if (dateFilter?.endDate) {
+            const year = new Date(`${dateFilter.endDate}T00:00:00`).getFullYear();
+            if (!Number.isNaN(year)) return year;
+        }
+        return new Date().getFullYear();
+    }, [isOperationsDomain, dateFilter?.startDate, dateFilter?.endDate]);
+
+    const operationsTopBranches = useMemo(
+        () => (isOperationsDomain ? operationsBranchSummary.slice(0, 4) : []),
+        [isOperationsDomain, operationsBranchSummary]
+    );
+
+    const operationsTopBranchKeys = useMemo(
+        () =>
+            operationsTopBranches.map((branch, index) => ({
+                id: branch.branchId || `branch-${index}`,
+                key: branch.branchId || 'unassigned',
+                name: branch.name,
+            })),
+        [operationsTopBranches]
+    );
+
+    const operationsMonthlyBranchData = useMemo(() => {
+        if (!isOperationsDomain || operationsTopBranchKeys.length === 0) return [];
+
+        const monthBase = MONTHS.map((month) => {
+            const entry = {
+                monthId: month.id,
+                monthLabel: month.label.slice(0, 3),
+            };
+            operationsTopBranchKeys.forEach((branch) => {
+                entry[branch.key] = 0;
+            });
+            return entry;
+        });
+
+        const monthMap = new Map(monthBase.map((entry) => [entry.monthId, entry]));
+        const branchKeySet = new Set(operationsTopBranchKeys.map((branch) => branch.key));
+
+        processedExpenses.forEach((expense) => {
+            if (!expense.date) return;
+            const expenseDate = new Date(`${expense.date}T00:00:00`);
+            if (Number.isNaN(expenseDate.getTime())) return;
+            if (expenseDate.getFullYear() !== selectedOperationsYear) return;
+            const monthId = String(expenseDate.getMonth() + 1).padStart(2, '0');
+            const entry = monthMap.get(monthId);
+            if (!entry) return;
+
+            const shares = expense.branchShares;
+            let handled = false;
+            if (shares && typeof shares === 'object') {
+                Object.entries(shares).forEach(([branchId, amount]) => {
+                    const key = branchId || 'unassigned';
+                    if (branchKeySet.has(key)) {
+                        entry[key] += amount || 0;
+                        handled = true;
+                    }
+                });
+            }
+            if (!handled) {
+                const fallbackKey = expense.branchId || 'unassigned';
+                if (branchKeySet.has(fallbackKey)) {
+                    entry[fallbackKey] += expense.displayAmount || expense.amount || 0;
+                }
+            }
+        });
+
+        return monthBase;
+    }, [isOperationsDomain, operationsTopBranchKeys, processedExpenses, selectedOperationsYear]);
+
+    const hasOperationsMonthlyData = useMemo(
+        () =>
+            operationsMonthlyBranchData.some((entry) =>
+                operationsTopBranchKeys.some((branch) => (entry[branch.key] || 0) > 0)
+            ),
+        [operationsMonthlyBranchData, operationsTopBranchKeys]
+    );
+
+    const operationsBranchDonutData = useMemo(() => {
+        if (!isOperationsDomain) return [];
+        return operationsBranchSummary.map((branch, index) => ({
+            id: branch.branchId || `branch-${index}`,
+            name: branch.name,
+            value: branch.amount || 0,
+            color: branchColorPalette[index % branchColorPalette.length],
+        }));
+    }, [isOperationsDomain, operationsBranchSummary]);
+
+const operationsBranchDonutSummary = useMemo(
+        () => operationsBranchDonutData.slice(0, 4),
+        [operationsBranchDonutData]
+    );
+
+    const hasOperationsDonutData = useMemo(
+        () => operationsBranchDonutData.some((entry) => entry.value > 0),
+        [operationsBranchDonutData]
+    );
+
+    const renderBranchDonutTooltip = useCallback(({ active, payload }) => {
+        if (!active || !payload || payload.length === 0) return null;
+        const entry = payload[0]?.payload;
+        if (!entry) return null;
+
+        return (
+            <div className="rounded-xl border border-slate-700 bg-slate-900/95 px-4 py-3 shadow-xl shadow-slate-900/40">
+                <p className="text-sm font-black text-white">{entry.name || 'Filiale'}</p>
+                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">
+                    Totale {selectedOperationsYear}
+                </p>
+                <p className="text-sm font-semibold text-white/90">{formatCurrency(entry.value || 0)}</p>
+            </div>
+        );
+    }, [selectedOperationsYear]);
+
+    const operationsBranchSections = useMemo(() => {
+        if (!isOperationsDomain) return [];
+
+        return TARGET_BRANCH_NAMES.map((label) => {
+            const normalizedLabel = normalizeBranchLabel(label);
+
+            const branchMeta =
+                branches.find(
+                    (branch) => normalizeBranchLabel(branch.name || '') === normalizedLabel
+                ) || null;
+
+            const summary = branchMeta
+                ? operationsBranchSummary.find((item) => item.branchId === branchMeta.id)
+                : operationsBranchSummary.find(
+                      (item) => normalizeBranchLabel(item.name || '') === normalizedLabel
+                  );
+
+            if (!summary) {
+                if (!branchMeta?.id) return null;
+                return {
+                    branchId: branchMeta.id,
+                    key: branchMeta.id,
+                    name: branchMeta.name || label,
+                    displayName: (branchMeta.name || label)
+                        .replace(/^filiale\s*-\s*/i, '')
+                        .replace(/^filiale\s*/i, ''),
+                    totalAmount: 0,
+                };
+            }
+
+            const displayName = (summary.name || label)
+                .replace(/^filiale\s*-\s*/i, '')
+                .replace(/^filiale\s*/i, '');
+
+            return {
+                branchId: summary.branchId,
+                key: summary.branchId,
+                name: summary.name || branchMeta?.name || label,
+                displayName,
+                totalAmount: summary.amount || 0,
+            };
+        }).filter(Boolean);
+    }, [isOperationsDomain, branches, operationsBranchSummary]);
 
     
     const canEditOrDelete = useCallback((expense) => {
@@ -1189,7 +1395,7 @@ if (supplierFilter.length > 0) {
         setIsModalOpen(false); 
         setEditingExpense(null); 
     }, []);
-    
+
     const handleOpenEditModal = useCallback((expense) => {
         if (!canEditOrDelete(expense)) {
             return toast.error("Non hai i permessi per modificare questa spesa.");
@@ -1807,93 +2013,6 @@ if (supplierFilter.length > 0) {
                         </div>
                     </div>
                 )}
-                {isOperationsDomain && (
-                        <div className="w-full bg-gradient-to-br from-white via-amber-50 to-orange-50 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-5 lg:p-6 space-y-6">
-                            <div className="flex items-start gap-4">
-                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-sky-500 to-blue-500 text-white shadow-lg shadow-indigo-500/20 ring-4 ring-indigo-400/20">
-                                    <Building2 className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <h2 className="text-lg font-black text-slate-900">Distribuzione per Filiale</h2>
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-1 text-[11px] font-bold text-indigo-700">
-                                            <Info className="w-3 h-3" />
-                                            Vista dedicata alle sedi
-                                        </span>
-                                    </div>
-                                    <p className="mt-1 text-sm font-medium text-slate-600">
-                                        Ogni spesa viene ripartita automaticamente sulle filiali: monitora gli importi senza utilizzare i filtri avanzati.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div className="rounded-2xl bg-white/90 border border-slate-200 p-4 shadow-sm">
-                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Filiali con costi</p>
-                                    <p className="mt-2 text-2xl font-black text-slate-900">{operationsBranchSummary.length}</p>
-                                    <p className="text-xs text-slate-500 mt-1">Dati aggiornati dalle spese registrate</p>
-                                </div>
-                                <div className="rounded-2xl bg-white/90 border border-slate-200 p-4 shadow-sm">
-                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Spesa media</p>
-                                    <p className="mt-2 text-2xl font-black text-slate-900">{formatCurrency(operationsAveragePerBranch || 0)}</p>
-                                    <p className="text-xs text-slate-500 mt-1">Per filiale con costi attivi</p>
-                                </div>
-                                <div className="rounded-2xl bg-white/90 border border-slate-200 p-4 shadow-sm">
-                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Top filiale</p>
-                                    <p className="mt-2 text-base font-bold text-slate-900 truncate">
-                                        {operationsTopBranch ? operationsTopBranch.name : '—'}
-                                    </p>
-                                    <p className="text-xs text-slate-500 mt-1">
-                                        {operationsTopBranch
-                                            ? `${formatCurrency(operationsTopBranch.amount)} • ${operationsTotalSpend > 0 ? ((operationsTopBranch.amount / operationsTotalSpend) * 100).toFixed(1) : '0'}% del totale`
-                                            : 'Nessuna spesa registrata'}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-3">
-                                {operationsBranchSummary.length > 0 ? (
-                                    operationsBranchSummary.slice(0, 8).map(branch => {
-                                        const branchShare = operationsTotalSpend > 0
-                                            ? ((branch.amount / operationsTotalSpend) * 100)
-                                            : 0;
-                                        return (
-                                            <div
-                                                key={branch.branchId || 'unassigned'}
-                                                className="rounded-2xl bg-white/95 border border-slate-200 p-4 shadow-sm hover:border-indigo-200 transition-colors"
-                                            >
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div>
-                                                        <p className="text-sm font-semibold text-slate-900">{branch.name}</p>
-                                                        <p className="text-xs text-slate-500">{branchShare.toFixed(1)}% del totale</p>
-                                                    </div>
-                                                    <span className="text-sm font-bold text-slate-900">
-                                                        {formatCurrency(branch.amount)}
-                                                    </span>
-                                                </div>
-                                                <div className="mt-3">
-                                                    <ProgressBar
-                                                        value={branch.amount}
-                                                        max={operationsTotalSpend || branch.amount || 1}
-                                                        showOverrun={false}
-                                                    />
-                                                </div>
-                                            </div>
-                                        );
-                                    })
-                                ) : (
-                                    <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white/80 p-6 text-center text-sm font-medium text-slate-500">
-                                        Nessuna spesa registrata per le sedi in questo periodo.
-                                    </div>
-                                )}
-                                {operationsBranchSummary.length > 8 && (
-                                    <p className="text-xs text-slate-500">
-                                        Sono mostrate le prime 8 filiali per importo. Esporta le spese per analizzare tutto il dettaglio.
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-                    )}
                 </div>
                 {expenseAlerts.length > 0 && (
             <div className="space-y-4">
@@ -2012,97 +2131,325 @@ if (supplierFilter.length > 0) {
                                 value={`${kpiData.completePercentage}%`}
                                 subtitle="Tutti i documenti"
                                 icon={<Activity className="w-6 h-6" />}
-                                gradient="from-orange-400 to-amber-500"
-                            />
-                        </>
-                    )}
-                </div>
-                
-                {/* Lista Spese */}
-                {processedExpenses.length > 0 ? (
-                    isOperationsDomain ? (
-                        operationsBranchSummary.length > 0 ? (
-                            <div className="space-y-10">
-                                {operationsBranchSummary.map((branch) => (
-                                    <div
-                                        key={branch.branchId || 'unassigned'}
-                                        className="space-y-4 rounded-3xl border border-white/40 bg-white/90 p-4 lg:p-6 shadow-lg shadow-amber-200/30"
-                                    >
-                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                                            <div>
-                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-400">
-                                                    Filiale
-                                                </p>
-                                                <h3 className="text-xl font-black text-slate-900">{branch.name}</h3>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                                                    Totale filiale
-                                                </p>
-                                                <p className="text-xl font-black text-slate-900">
-                                                    {formatCurrency(branch.amount)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <ExpenseTableView
-                                            expenses={processedExpenses}
-                                            sectorMap={sectorMap}
-                                            supplierMap={supplierMap}
-                                            branchMap={branchMap}
-                                            contractMap={contractMap}
-                                            onEdit={handleOpenEditModal}
-                                            onDelete={handleDeleteExpense}
-                                            onDuplicate={handleDuplicateExpense}
-                                            canEditOrDelete={canEditOrDelete}
-                                            showDocuments={false}
-                                            splitByBranch
-                                            limitBranchId={branch.branchId || 'unassigned'}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center">
-                                <div className="p-4 rounded-2xl bg-amber-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
-                                    <Search className="w-8 h-8 text-amber-600" />
+                        gradient="from-orange-400 to-amber-500"
+                    />
+                </>
+            )}
+        </div>
+
+        {isOperationsDomain && (
+            <>
+            <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+                <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                    <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-orange-400/25 via-white to-orange-100/35 px-6 py-5">
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-500">
+                            Filiali
+                        </p>
+                        <h2 className="text-lg font-black text-slate-900">
+                            Distribuzione mensile {selectedOperationsYear}
+                        </h2>
+                    </div>
+                    <div className="relative flex flex-1 flex-col px-6 py-6 bg-white">
+                        <div className="flex-1">
+                            {!hasOperationsMonthlyData ? (
+                                <div className="flex h-full items-center justify-center">
+                                    <EmptyState
+                                        icon={Building2}
+                                        title="Nessun dato disponibile"
+                                        message="Registra spese sulle filiali o aggiorna i filtri per visualizzare la distribuzione mensile."
+                                    />
                                 </div>
-                                <h3 className="text-xl font-bold text-gray-800 mb-4">Nessuna Spesa Trovata</h3>
-                                <p className="text-gray-600">
-                                    Non ci sono costi associati alle sedi in questo periodo.
-                                </p>
-                            </div>
-                        )
-                    ) : (
-                        <ExpenseTableView
-                            expenses={processedExpenses}
-                            sectorMap={sectorMap}
-                            supplierMap={supplierMap}
-                            branchMap={branchMap}
-                            contractMap={contractMap}
-                            onEdit={handleOpenEditModal}
-                            onDelete={handleDeleteExpense}
-                            onDuplicate={handleDuplicateExpense}
-                            canEditOrDelete={canEditOrDelete}
-                            showDocuments
-                        />
-                    )
-                ) : (
-                    <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center">
-                        <div className="p-4 rounded-2xl bg-amber-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
-                            <Search className="w-8 h-8 text-amber-600" />
+                            ) : (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={operationsMonthlyBranchData}>
+                                        <defs>
+                                            {operationsTopBranchKeys.map((branch, index) => {
+                                                const color = branchColorPalette[index % branchColorPalette.length];
+                                                return (
+                                                    <linearGradient
+                                                        key={`ops-branch-gradient-${branch.id}`}
+                                                        id={`ops-branch-gradient-${branch.id}`}
+                                                        x1="0"
+                                                        y1="1"
+                                                        x2="0"
+                                                        y2="0"
+                                                    >
+                                                        <stop offset="0%" stopColor={color} stopOpacity={0.7} />
+                                                        <stop offset="100%" stopColor={color} stopOpacity={1} />
+                                                    </linearGradient>
+                                                );
+                                            })}
+                                        </defs>
+                                        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                                        <XAxis
+                                            dataKey="monthLabel"
+                                            tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
+                                            axisLine={false}
+                                            tickLine={false}
+                                        />
+                                        <YAxis
+                                            tickFormatter={(value) => {
+                                                if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+                                                if (value >= 1000) return `${Math.round(value / 1000)}k`;
+                                                return value.toFixed(0);
+                                            }}
+                                            tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
+                                            axisLine={false}
+                                            tickLine={false}
+                                        />
+                                        <Tooltip
+                                            cursor={{ fill: 'rgba(245, 158, 11, 0.08)' }}
+                                            formatter={(value, key) => [
+                                                formatCurrency(value),
+                                                operationsTopBranchKeys.find((branch) => branch.key === key)?.name || key,
+                                            ]}
+                                            labelFormatter={(label) => {
+                                                const month = MONTHS.find((m) => m.label.startsWith(label));
+                                                return month ? month.label : label;
+                                            }}
+                                            contentStyle={{
+                                                borderRadius: '12px',
+                                                border: '1px solid #FCD9B6',
+                                                background: 'rgba(15,23,42,0.94)',
+                                                color: '#F8FAFC',
+                                            }}
+                                        />
+                                        {operationsTopBranchKeys.map((branch) => (
+                                            <Bar
+                                                key={`ops-bar-${branch.id}`}
+                                                dataKey={branch.key}
+                                                name={branch.name}
+                                                fill={`url(#ops-branch-gradient-${branch.id})`}
+                                                radius={[8, 8, 0, 0]}
+                                                maxBarSize={48}
+                                            />
+                                        ))}
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            )}
                         </div>
-                        <h3 className="text-xl font-bold text-gray-800 mb-4">Nessuna Spesa Trovata</h3>
-                        <p className="text-gray-600 mb-6">Non ci sono spese che corrispondono ai filtri selezionati.</p>
-                        {hasActiveFilters && (
-                            <button 
-                                onClick={resetFilters}
-                                className="px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all"
-                            >
-                                Resetta Filtri
-                            </button>
+                        {operationsTopBranches.length > 0 && (
+                            <div className="pt-4">
+                                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    {operationsTopBranches.map((branch, index) => (
+                                        <li
+                                            key={branch.branchId || `top-${index}`}
+                                            className="flex items-center justify-between rounded-2xl border border-orange-200/70 bg-white px-3 py-2 shadow-sm shadow-slate-200/40"
+                                        >
+                                            <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                                                <span
+                                                    className="inline-flex h-2.5 w-2.5 rounded-full"
+                                                    style={{
+                                                        backgroundColor: branchColorPalette[index % branchColorPalette.length],
+                                                    }}
+                                                />
+                                                {branch.name}
+                                            </span>
+                                            <span className="text-sm font-semibold text-slate-900">
+                                                {formatCurrency(branch.amount)}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
                         )}
                     </div>
-                )}
+                </div>
+
+                <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                    <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-orange-400/25 via-white to-orange-100/35 px-6 py-5">
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-500">
+                            Filiali
+                        </p>
+                        <h2 className="text-lg font-black text-slate-900">
+                            Incidenza sui costi {selectedOperationsYear}
+                        </h2>
+                    </div>
+                    <div className="relative flex flex-1 flex-col px-6 py-6 bg-white">
+                        <div className="flex-1">
+                            {!hasOperationsDonutData ? (
+                                <div className="flex h-full items-center justify-center">
+                                    <EmptyState
+                                        icon={Layers}
+                                        title="Nessun dato disponibile"
+                                        message="Popola i costi delle filiali per visualizzare l’incidenza complessiva."
+                                    />
+                                </div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height={320}>
+                                    <PieChart>
+                                        <defs>
+                                            {operationsBranchDonutData.map((entry) => (
+                                                <linearGradient
+                                                    key={`ops-donut-${entry.id}`}
+                                                    id={`ops-donut-${entry.id}`}
+                                                    x1="0"
+                                                    y1="1"
+                                                    x2="0"
+                                                    y2="0"
+                                                >
+                                                    <stop offset="0%" stopColor={entry.color} stopOpacity={0.65} />
+                                                    <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
+                                                </linearGradient>
+                                            ))}
+                                        </defs>
+                                        <Tooltip content={renderBranchDonutTooltip} />
+                                        <Pie
+                                            data={operationsBranchDonutData}
+                                            dataKey="value"
+                                            nameKey="name"
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius="60%"
+                                            outerRadius="80%"
+                                            paddingAngle={4}
+                                            strokeWidth={0}
+                                        >
+                                            {operationsBranchDonutData.map((entry) => (
+                                                <Cell key={`ops-donut-cell-${entry.id}`} fill={`url(#ops-donut-${entry.id})`} />
+                                            ))}
+                                        </Pie>
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            )}
+                        </div>
+                        {operationsBranchDonutSummary.length > 0 && (
+                            <div className="mt-6">
+                                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    {operationsBranchDonutSummary.map((entry) => (
+                                        <li
+                                            key={entry.id}
+                                            className="flex items-center justify-between rounded-2xl border border-orange-200/70 bg-white px-3 py-2 shadow-sm shadow-slate-200/40"
+                                        >
+                                            <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                                                <span
+                                                    className="inline-flex h-2.5 w-2.5 rounded-full"
+                                                    style={{ backgroundColor: entry.color }}
+                                                />
+                                                {entry.name}
+                                            </span>
+                                            <span className="text-sm font-semibold text-slate-900">
+                                                {formatCurrency(entry.value)}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </section>
+            {operationsBranchSections.map((branch) => {
+                const share =
+                    operationsTotalSpend > 0 ? (branch.totalAmount / operationsTotalSpend) * 100 : 0;
+                const hasExpensesForBranch = branch.totalAmount > 0;
+
+                return (
+                    <section
+                        key={branch.key}
+                        className="relative overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]"
+                    >
+                        <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-orange-400/25 via-white to-orange-100/35 px-6 py-5 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-500">
+                                    Filiale
+                                </p>
+                                <h2 className="text-lg font-black text-slate-900">
+                                    {branch.displayName}
+                                </h2>
+                            </div>
+                            <div className="text-left md:text-right">
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                                    Totale {selectedOperationsYear}
+                                </p>
+                                <p className="text-lg font-black text-slate-900">
+                                    {formatCurrency(branch.totalAmount)}
+                                </p>
+                                <p className="text-xs font-semibold text-slate-400">
+                                    Incidenza: {share.toFixed(1)}% del totale sedi
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="relative z-10 px-6 pb-6 pt-6">
+                            {!hasExpensesForBranch ? (
+                                <div className="rounded-3xl border-2 border-dashed border-amber-200 bg-amber-50/30 p-8 text-center">
+                                    <EmptyState
+                                        icon={Layers}
+                                        title="Nessuna spesa per questa filiale"
+                                        message="Registra un costo o aggiorna i filtri per visualizzare le spese della sede."
+                                    />
+                                </div>
+                            ) : (
+                                <div className="overflow-hidden rounded-3xl border border-amber-100/70 shadow-inner shadow-amber-100/70">
+                                    <ExpenseTableView
+                                        expenses={processedExpenses}
+                                        sectorMap={sectorMap}
+                                        supplierMap={supplierMap}
+                                        branchMap={branchMap}
+                                        contractMap={contractMap}
+                                        onEdit={handleOpenEditModal}
+                                        onDelete={handleDeleteExpense}
+                                        onDuplicate={handleDuplicateExpense}
+                                        canEditOrDelete={canEditOrDelete}
+                                        showDocuments={false}
+                                        splitByBranch
+                                        limitBranchId={branch.branchId}
+                                        actionVariant="icon"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                );
+            })}
+            </>
+        )}
+
+        {/* Lista Spese generale (solo per domini non Operations) */}
+        {!isOperationsDomain && (
+            processedExpenses.length > 0 ? (
+                <ExpenseTableView
+                    expenses={processedExpenses}
+                    sectorMap={sectorMap}
+                    supplierMap={supplierMap}
+                    branchMap={branchMap}
+                    contractMap={contractMap}
+                    onEdit={handleOpenEditModal}
+                    onDelete={handleDeleteExpense}
+                    onDuplicate={handleDuplicateExpense}
+                    canEditOrDelete={canEditOrDelete}
+                    showDocuments
+                />
+            ) : (
+                <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center">
+                    <div className="p-4 rounded-2xl bg-amber-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
+                        <Search className="w-8 h-8 text-amber-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">Nessuna Spesa Trovata</h3>
+                    <p className="text-gray-600 mb-6">Non ci sono spese che corrispondono ai filtri selezionati.</p>
+                    {hasActiveFilters && (
+                        <button 
+                            onClick={resetFilters}
+                            className="px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all"
+                        >
+                            Resetta Filtri
+                        </button>
+                    )}
+                </div>
+            )
+        )}
+        {isOperationsDomain && processedExpenses.length === 0 && (
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center">
+                <div className="p-4 rounded-2xl bg-amber-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
+                    <Search className="w-8 h-8 text-amber-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-4">Nessuna Spesa Trovata</h3>
+                <p className="text-gray-600">
+                    Non ci sono costi associati alle sedi in questo periodo.
+                </p>
+            </div>
+        )}
             </div>
             
             {/* Modali */}
