@@ -23,6 +23,7 @@ import {
     Trash2,
     Layers,
     Calendar,
+    Bell,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { db } from '../firebase/config';
@@ -30,6 +31,7 @@ import Spinner from '../components/Spinner';
 import EmployeeFormModal from '../components/EmployeeFormModal';
 import EmptyState from '../components/EmptyState';
 import { KpiCard } from '../components/SharedComponents';
+import { getSectorColor } from '../constants/sectorColors';
 import {
     PieChart,
     Pie,
@@ -212,10 +214,8 @@ export default function EmployeesPage() {
     const [statusFilter, setStatusFilter] = useState('active');
     const [selectedDepartment, setSelectedDepartment] = useState('all');
     const [selectedYear, setSelectedYear] = useState(String(CURRENT_YEAR));
-    const [selectedMonthIndex, setSelectedMonthIndex] = useState(
-        CURRENT_MONTH_INDEX >= 0 && CURRENT_MONTH_INDEX < MONTHS.length ? CURRENT_MONTH_INDEX : 0
-    );
     const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+    const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
 
     useEffect(() => {
         setIsLoading(true);
@@ -493,10 +493,65 @@ const monthlySectorData = useMemo(() => {
         [departmentChartData]
     );
 
+    const employeeNotifications = useMemo(() => [], []);
+    const notificationCount = employeeNotifications.length;
+
+    useEffect(() => {
+        if (notificationCount === 0 && isNotificationsPanelOpen) {
+            setIsNotificationsPanelOpen(false);
+        }
+    }, [notificationCount, isNotificationsPanelOpen]);
+
     const hasDepartmentChartData = useMemo(
         () => departmentChartData.some((entry) => entry.totalCost > 0),
         [departmentChartData]
     );
+
+    const renderMonthlySectorTooltip = useCallback(({ active, payload }) => {
+        if (!active || !payload || payload.length === 0) return null;
+        const monthId = payload[0]?.payload?.monthId;
+        const monthLabel = (() => {
+            if (monthId) {
+                const match = MONTHS.find((month) => month.id === monthId);
+                if (match) return match.label;
+            }
+            return payload[0]?.payload?.monthLabel || '';
+        })();
+
+        const rows = payload
+            .filter((item) => Number(item.value) > 0)
+            .map((item) => {
+                const sectorId = item.dataKey;
+                const sectorIndex = sectorKeys.findIndex((sector) => sector.id === sectorId);
+                const name = sectorNameById.get(String(sectorId)) || sectorId;
+                const color = getSectorColor(name, sectorIndex);
+                return {
+                    id: sectorId,
+                    name,
+                    value: item.value,
+                    color,
+                };
+            });
+
+        if (rows.length === 0) return null;
+
+        return (
+            <div className="rounded-2xl border border-rose-100 bg-white/95 px-4 py-3 shadow-xl shadow-rose-100/40 backdrop-blur">
+                <p className="text-sm font-bold text-slate-900">{monthLabel}</p>
+                <div className="mt-2 space-y-1 text-xs font-semibold text-slate-600">
+                    {rows.map((row) => (
+                        <div key={row.id} className="flex items-center justify-between gap-6">
+                            <span className="flex items-center gap-2 text-slate-600">
+                                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: row.color }} />
+                                {row.name}
+                            </span>
+                            <span>{formatCurrency(row.value)}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }, [sectorKeys, sectorNameById]);
 
     const renderDepartmentTooltip = useCallback(({ active, payload }) => {
         if (!active || !payload || payload.length === 0) return null;
@@ -504,12 +559,14 @@ const monthlySectorData = useMemo(() => {
         if (!dataPoint) return null;
 
         return (
-            <div className="rounded-xl border border-slate-700 bg-slate-900/95 px-4 py-3 shadow-xl shadow-slate-900/40">
-                <p className="text-sm font-black text-white">{dataPoint.name || 'Reparto'}</p>
-                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-rose-200">
+            <div className="rounded-2xl border border-rose-100 bg-white/95 px-4 py-3 shadow-xl shadow-rose-100/40 backdrop-blur">
+                <p className="text-sm font-bold text-slate-900">{dataPoint.name || 'Reparto'}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">
                     Totale {selectedYearKey}
                 </p>
-                <p className="text-sm font-semibold text-white/90">{formatCurrency(dataPoint.totalCost || 0)}</p>
+                <p className="text-sm font-bold text-slate-900">
+                    {formatCurrency(dataPoint.totalCost || dataPoint.value || 0)}
+                </p>
             </div>
         );
     }, [selectedYearKey]);
@@ -640,9 +697,9 @@ const monthlySectorData = useMemo(() => {
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-rose-50 to-pink-100 relative">
             <div className="relative p-4 lg:p-8 space-y-8">
                 <div className="space-y-6">
-                    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-fuchsia-600 via-rose-600 to-pink-500 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
+                    <div className="relative rounded-3xl bg-gradient-to-br from-fuchsia-600 via-rose-600 to-pink-500 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.35),transparent_60%)]" />
-                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                             <div className="space-y-4">
                                 <div className="flex items-center gap-4">
                                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-rose-900/30 ring-4 ring-white/20">
@@ -662,10 +719,18 @@ const monthlySectorData = useMemo(() => {
                                     centri di costo, mantenendo coerenza con il resto della piattaforma.
                                 </p>
                                 <div className="flex flex-wrap items-center gap-3">
-                                    <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/80">
-                                        <PieChartIcon className="w-3.5 h-3.5" />
-                                        Focus costi HR
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={openCreateModal}
+                                        className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-rose-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
+                                    >
+                                        <PlusCircle className="w-4 h-4" />
+                                        Nuovo dipendente
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-end">
+                                <div className="flex flex-col items-end gap-3">
                                     <div className="inline-flex items-center gap-3 rounded-2xl border border-white/30 bg-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/85 shadow-lg shadow-rose-900/20 backdrop-blur-sm">
                                         <Calendar className="w-3.5 h-3.5" />
                                         Anno
@@ -681,31 +746,48 @@ const monthlySectorData = useMemo(() => {
                                             ))}
                                         </select>
                                     </div>
-                                    <div className="inline-flex items-center gap-3 rounded-2xl border border-white/30 bg-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/85 shadow-lg shadow-rose-900/20 backdrop-blur-sm">
-                                        <PieChartIcon className="w-3.5 h-3.5" />
-                                        Mese
-                                        <select
-                                            value={selectedMonthIndex}
-                                            onChange={(event) =>
-                                                setSelectedMonthIndex(Number(event.target.value) || 0)
-                                            }
-                                            className="bg-transparent text-[11px] font-bold uppercase tracking-[0.2em] text-white focus:outline-none"
+                                    <div className="relative">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsNotificationsPanelOpen(prev => !prev)}
+                                            className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] shadow-lg backdrop-blur-sm transition-all ${
+                                                notificationCount > 0
+                                                    ? 'bg-white/15 text-white hover:bg-white/25 shadow-rose-900/30'
+                                                    : 'bg-white/10 text-white/60 hover:bg-white/15 shadow-rose-900/10'
+                                            }`}
                                         >
-                                            {MONTHS.map((month, index) => (
-                                                <option key={month.id} value={index}>
-                                                    {month.label}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            <Bell className="w-4 h-4" />
+                                            {notificationCount} Notifiche
+                                        </button>
+                                        {isNotificationsPanelOpen && (
+                                            <>
+                                                <div
+                                                    className="fixed inset-0 z-40"
+                                                    onClick={() => setIsNotificationsPanelOpen(false)}
+                                                />
+                                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-rose-900/30 backdrop-blur sm:w-80 space-y-3">
+                                                    <div>
+                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                                                            Centro notifiche
+                                                        </p>
+                                                        <p className="text-sm font-black text-slate-900 mt-1">
+                                                            Nessun avviso disponibile
+                                                        </p>
+                                                        <p className="text-xs font-medium text-slate-500 mt-1">
+                                                            Le comunicazioni relative al personale verranno mostrate qui quando disponibili.
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsNotificationsPanelOpen(false)}
+                                                        className="w-full rounded-xl border border-rose-200 bg-rose-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-rose-600 transition hover:bg-rose-100"
+                                                    >
+                                                        Chiudi notifiche
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={openCreateModal}
-                                        className="inline-flex items-center gap-2 rounded-2xl bg-white/90 px-5 py-3 text-sm font-semibold text-rose-600 shadow-lg shadow-rose-900/30 transition-transform hover:-translate-y-[1px] hover:bg-white"
-                                    >
-                                        <PlusCircle className="h-4 w-4" />
-                                        Nuovo dipendente
-                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -743,16 +825,16 @@ const monthlySectorData = useMemo(() => {
                                         />
                                     </div>
                                 ) : (
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={monthlySectorData}>
-                                            <defs>
-                                                {sectorKeys.map((sector, index) => {
-                                                    const color = branchColorPalette[index % branchColorPalette.length];
-                                                    return (
-                                                        <linearGradient
-                                                            key={`gradient-${sector.id}`}
-                                                            id={`branch-gradient-${sector.id}`}
-                                                            x1="0"
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <BarChart data={monthlySectorData}>
+                                                    <defs>
+                                                        {sectorKeys.map((sector, index) => {
+                                                            const color = getSectorColor(sector.name, index);
+                                                            return (
+                                                                <linearGradient
+                                                                    key={`gradient-${sector.id}`}
+                                                                    id={`branch-gradient-${sector.id}`}
+                                                                    x1="0"
                                                             y1="1"
                                                             x2="0"
                                                             y2="0"
@@ -782,20 +864,7 @@ const monthlySectorData = useMemo(() => {
                                             />
                                             <Tooltip
                                                 cursor={{ fill: 'rgba(99,102,241,0.08)' }}
-                                                formatter={(value, key) => [
-                                                    formatCurrency(value),
-                                                    sectorNameById.get(String(key)) || String(key),
-                                                ]}
-                                                labelFormatter={(label) => {
-                                                    const month = MONTHS.find((m) => m.label.startsWith(label));
-                                                    return month ? month.label : label;
-                                                }}
-                                                contentStyle={{
-                                                    borderRadius: '12px',
-                                                    border: '1px solid #CBD5F5',
-                                                    background: 'rgba(15,23,42,0.95)',
-                                                    color: '#F8FAFC',
-                                                }}
+                                                content={renderMonthlySectorTooltip}
                                             />
                                             {sectorKeys.map((sector) => (
                                                 <Bar
@@ -823,7 +892,7 @@ const monthlySectorData = useMemo(() => {
                                                     <span
                                                         className="inline-flex h-2.5 w-2.5 rounded-full"
                                                         style={{
-                                                            backgroundColor: branchColorPalette[index % branchColorPalette.length],
+                                                            backgroundColor: getSectorColor(entry.name, index),
                                                         }}
                                                     />
                                                     {entry.name}
@@ -956,22 +1025,6 @@ const monthlySectorData = useMemo(() => {
                                 </div>
 
                                 <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-3 py-2 shadow-sm shadow-rose-100/40">
-                                    <Filter className="h-4 w-4 text-rose-400" />
-                                    <select
-                                        value={selectedBranchId}
-                                        onChange={(event) => setSelectedBranchId(event.target.value)}
-                                        className="bg-transparent text-sm font-semibold text-rose-700 focus:outline-none"
-                                    >
-                                        <option value="all">Tutte le filiali</option>
-                                        {branches.map((branch) => (
-                                            <option key={branch.id} value={branch.id}>
-                                                {branch.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-3 py-2 shadow-sm shadow-rose-100/40">
                                     <Layers className="h-4 w-4 text-rose-400" />
                                     <select
                                         value={selectedSectorId}
@@ -982,6 +1035,22 @@ const monthlySectorData = useMemo(() => {
                                         {sectors.map((sector) => (
                                             <option key={sector.id} value={sector.id}>
                                                 {sector.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-3 py-2 shadow-sm shadow-rose-100/40">
+                                    <Filter className="h-4 w-4 text-rose-400" />
+                                    <select
+                                        value={selectedBranchId}
+                                        onChange={(event) => setSelectedBranchId(event.target.value)}
+                                        className="bg-transparent text-sm font-semibold text-rose-700 focus:outline-none"
+                                    >
+                                        <option value="all">Tutte le filiali</option>
+                                        {branches.map((branch) => (
+                                            <option key={branch.id} value={branch.id}>
+                                                {branch.name}
                                             </option>
                                         ))}
                                     </select>

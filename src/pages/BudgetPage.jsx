@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDocs } from 'firebase/firestore';
 import {
@@ -16,113 +16,342 @@ import {
     Percent,
     TrendingUp,
     AlertTriangle,
-    CheckCircle,
-    Activity,
-    Zap,
     ArrowUpDown,
     MapPin,
     Calendar,
     Check,
     SlidersHorizontal,
-    Info
+    Info,
+    Bell
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import {
+    ResponsiveContainer,
+    BarChart,
+    Bar,
+    CartesianGrid,
+    XAxis,
+    YAxis,
+    Tooltip as RechartsTooltip,
+    PieChart,
+    Pie,
+    Cell
+} from 'recharts';
+import { getSectorColor } from '../constants/sectorColors';
 import BudgetAllocationModal from '../components/BudgetAllocationModal';
-import { KpiCard, MultiSelect } from '../components/SharedComponents';
+import { KpiCard } from '../components/SharedComponents';
 import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
 import { DEFAULT_COST_DOMAIN } from '../constants/costDomains';
+import { getTooltipContainerClass } from '../utils/chartTooltipStyles';
 
 const formatDateInput = (year, month, day) => new Date(Date.UTC(year, month, day)).toISOString().split('T')[0];
 
-const SupplierTableView = ({ suppliers, onManage, sectorMap, showProjections }) => (
-    <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl shadow-slate-200/60">
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm text-slate-700">
-                <thead className="bg-emerald-700 text-white uppercase text-[11px] font-bold tracking-[0.16em]">
-                    <tr>
-                        <th className="px-4 py-3 text-left">Fornitore</th>
-                        <th className="px-4 py-3 text-left hidden lg:table-cell">Settori</th>
-                        <th className="px-4 py-3 text-right">Budget</th>
-                        <th className="px-4 py-3 text-right">Speso</th>
-                        {showProjections && <th className="px-4 py-3 text-right">Scaduto</th>}
-                        {showProjections && <th className="px-4 py-3 text-right">Proiezioni</th>}
-                        <th className="px-4 py-3 text-left hidden md:table-cell">Utilizzo</th>
-                        <th className="px-4 py-3 text-center">Stato</th>
-                        <th className="px-4 py-3 text-center">Azioni</th>
-                    </tr>
-                </thead>
+const BudgetDateRangeDropdown = ({
+    isOpen,
+    setIsOpen,
+    startDate,
+    endDate,
+    onChange,
+    hasActiveRange,
+    onClear,
+    onToggle
+}) => {
+    const formatDateLabel = (value) => {
+        if (!value) return '—';
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return value;
+        return parsed.toLocaleDateString('it-IT', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+    };
+
+    const label = hasActiveRange
+        ? `${formatDateLabel(startDate)} → ${formatDateLabel(endDate)}`
+        : 'Seleziona periodo';
+
+    return (
+        <div className="relative">
+            {isOpen && (
+                <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsOpen(false)}
+                />
+            )}
+            <button
+                type="button"
+                onClick={() => {
+                    if (onToggle) {
+                        onToggle();
+                    }
+                    setIsOpen(prev => !prev);
+                }}
+                aria-expanded={isOpen}
+                className={`inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-700 shadow-sm shadow-emerald-100/40 transition hover:border-emerald-300 hover:text-emerald-600 ${
+                    hasActiveRange ? 'ring-2 ring-emerald-200' : ''
+                }`}
+            >
+                <Calendar className="h-4 w-4 text-emerald-400" />
+                <span>{label}</span>
+                <ArrowUpDown
+                    className={`h-4 w-4 text-emerald-300 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                />
+            </button>
+            {isOpen && (
+                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/60 bg-white/95 p-4 shadow-2xl shadow-emerald-900/25 backdrop-blur">
+                    <div className="space-y-4">
+                        <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-500">
+                                intervallo temporale
+                            </p>
+                            <p className="text-xs font-medium text-slate-500">
+                                Definisci il periodo di analisi per budget e proiezioni.
+                            </p>
+                        </div>
+                        <div className="space-y-3">
+                            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+                                Da
+                                <input
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(event) =>
+                                        onChange({
+                                            startDate: event.target.value,
+                                            endDate
+                                        })
+                                    }
+                                    className="rounded-xl border border-emerald-200 bg-white px-2 py-2 text-xs font-semibold text-emerald-700 shadow-inner focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+                                A
+                                <input
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(event) =>
+                                        onChange({
+                                            startDate,
+                                            endDate: event.target.value
+                                        })
+                                    }
+                                    className="rounded-xl border border-emerald-200 bg-white px-2 py-2 text-xs font-semibold text-emerald-700 shadow-inner focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+                                />
+                            </label>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <button
+                                type="button"
+                                onClick={onClear}
+                                className="text-xs font-semibold text-emerald-400 transition hover:text-rose-500"
+                            >
+                                Pulisci
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIsOpen(false)}
+                                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-600 transition hover:border-emerald-300 hover:bg-emerald-100"
+                            >
+                                <Check className="h-3.5 w-3.5" />
+                                Chiudi
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const SupplierTableView = ({ suppliers, onManage, sectorMap, showProjections, sortConfig, onSort }) => {
+    const columns = [
+        { key: "supplier", label: "Fornitore", className: "px-4 py-3 text-left", sortable: true },
+        { key: "sector", label: "Settori", className: "px-4 py-3 text-left hidden lg:table-cell", sortable: true },
+        { key: "utilization", label: "Utilizzo", className: "px-4 py-3 text-left hidden md:table-cell", sortable: true },
+        { key: "budget", label: "Budget", className: "px-4 py-3 text-right", sortable: true },
+        { key: "spend", label: "Speso", className: "px-4 py-3 text-right", sortable: true },
+    ];
+    if (showProjections) {
+        columns.push({ key: "overdue", label: "Scaduto", className: "px-4 py-3 text-right", sortable: true });
+        columns.push({ key: "forecast", label: "Proiezioni", className: "px-4 py-3 text-right", sortable: true });
+    }
+    columns.push({ key: "actions", label: "Azioni", className: "px-4 py-3 text-center", sortable: false });
+
+    const handleSort = (key) => {
+        if (typeof onSort === "function") {
+            onSort(key);
+        }
+    };
+
+    const renderIndicator = (columnKey) => {
+        const isActive = sortConfig?.key === columnKey;
+        const direction = sortConfig?.direction || "asc";
+        return (
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 12 12"
+                className={`h-3 w-3 text-white transition-opacity ${isActive ? "opacity-100" : "opacity-40"}`}
+            >
+                <path
+                    d={direction === "asc" ? "M6 2l3.5 4h-7L6 2z" : "M6 10l-3.5-4h7L6 10z"}
+                    fill="currentColor"
+                />
+            </svg>
+        );
+    };
+
+    return (
+        <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl shadow-slate-200/60">
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-slate-700">
+                    <thead className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white uppercase text-[11px] font-bold tracking-[0.16em]">
+                        <tr>
+                            {columns.map((column) => {
+                                if (!column.sortable) {
+                                    return (
+                                        <th key={column.key} className={column.className}>
+                                            {column.label}
+                                        </th>
+                                    );
+                                }
+
+                                const isActive = sortConfig?.key === column.key;
+                                const direction = sortConfig?.direction || 'asc';
+                                const isRightAligned = column.className.includes('text-right');
+
+                                return (
+                                    <th
+                                        key={column.key}
+                                        className={column.className}
+                                        aria-sort={
+                                            isActive
+                                                ? direction === 'asc'
+                                                    ? 'ascending'
+                                                    : 'descending'
+                                                : 'none'
+                                        }
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSort(column.key)}
+                                            className={`group flex w-full items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/90 transition hover:text-white ${
+                                                isRightAligned ? 'justify-end' : 'justify-start'
+                                            }`}
+                                        >
+                                            <span className="truncate">{column.label}</span>
+                                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white/10 text-white group-hover:bg-white/20">
+                                                {renderIndicator(column.key)}
+                                            </span>
+                                        </button>
+                                    </th>
+                                );
+                            })}
+                        </tr>
+                    </thead>
                 <tbody className="divide-y divide-slate-100">
                     {suppliers.map((supplier) => {
-                        const utilization = supplier.displayBudget > 0
-                            ? (supplier.displaySpend / supplier.displayBudget) * 100
+                        const budgetValue = supplier.displayBudget || 0;
+                        const spendPercent = budgetValue > 0
+                            ? (supplier.displaySpend / budgetValue) * 100
                             : 0;
                         const overdueAmount = supplier.overdue || 0;
-                        const futureAmount = supplier.projections || 0;
-                        const totalWithForecast = supplier.displaySpend + (showProjections ? overdueAmount + futureAmount : 0);
-                        const supplierIconKey = (supplier.associatedSectors?.length || 0) > 1 ? 'default' : sectorMap.get(supplier.associatedSectors?.[0]);
                         const sectorNames = (supplier.associatedSectors || []).map(id => sectorMap.get(id)).filter(Boolean);
+                        const futureAmount = supplier.projections || 0;
+                        const overduePercent = budgetValue > 0
+                            ? (overdueAmount / budgetValue) * 100
+                            : 0;
+                        const totalPercent = spendPercent + overduePercent;
+                        const spendWidth = Math.min(Math.max(spendPercent, 0), 100);
+                        const overdueWidth = Math.min(
+                            Math.max(overduePercent, 0),
+                            Math.max(0, 100 - spendWidth)
+                        );
+                        const isOverrun = totalPercent >= 101;
+                        const hasMeaningfulOverdue = overduePercent >= 0.5;
+                        const utilizationLabel = hasMeaningfulOverdue
+                            ? `${Math.round(spendPercent)}% + ${Math.round(overduePercent)}%`
+                            : `${Math.round(totalPercent)}%`;
 
                         return (
                             <tr key={supplier.id} className="bg-white/80 hover:bg-emerald-50/30 transition-colors">
                                 <td className="px-4 py-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 shadow-inner">
-                                            {getSectorIcon(supplierIconKey, "w-4 h-4")}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="font-semibold text-slate-900 truncate max-w-xs">{supplier.name || 'N/D'}</p>
-                                            <p className="text-xs text-emerald-700/80 font-semibold">
-                                                {formatCurrency(totalWithForecast)}
-                                            </p>
-                                        </div>
-                                    </div>
+                                    <p className="min-w-0 max-w-xs truncate font-semibold text-slate-900">{supplier.name || 'N/D'}</p>
                                 </td>
                                 <td className="px-4 py-3 hidden lg:table-cell text-sm text-slate-600">
                                     {sectorNames.length > 0 ? sectorNames.join(', ') : '—'}
                                 </td>
+                                <td className="px-4 py-3 hidden md:table-cell">
+                                    {supplier.displayBudget > 0 ? (
+                                        <div className="flex items-center gap-3">
+                                            <div
+                                                className="relative h-[10px] w-40 rounded-full bg-slate-200/60 shadow-inner shadow-slate-300/60 overflow-hidden"
+                                                role="progressbar"
+                                                aria-valuenow={Math.round(Math.min(totalPercent, 130))}
+                                                aria-valuemin={0}
+                                                aria-valuemax={100}
+                                            >
+                                                <div className="absolute inset-0 bg-gradient-to-r from-white/30 via-transparent to-white/30 pointer-events-none" />
+                                                {isOverrun ? (
+                                                    <div
+                                                        className="absolute inset-y-0 left-0 z-[2] rounded-full bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 transition-all duration-500 ease-out"
+                                                        style={{ width: '100%' }}
+                                                    />
+                                                ) : (
+                                                    <>
+                                                        <div
+                                                            className="absolute inset-y-0 left-0 z-[1] rounded-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500 transition-all duration-500 ease-out"
+                                                            style={{ width: `${spendWidth}%` }}
+                                                        />
+                                                        <div
+                                                            className="absolute inset-y-0 z-[2] rounded-full bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 transition-all duration-500 ease-out"
+                                                            style={{
+                                                                left: `${spendWidth}%`,
+                                                                width: `${overdueWidth}%`
+                                                            }}
+                                                        />
+                                                    </>
+                                                )}
+                                                <div className="absolute inset-0 z-[5] rounded-full border border-white/30" aria-hidden="true" />
+                                            </div>
+                                            <span className={`inline-flex items-center gap-1 text-xs font-bold ${isOverrun ? 'text-rose-600' : 'text-slate-600'}`}>
+                                                {isOverrun && (
+                                                    <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
+                                                )}
+                                                {utilizationLabel}
+                                            </span>
+                                        </div>
+                                    ) : supplier.displaySpend > 0 ? (
+                                        <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white/90 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-600 shadow-sm shadow-amber-100/40">
+                                            <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                                            Extra Budget
+                                        </span>
+                                    ) : (
+                                        <span className="text-xs font-semibold text-slate-400">—</span>
+                                    )}
+                                </td>
                                 <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">
                                     {formatCurrency(supplier.displayBudget)}
                                 </td>
-                                <td className="px-4 py-3 text-right font-semibold text-emerald-700 whitespace-nowrap">
+                                <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">
                                     {formatCurrency(supplier.displaySpend)}
                                 </td>
                                 {showProjections && (
-                                    <td className="px-4 py-3 text-right font-semibold text-rose-600 whitespace-nowrap">
+                                    <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">
                                         {overdueAmount > 0 ? formatCurrency(overdueAmount) : '—'}
                                     </td>
                                 )}
                                 {showProjections && (
-                                    <td className="px-4 py-3 text-right text-sm text-slate-600 whitespace-nowrap">
+                                    <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">
                                         {futureAmount > 0 ? formatCurrency(futureAmount) : '—'}
                                     </td>
                                 )}
-                                <td className="px-4 py-3 hidden md:table-cell">
-                                    <div className="flex flex-col gap-1">
-                                        <div className="h-2 w-full max-w-[120px] rounded-full bg-slate-100">
-                                            <div
-                                                className={`h-2 rounded-full ${utilization > 100 ? 'bg-rose-500' : utilization > 85 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                                                style={{ width: `${Math.min(utilization, 100)}%` }}
-                                            />
-                                        </div>
-                                        <span className={`text-xs font-bold ${utilization > 100 ? 'text-rose-600' : 'text-slate-600'}`}>
-                                            {supplier.displayBudget > 0 ? `${utilization.toFixed(0)}%` : 'N/D'}
-                                        </span>
-                                    </div>
-                                </td>
-                                <td className="px-4 py-3 text-center">
-                                    <StatusBadge
-                                        spend={supplier.displaySpend}
-                                        budget={supplier.displayBudget}
-                                        isUnexpected={supplier.isUnexpected || supplier.totalBudget === 0}
-                                    />
-                                </td>
                                 <td className="px-4 py-3 text-center">
                                     <button
                                         onClick={() => onManage(supplier)}
-                                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm transition-all hover:border-emerald-300 hover:bg-emerald-50"
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-600 transition-all hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"
+                                        title="Gestisci allocazione"
                                     >
                                         <Settings className="w-4 h-4" />
-                                        Gestisci
                                     </button>
                                 </td>
                             </tr>
@@ -133,69 +362,9 @@ const SupplierTableView = ({ suppliers, onManage, sectorMap, showProjections }) 
         </div>
     </div>
 );
+};
 
 const formatCurrency = (value) => (value || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
-
-const getSectorIcon = (sectorName, className = "w-4 h-4") => {
-    const icons = { 
-        'Auto': <Car className={className} />, 
-        'Camper&Caravan': <Caravan className={className} />, 
-        'Yachting': <Sailboat className={className} />, 
-        'Frattin Group': <Building2 className={className} />, 
-        'default': <DollarSign className={className} /> 
-    };
-    return icons[sectorName] || icons.default;
-};
-
-const StatusBadge = ({ spend, budget, isUnexpected }) => {
-    const badgeBase = "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold border";
-
-    if (isUnexpected && (!budget || budget === 0)) {
-        return (
-            <span className={`${badgeBase} bg-amber-100 text-amber-700 border-amber-200`}>
-                <AlertTriangle className="w-4 h-4" />
-                Extra budget
-            </span>
-        );
-    }
-
-    if (!budget || budget === 0) {
-        return (
-            <span className={`${badgeBase} bg-slate-100 text-slate-600 border-slate-200`}>
-                <Activity className="w-4 h-4" />
-                Senza budget
-            </span>
-        );
-    }
-
-    const percentage = (spend / budget) * 100;
-
-    if (spend > budget) {
-        return (
-            <span className={`${badgeBase} bg-rose-100 text-rose-700 border-rose-200`}>
-                <AlertTriangle className="w-4 h-4" />
-                Budget superato
-            </span>
-        );
-    }
-
-    if (percentage > 85) {
-        return (
-            <span className={`${badgeBase} bg-amber-100 text-amber-700 border-amber-200`}>
-                <Zap className="w-4 h-4" />
-                In esaurimento
-            </span>
-        );
-    }
-
-    return (
-        <span className={`${badgeBase} bg-emerald-100 text-emerald-700 border-emerald-200`}>
-            <CheckCircle className="w-4 h-4" />
-            In linea
-        </span>
-    );
-};
-
 
 export default function BudgetPage() {
     const [year, setYear] = useState(() => new Date().getFullYear());
@@ -221,17 +390,23 @@ export default function BudgetPage() {
     const [selectedSector, setSelectedSector] = useState('all');
     const [selectedBranch, setSelectedBranch] = useState('all');
     const [searchTerm, setSearchTerm] = useState("");
-    const [supplierFilter, setSupplierFilter] = useState([]);
-    const [sortOrder, setSortOrder] = useState('spend_desc');
-    const [unexpectedFilter, setUnexpectedFilter] = useState('all');
-    const [showProjections, setShowProjections] = useState(true);
+    const showProjections = true;
+    const [sortConfig, setSortConfig] = useState({ key: 'spend', direction: 'desc' });
     const [filterPresets, setFilterPresets] = useState(() =>
         loadFilterPresets().map(preset => {
-            const { showProjections: _ignored, ...rest } = preset;
+            const {
+                showProjections: _ignoredShow,
+                supplierFilter: _ignoredSuppliers,
+                sortOrder: _ignoredSort,
+                ...rest
+            } = preset;
             return rest;
         })
     );
     const [presetName, setPresetName] = useState('');
+    const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
+    const [isFiltersPresetPanelOpen, setIsFiltersPresetPanelOpen] = useState(false);
+    const [isDatePanelOpen, setIsDatePanelOpen] = useState(false);
     const marketingExpenses = useMemo(
         () =>
             allExpenses.filter(
@@ -259,10 +434,8 @@ export default function BudgetPage() {
             selectedSector !== 'all' ||
             selectedBranch !== 'all' ||
             !showProjections ||
-            unexpectedFilter !== 'all' ||
-            searchTerm.trim() !== '' ||
-            supplierFilter.length > 0;
-    }, [startDate, endDate, selectedSector, selectedBranch, showProjections, unexpectedFilter, searchTerm, supplierFilter, defaultStartDate, defaultEndDate]);
+            searchTerm.trim() !== '';
+    }, [startDate, endDate, selectedSector, selectedBranch, showProjections, searchTerm, defaultStartDate, defaultEndDate]);
 
     const filtersLoaded = useRef(false);
     useEffect(() => {
@@ -272,6 +445,7 @@ export default function BudgetPage() {
             filtersLoaded.current = true;
         }
     }, [filterPresets]);
+
 
     const orderedSectors = useMemo(() => {
         const order = ['Auto', 'Camper&Caravan', 'Yachting', 'Frattin Group'];
@@ -501,7 +675,7 @@ export default function BudgetPage() {
         return { futureBySupplierId, futureBySectorId, overdueBySupplierId };
     }, [contracts, marketingExpenses, startDate, endDate, year]);
 
-    const { displayData, budgetStatusCounts } = useMemo(() => {
+    const displayData = useMemo(() => {
         let enriched = summaries.map(summary => {
             const supplierInfo = supplierMap.get(summary.supplierId);
             const details = summary.details || [];
@@ -553,50 +727,212 @@ export default function BudgetPage() {
             baseFiltered = baseFiltered.filter(s => (s.displayDetails || []).length > 0);
         }
         
-        if (supplierFilter.length > 0) {
-            baseFiltered = baseFiltered.filter(s => supplierFilter.includes(s.supplierId));
-        }
-        
         if (searchTerm.trim() !== '') {
             baseFiltered = baseFiltered.filter(s => s.name?.toLowerCase().includes(searchTerm.toLowerCase()));
         }
 
-        const countsAccumulator = baseFiltered.reduce((acc, item) => {
-            if (!item.isUnexpected && item.totalBudget > 0) {
-                acc.planned += 1;
-            } else if (item.isUnexpected || item.totalBudget === 0) {
-                acc.unexpected += 1;
-            }
-            return acc;
-        }, { planned: 0, unexpected: 0 });
+        const filtered = [...baseFiltered];
 
-        const counts = {
-            total: baseFiltered.length,
-            planned: countsAccumulator.planned,
-            unexpected: countsAccumulator.unexpected
+        const { key: sortKey = 'spend', direction = 'desc' } = sortConfig || {};
+        const directionMultiplier = direction === 'asc' ? 1 : -1;
+
+        const getSectorNames = (item) => {
+            return (item.associatedSectors || [])
+                .map(id => sectorMap.get(id))
+                .filter(Boolean)
+                .join(', ') || '';
         };
 
-        let filtered = [...baseFiltered];
-        if (unexpectedFilter === 'unexpected') {
-            filtered = filtered.filter(s => s.isUnexpected || s.totalBudget === 0);
-        } else if (unexpectedFilter === 'planned') {
-            filtered = filtered.filter(s => !s.isUnexpected && s.totalBudget > 0);
+        const getUtilization = (item) => {
+            if (item.displayBudget > 0) {
+                return (item.displaySpend / item.displayBudget) * 100;
+            }
+            return 0;
+        };
+
+        const getSortValue = (item, key) => {
+            switch (key) {
+                case 'supplier':
+                    return (item.name || '').toLowerCase();
+                case 'sector':
+                    return getSectorNames(item).toLowerCase();
+                case 'budget':
+                    return item.displayBudget || 0;
+                case 'spend':
+                    return item.displaySpend || 0;
+                case 'overdue':
+                    return item.overdue || 0;
+                case 'forecast':
+                    return item.projections || 0;
+                case 'utilization':
+                    return getUtilization(item);
+                default:
+                    return (item.name || '').toLowerCase();
+            }
+        };
+
+        return filtered.sort((a, b) => {
+            const aValue = getSortValue(a, sortKey);
+            const bValue = getSortValue(b, sortKey);
+
+            if (typeof aValue === 'number' && typeof bValue === 'number') {
+                const difference = aValue - bValue;
+                if (difference === 0) {
+                    return directionMultiplier * (a.name || '').localeCompare(b.name || '', 'it', { sensitivity: 'base' });
+                }
+                return difference * directionMultiplier;
+            }
+
+            return directionMultiplier * String(aValue ?? '').localeCompare(String(bValue ?? ''), 'it', { sensitivity: 'base' });
+        });
+    }, [
+        summaries,
+        supplierMap,
+        selectedSector,
+        selectedBranch,
+        searchTerm,
+        contractProjections,
+        sortConfig,
+        sectorMap
+    ]);
+
+    const supplierBarPalette = useMemo(
+        () => ['#10B981', '#059669', '#047857', '#14B8A6', '#22D3EE', '#2DD4BF'],
+        []
+    );
+
+    const supplierBarData = useMemo(() => {
+        return displayData
+            .filter(item => (item.displaySpend || 0) > 0 || (showProjections && ((item.overdue || 0) > 0)))
+            .slice(0, 6)
+            .map((item, index) => ({
+                id: item.supplierId || item.id || index,
+                name: item.name || 'N/D',
+                spend: item.displaySpend || 0,
+                overdue: showProjections ? (item.overdue || 0) : 0,
+                budget: item.displayBudget || 0,
+                color: supplierBarPalette[index % supplierBarPalette.length]
+            }));
+    }, [displayData, showProjections, supplierBarPalette]);
+
+    const sectorDistributionData = useMemo(() => {
+        const totals = new Map();
+
+        displayData.forEach(item => {
+            const details = Array.isArray(item.displayDetails) ? item.displayDetails : [];
+
+            if (details.length > 0) {
+                details.forEach(detail => {
+                    const sectorId = detail.sectorId || item.associatedSectors?.[0];
+                    if (!sectorId) return;
+                    const amount = detail.detailedSpend || detail.spend || 0;
+                    if (amount <= 0) return;
+                    totals.set(sectorId, (totals.get(sectorId) || 0) + amount);
+                });
+            } else if (Array.isArray(item.associatedSectors) && item.associatedSectors.length > 0) {
+                const share = (item.displaySpend || 0) / item.associatedSectors.length;
+                if (share <= 0) return;
+                item.associatedSectors.forEach(sectorId => {
+                    if (!sectorId) return;
+                    totals.set(sectorId, (totals.get(sectorId) || 0) + share);
+                });
+            } else if ((item.displaySpend || 0) > 0) {
+                totals.set('unassigned', (totals.get('unassigned') || 0) + item.displaySpend);
+            }
+        });
+
+        return Array.from(totals.entries())
+            .map(([sectorId, value], index) => {
+                const name = sectorId === 'unassigned'
+                    ? 'Non classificato'
+                    : (sectorMap.get(sectorId) || 'Non classificato');
+                return {
+                    id: sectorId,
+                    name,
+                    value,
+                    color: getSectorColor(name, index)
+                };
+            })
+            .filter(entry => entry.value > 0)
+            .sort((a, b) => b.value - a.value);
+    }, [displayData, sectorMap]);
+
+    const sectorDistributionTotal = useMemo(
+        () => sectorDistributionData.reduce((sum, entry) => sum + entry.value, 0),
+        [sectorDistributionData]
+    );
+
+    const renderSupplierTooltip = useCallback(({ active, payload }) => {
+        if (!active || !payload || payload.length === 0) {
+            return null;
         }
 
-        const sorted = filtered.sort((a, b) => {
-            if (sortOrder === 'name_asc') {
-                return (a.name || '').localeCompare(b.name || '');
-            }
-            const aTotal = a.displaySpend + (showProjections ? (a.projections || 0) + (a.overdue || 0) : 0);
-            const bTotal = b.displaySpend + (showProjections ? (b.projections || 0) + (b.overdue || 0) : 0);
-            return bTotal - aTotal;
-        });
-        
-        return {
-            displayData: sorted,
-            budgetStatusCounts: counts
-        };
-    }, [summaries, supplierMap, selectedSector, selectedBranch, supplierFilter, searchTerm, sortOrder, unexpectedFilter, contractProjections, showProjections]);
+        const spendEntry = payload.find(item => item.dataKey === 'spend');
+        const overdueEntry = payload.find(item => item.dataKey === 'overdue');
+        const budget = payload[0]?.payload?.budget || 0;
+        const total = (payload[0]?.payload?.spend || 0) + (payload[0]?.payload?.overdue || 0);
+
+        return (
+            <div className={getTooltipContainerClass('emerald')}>
+                <p className="text-sm font-bold text-slate-900">
+                    {payload[0]?.payload?.name}
+                </p>
+                <div className="mt-2 space-y-1 text-xs font-semibold text-slate-600">
+                    <div className="flex items-center justify-between gap-6">
+                        <span className="flex items-center gap-2 text-emerald-600">
+                            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                            Speso
+                        </span>
+                        <span>{formatCurrency(spendEntry?.value || 0)}</span>
+                    </div>
+                    {showProjections && (
+                        <div className="flex items-center justify-between gap-6">
+                            <span className="flex items-center gap-2 text-amber-600">
+                                <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
+                                Scaduto
+                            </span>
+                            <span>{formatCurrency(overdueEntry?.value || 0)}</span>
+                        </div>
+                    )}
+                    <div className="flex items-center justify-between gap-6">
+                        <span className="flex items-center gap-2 text-slate-500">
+                            <span className="inline-block h-2 w-2 rounded-full bg-slate-300" />
+                            Budget
+                        </span>
+                        <span>{formatCurrency(budget)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-6 border-t border-slate-100 pt-2">
+                        <span className="text-slate-500">Totale</span>
+                        <span className="text-slate-900">{formatCurrency(total)}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }, [showProjections]);
+
+    const renderSectorTooltip = useCallback(({ active, payload }) => {
+        if (!active || !payload || payload.length === 0) {
+            return null;
+        }
+
+        const entry = payload[0]?.payload;
+        if (!entry) return null;
+
+        const percentage = sectorDistributionTotal > 0
+            ? ((entry.value / sectorDistributionTotal) * 100).toFixed(1)
+            : '0.0';
+
+        return (
+            <div className={getTooltipContainerClass('emerald')}>
+                <p className="text-sm font-bold text-slate-900">
+                    {entry.name}
+                </p>
+                <p className="text-xs font-semibold text-slate-600 mt-1">
+                    {formatCurrency(entry.value)} · {percentage}%
+                </p>
+            </div>
+        );
+    }, [sectorDistributionTotal]);
 
     const budgetAlerts = useMemo(() => {
         if (displayData.length === 0) return [];
@@ -727,6 +1063,22 @@ export default function BudgetPage() {
             }
         ];
     }, [globalKpis, showProjections, displayData.length]);
+    const globalOverrunAmount = useMemo(() => {
+        const forecast = globalKpis.totalForecast || 0;
+        const master = globalKpis.totalMasterBudget || 0;
+        return forecast > master ? forecast - master : 0;
+    }, [globalKpis.totalForecast, globalKpis.totalMasterBudget]);
+    const totalBudgetAlertsAmount = useMemo(
+        () => budgetAlerts.reduce((sum, alert) => sum + (alert.totalAmount || 0), 0),
+        [budgetAlerts]
+    );
+    const notificationCount = (globalKpis.hasOverrunRisk ? 1 : 0) + budgetAlerts.length;
+
+    useEffect(() => {
+        if (notificationCount === 0 && isNotificationsPanelOpen) {
+            setIsNotificationsPanelOpen(false);
+        }
+    }, [notificationCount, isNotificationsPanelOpen]);
     
     const handleOpenModal = (supplier) => { 
         setIsModalOpen(true); 
@@ -777,39 +1129,14 @@ export default function BudgetPage() {
     
     const resetFilters = () => {
         setSearchTerm('');
-        setSupplierFilter([]);
         setSelectedSector('all');
         setSelectedBranch('all');
-        setUnexpectedFilter('all');
-        setSortOrder('spend_desc');
         setStartDate(defaultStartDate);
         setEndDate(defaultEndDate);
-        setShowProjections(true);
         setPresetName('');
+        setIsFiltersPresetPanelOpen(false);
+        setIsDatePanelOpen(false);
         toast.success("Filtri resettati!");
-    };
-
-    const savePreset = () => {
-        const name = presetName.trim();
-        if (!name) {
-            toast.error('Inserisci un nome per il preset');
-            return;
-        }
-        const preset = {
-            id: Date.now(),
-            name,
-            startDate,
-            endDate,
-            selectedSector,
-            selectedBranch,
-            supplierFilter
-        };
-        setFilterPresets(prev => {
-            const withoutDuplicates = prev.filter(p => p.name.toLowerCase() !== name.toLowerCase());
-            return [...withoutDuplicates, preset];
-        });
-        setPresetName('');
-        toast.success('Preset salvato');
     };
 
     const applyPreset = (preset) => {
@@ -819,8 +1146,6 @@ export default function BudgetPage() {
         setEndDate(presetEnd);
         setSelectedSector(preset.selectedSector || 'all');
         setSelectedBranch(preset.selectedBranch || 'all');
-        setSupplierFilter(preset.supplierFilter || []);
-        setShowProjections(true);
         setPresetName('');
 
         const derivedYear = new Date(presetEnd).getFullYear();
@@ -843,6 +1168,22 @@ export default function BudgetPage() {
         setStartDate(start);
         setEndDate(end);
     };
+
+    const handleSortChange = useCallback((columnKey) => {
+        setSortConfig((prev) => {
+            if (prev?.key === columnKey) {
+                return {
+                    key: columnKey,
+                    direction: prev.direction === 'asc' ? 'desc' : 'asc'
+                };
+            }
+            const defaultDirection = ['supplier', 'sector'].includes(columnKey) ? 'asc' : 'desc';
+            return {
+                key: columnKey,
+                direction: defaultDirection
+            };
+        });
+    }, []);
     
     if (isLoading) {
         return (
@@ -860,10 +1201,10 @@ export default function BudgetPage() {
             <div className="relative p-4 lg:p-8 space-y-6">
                 {/* Header */}
                 <div className="space-y-6">
-                    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 via-green-600 to-teal-600 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.3),transparent_60%)]" />
-                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                            <div className="space-y-3">
+                    <div className="relative rounded-3xl bg-gradient-to-br from-emerald-600 via-green-600 to-teal-600 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
+                        <div className="absolute inset-0 rounded-3xl bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.3),transparent_60%)] pointer-events-none" />
+                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="space-y-4">
                                 <div className="flex items-center gap-4">
                                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-emerald-900/30 ring-4 ring-white/25">
                                         <Target className="w-7 h-7" />
@@ -878,26 +1219,150 @@ export default function BudgetPage() {
                                 <p className="text-sm lg:text-base text-white/85 max-w-3xl">
                                     Pianifica e monitora spesa, allocazioni e impegni contrattuali con la stessa logica applicata alle altre aree della piattaforma.
                                 </p>
+                                <div className="flex flex-wrap items-center gap-3" />
                             </div>
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-white/15 rounded-2xl px-4 py-3 backdrop-blur-sm">
-                                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
-                                    <Calendar className="w-4 h-4" />
-                                    Anno di riferimento
+                            <div className="flex items-center justify-end">
+                                <div className="flex flex-col items-end gap-3">
+                                    <div className="inline-flex items-center gap-3 rounded-2xl border border-white/30 bg-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/85 shadow-lg shadow-emerald-900/20 backdrop-blur-sm">
+                                        <Calendar className="w-4 h-4" />
+                                        Anno
+                                        <select
+                                            value={year}
+                                            onChange={(e) => handleYearChange(parseInt(e.target.value, 10))}
+                                            className="bg-transparent text-[11px] font-bold uppercase tracking-[0.2em] text-white focus:outline-none"
+                                        >
+                                            {[0, -1, -2].map(offset => {
+                                                const y = new Date().getFullYear() + offset;
+                                                return (
+                                                    <option key={y} value={y}>
+                                                        {y}
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                    </div>
+                                    <div className="relative">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsNotificationsPanelOpen((prev) => !prev)}
+                                            className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] shadow-lg backdrop-blur-sm transition-all ${
+                                                notificationCount > 0
+                                                    ? 'bg-white/15 text-white hover:bg-white/25 shadow-emerald-900/30'
+                                                    : 'bg-white/10 text-white/60 hover:bg-white/15 shadow-emerald-900/10'
+                                            }`}
+                                        >
+                                            <Bell className="w-4 h-4" />
+                                            {notificationCount} Notifiche
+                                        </button>
+                                        {isNotificationsPanelOpen && (
+                                            <>
+                                                <div
+                                                    className="absolute inset-0 z-40"
+                                                    onClick={() => setIsNotificationsPanelOpen(false)}
+                                                />
+                                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-md rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-emerald-900/30 backdrop-blur sm:w-[24rem] space-y-4">
+                                                    {globalKpis.hasOverrunRisk && (
+                                                        <div className="space-y-3 rounded-2xl border border-rose-100 bg-rose-50/80 p-4">
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div>
+                                                                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                                                                        Rischio budget globale
+                                                                    </p>
+                                                                    <h3 className="text-sm font-black text-slate-900">
+                                                                        {formatCurrency(globalKpis.totalForecast)} previsti · Master {formatCurrency(globalKpis.totalMasterBudget)}
+                                                                    </h3>
+                                                                </div>
+                                                                <span className="inline-flex items-center gap-2 rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-600">
+                                                                    <AlertTriangle className="h-3.5 w-3.5" />
+                                                                    {formatCurrency(globalOverrunAmount)}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs font-medium text-slate-600">
+                                                                Con le proiezioni attuali potresti superare il budget master disponibile. Valuta una riallocazione o una revisione degli importi assegnati.
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {budgetAlerts.length > 0 && (
+                                                        <div className="space-y-3">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-500">
+                                                                    Alert attivi
+                                                                </p>
+                                                                <span className="text-xs font-bold text-emerald-600">
+                                                                    Totale {formatCurrency(totalBudgetAlertsAmount)}
+                                                                </span>
+                                                            </div>
+                                                            <div className="max-h-56 space-y-3 overflow-y-auto pr-1">
+                                                                {budgetAlerts.map(alert => {
+                                                                    const isCritical = alert.type === 'critical';
+                                                                    const isWarning = alert.type === 'warning';
+                                                                    const accent = isCritical
+                                                                        ? 'text-rose-600'
+                                                                        : isWarning
+                                                                            ? 'text-amber-600'
+                                                                            : 'text-emerald-600';
+                                                                    const badgeBg = isCritical
+                                                                        ? 'bg-rose-50 border-rose-100'
+                                                                        : isWarning
+                                                                            ? 'bg-amber-50 border-amber-100'
+                                                                            : 'bg-emerald-50 border-emerald-100';
+                                                                    return (
+                                                                        <div
+                                                                            key={alert.key}
+                                                                            className="space-y-2 rounded-2xl border border-slate-100 bg-white/95 p-4 shadow-inner shadow-slate-100/60"
+                                                                        >
+                                                                            <div className="space-y-1">
+                                                                                <h4 className="text-sm font-black text-slate-900">{alert.title}</h4>
+                                                                                <p className="text-xs font-medium text-slate-600">
+                                                                                    {alert.description}
+                                                                                </p>
+                                                                            </div>
+                                                                            <div className={`rounded-xl px-3 py-2 text-right ${badgeBg}`}>
+                                                                                <p className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${accent}`}>
+                                                                                    {alert.totalLabel}
+                                                                                </p>
+                                                                                <p className={`text-base font-black ${accent}`}>
+                                                                                    {formatCurrency(alert.totalAmount)}
+                                                                                </p>
+                                                                            </div>
+                                                                            {alert.items?.length > 0 && (
+                                                                                <div className="grid grid-cols-1 gap-2">
+                                                                                    {alert.items.map(item => (
+                                                                                        <div
+                                                                                            key={item.id || item.name}
+                                                                                            className="flex items-center justify-between rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm"
+                                                                                        >
+                                                                                            <span className="truncate max-w-[160px]">{item.name}</span>
+                                                                                            <span className={`font-bold ${accent}`}>
+                                                                                                {formatCurrency(item.amount)}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {notificationCount === 0 && (
+                                                        <p className="text-sm font-semibold text-slate-600">
+                                                            Nessuna notifica disponibile.
+                                                        </p>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsNotificationsPanelOpen(false)}
+                                                        className="w-full rounded-xl border border-emerald-200 bg-emerald-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-600 transition hover:bg-emerald-100"
+                                                    >
+                                                        Chiudi notifiche
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
-                                <select
-                                    value={year}
-                                    onChange={(e) => handleYearChange(parseInt(e.target.value, 10))}
-                                    className="h-11 rounded-xl bg-white/95 px-4 text-sm font-bold text-emerald-800 shadow-inner focus:outline-none focus:ring-2 focus:ring-emerald-400/70"
-                                >
-                                    {[0, -1, -2].map(offset => {
-                                        const y = new Date().getFullYear() + offset;
-                                        return (
-                                            <option key={y} value={y}>
-                                                {y}
-                                            </option>
-                                        );
-                                    })}
-                                </select>
                             </div>
                         </div>
                     </div>
@@ -909,384 +1374,410 @@ export default function BudgetPage() {
                     ))}
                 </div>
 
-                {/* Filtri */}
-                <div className="bg-gradient-to-br from-emerald-50 via-white to-white backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-6 lg:p-8 space-y-6">
-                    <div className="flex items-start gap-4">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/20 ring-4 ring-emerald-400/20">
-                            <SlidersHorizontal className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h2 className="text-lg font-black text-slate-900">Filtri Budget</h2>
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-bold text-emerald-700">
-                                    <Info className="w-3 h-3" />
-                                    Sincronizzati con la dashboard
-                                </span>
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
+                        <div className="flex flex-col">
+                            <div className="rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-emerald-100/70 via-white/90 to-teal-100/50 px-6 py-5">
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-500">
+                                    Analisi fornitori
+                                </p>
+                                <h2 className="text-lg font-black text-slate-900">
+                                    Principali canali · Spesa vs scostamenti
+                                </h2>
                             </div>
-                            <p className="mt-1 text-sm font-medium text-slate-600">
-                                Imposta periodo, settore e filiale per mantenere una lettura coerente dei dati economici.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col gap-3 lg:flex-row">
-                        <div className="relative flex-1 min-w-[220px]">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-                            <input
-                                type="text"
-                                placeholder="Cerca fornitore o note..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full h-12 rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-sm font-medium text-slate-700 shadow-inner focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                            />
-                        </div>
-                        <div className="flex-1 min-w-[220px]">
-                            <MultiSelect
-                                options={suppliers}
-                                selected={supplierFilter}
-                                onChange={(supplierId) => {
-                                    setSupplierFilter(prev =>
-                                        prev.includes(supplierId)
-                                            ? prev.filter(id => id !== supplierId)
-                                            : [...prev, supplierId]
-                                    );
-                                }}
-                                placeholder="Tutti i fornitori"
-                                selectedText={supplierFilter.length
-                                    ? `${supplierFilter.length} fornitor${supplierFilter.length === 1 ? 'e' : 'i'} selezionat${supplierFilter.length === 1 ? 'o' : 'i'}`
-                                    : undefined}
-                                searchPlaceholder="Cerca fornitore..."
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-                        <div className="flex flex-col gap-3">
-                            <span className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
-                                Periodo
-                            </span>
-                            <div className="flex flex-wrap items-center gap-3">
-                                <input
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                    className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-600 shadow-inner focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                />
-                                <span className="text-slate-400 font-semibold text-sm">→</span>
-                                <input
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-600 shadow-inner focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                />
-                            </div>
-                            <p className="text-[11px] font-medium text-slate-400">
-                                Le proiezioni contrattuali seguono l'intervallo selezionato.
-                            </p>
-                        </div>
-                        <div className="flex flex-col gap-3">
-                            <span className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
-                                Settori
-                            </span>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedSector('all')}
-                                    className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
-                                        selectedSector === 'all'
-                                            ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/30'
-                                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    <Layers className={`w-4 h-4 ${selectedSector === 'all' ? 'text-white' : 'text-emerald-600'}`} />
-                                    Tutti i settori
-                                </button>
-                                {orderedSectors.map(sector => {
-                                    const isActive = selectedSector === sector.id;
-                                    return (
-                                        <button
-                                            key={sector.id}
-                                            type="button"
-                                            onClick={() => setSelectedSector(sector.id)}
-                                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
-                                                isActive
-                                                    ? 'bg-gradient-to-r from-emerald-600 to-green-600 text-white shadow-lg shadow-emerald-500/30'
-                                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                            }`}
-                                        >
-                                            {getSectorIcon(sector.name, `w-4 h-4 ${isActive ? 'text-white' : 'text-emerald-600'}`)}
-                                            {sector.name}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                        <div className="flex flex-col gap-3">
-                            <span className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
-                                Filiali
-                            </span>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedBranch('all')}
-                                    className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
-                                        selectedBranch === 'all'
-                                            ? 'bg-gradient-to-r from-slate-700 to-slate-900 text-white shadow-lg shadow-slate-500/30'
-                                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    <MapPin className="w-4 h-4" />
-                                    Tutte le filiali
-                                </button>
-                                {orderedBranches.map(branch => {
-                                    const isActive = selectedBranch === branch.id;
-                                    return (
-                                        <button
-                                            key={branch.id}
-                                            type="button"
-                                            onClick={() => setSelectedBranch(branch.id)}
-                                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center gap-2 ${
-                                                isActive
-                                                    ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-500/30'
-                                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                            }`}
-                                        >
-                                            <MapPin className="w-4 h-4" />
-                                            {branch.name || 'N/D'}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
-                        <div className="flex flex-col gap-2">
-                            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                                Stato Budget
-                            </span>
-                            <div className="flex flex-wrap gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setUnexpectedFilter('all')}
-                                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                                        unexpectedFilter === 'all'
-                                            ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/30'
-                                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    Tutti ({budgetStatusCounts.total})
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setUnexpectedFilter('planned')}
-                                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                                        unexpectedFilter === 'planned'
-                                            ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-500/30'
-                                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    Previsti ({budgetStatusCounts.planned})
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setUnexpectedFilter('unexpected')}
-                                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1 ${
-                                        unexpectedFilter === 'unexpected'
-                                            ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/30'
-                                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                    }`}
-                                >
-                                    <AlertTriangle className="w-3 h-3" />
-                                    Extra budget ({budgetStatusCounts.unexpected})
-                                </button>
-                            </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3">
-                            <span className="text-sm font-bold text-slate-600 flex items-center gap-1.5">
-                                <ArrowUpDown className="w-4 h-4" />
-                                Ordina:
-                            </span>
-                            <select
-                                value={sortOrder}
-                                onChange={(e) => setSortOrder(e.target.value)}
-                                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-inner focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                            >
-                                <option value="spend_desc">Spesa ↓</option>
-                                <option value="name_asc">Nome A-Z</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="border-t border-slate-200 pt-4 space-y-3">
-                        <span className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
-                            Preset salvati
-                        </span>
-                        <div className="flex flex-col sm:flex-row gap-3">
-                            <input
-                                type="text"
-                                value={presetName}
-                                onChange={(e) => setPresetName(e.target.value)}
-                                placeholder="Nome preset (es. Board Q1)"
-                                className="flex-1 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-slate-700 shadow-inner focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                            />
-                            <button
-                                type="button"
-                                onClick={savePreset}
-                                disabled={!presetName.trim()}
-                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-emerald-500/30 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                                <Check className="w-4 h-4" />
-                                Salva preset
-                            </button>
-                        </div>
-                        {filterPresets.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                                {filterPresets.map(preset => (
-                                    <div key={preset.id} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 px-3 py-1.5 shadow-sm">
-                                        <button
-                                            type="button"
-                                            onClick={() => applyPreset(preset)}
-                                            className="text-sm font-semibold text-slate-600 hover:text-emerald-600"
-                                        >
-                                            {preset.name}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => deletePreset(preset.id)}
-                                            className="text-slate-400 hover:text-rose-500"
-                                        >
-                                            <X className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-xs font-medium text-slate-400">
-                                Salva le combinazioni di filtri per riutilizzarle rapidamente nelle altre pagine.
-                            </p>
-                        )}
-                    </div>
-
-                    {hasActiveFilters && (
-                        <div className="flex justify-end">
-                            <button
-                                type="button"
-                                onClick={resetFilters}
-                                className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-red-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-rose-500/30 transition-all hover:scale-105"
-                            >
-                                <XCircle className="w-4 h-4" />
-                                Resetta filtri
-                            </button>
-                        </div>
-                    )}
-                </div>
-                {(globalKpis.hasOverrunRisk || budgetAlerts.length > 0) && (
-                    <div className="space-y-4">
-                        {globalKpis.hasOverrunRisk && (
-                            <div className="rounded-3xl border border-rose-100 bg-rose-50/90 p-5 lg:p-6 shadow-lg shadow-rose-200/50 flex flex-col sm:flex-row items-start gap-3">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-red-500 text-white shadow-lg shadow-rose-500/30 flex-shrink-0">
-                                    <AlertTriangle className="w-6 h-6" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <h4 className="font-bold text-red-900 mb-1 text-sm sm:text-base">
-                                        Attenzione: rischio sforamento budget globale
-                                    </h4>
-                                    <p className="text-xs sm:text-sm text-red-700">
-                                        Con le proiezioni attuali dei contratti, la spesa totale prevista ({formatCurrency(globalKpis.totalForecast)}) 
-                                        supera il budget disponibile ({formatCurrency(globalKpis.totalMasterBudget)}). 
-                                        Considera di rivedere le allocazioni o aumentare il budget master.
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-
-                        {budgetAlerts.map(alert => {
-                            const isCritical = alert.type === 'critical';
-                            const isWarning = alert.type === 'warning';
-                            const accentText = isCritical
-                                ? 'text-rose-600'
-                                : isWarning
-                                    ? 'text-amber-600'
-                                    : 'text-emerald-600';
-                            const badgeBorder = isCritical
-                                ? 'border-rose-100'
-                                : isWarning
-                                    ? 'border-amber-100'
-                                    : 'border-emerald-100';
-                            const iconBg = isCritical
-                                ? 'bg-gradient-to-br from-rose-500 to-red-500'
-                                : isWarning
-                                    ? 'bg-gradient-to-br from-amber-500 to-orange-500'
-                                    : 'bg-gradient-to-br from-emerald-500 to-teal-500';
-                            const iconElement = isCritical ? <AlertTriangle className="w-6 h-6" /> : <Info className="w-6 h-6" />;
-                            return (
-                                <div
-                                    key={alert.key}
-                                    className="rounded-3xl border border-white/40 bg-white/95 p-5 lg:p-6 shadow-xl shadow-emerald-200/40 space-y-4"
-                                >
-                                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                                        <div className="flex items-start gap-3">
-                                            <div className={`flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg ${iconBg} shadow-emerald-500/20`}>
-                                                {iconElement}
-                                            </div>
-                                            <div>
-                                                <h4 className="text-base font-black text-slate-900">{alert.title}</h4>
-                                                <p className="text-sm font-medium text-slate-600">{alert.description}</p>
-                                            </div>
-                                        </div>
-                                        <div className={`rounded-2xl px-4 py-3 text-right shadow-inner ${badgeBorder} border`}>
-                                            <p className={`text-[10px] font-semibold uppercase tracking-[0.22em] ${accentText}`}>
-                                                {alert.totalLabel}
-                                            </p>
-                                            <p className={`text-xl font-black ${accentText}`}>
-                                                {formatCurrency(alert.totalAmount)}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-wrap gap-2">
-                                        {alert.items.map(item => (
-                                            <span
-                                                key={item.id || item.name}
-                                                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm"
+                            <div className="flex flex-1 flex-col px-6 py-6">
+                                <div className="flex-1">
+                                    {supplierBarData.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height={320}>
+                                            <BarChart
+                                                data={supplierBarData}
+                                                layout="vertical"
+                                                margin={{ top: 12, right: 16, left: 0, bottom: 12 }}
+                                                barGap={0}
+                                                barCategoryGap={20}
                                             >
-                                                <span className="truncate max-w-[160px]">{item.name}</span>
-                                                <span className={`font-bold ${accentText}`}>
-                                                    {formatCurrency(item.amount)}
-                                                </span>
-                                                {isCritical && (
-                                                    <span className="text-[10px] font-semibold text-slate-400">
-                                                        su {formatCurrency(item.forecast || 0)}
-                                                    </span>
+                                                <defs>
+                                                    {supplierBarData.map((entry) => (
+                                                        <linearGradient
+                                                            key={`supplier-gradient-${entry.id}`}
+                                                            id={`supplier-gradient-${entry.id}`}
+                                                            x1="0"
+                                                            y1="1"
+                                                            x2="1"
+                                                            y2="1"
+                                                        >
+                                                            <stop offset="0%" stopColor={entry.color} stopOpacity={0.7} />
+                                                            <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
+                                                        </linearGradient>
+                                                    ))}
+                                                    <linearGradient id="supplier-overdue-gradient" x1="0" y1="1" x2="1" y2="1">
+                                                        <stop offset="0%" stopColor="#fbbf24" stopOpacity={0.7} />
+                                                        <stop offset="100%" stopColor="#f97316" stopOpacity={1} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid stroke="rgba(15,23,42,0.05)" vertical={false} />
+                                                <XAxis
+                                                    type="number"
+                                                    tickFormatter={value => formatCurrency(value)}
+                                                    stroke="#0f172a"
+                                                    fontSize={12}
+                                                    tickLine={false}
+                                                    axisLine={false}
+                                                />
+                                                <YAxis
+                                                    type="category"
+                                                    dataKey="name"
+                                                    width={140}
+                                                    tickLine={false}
+                                                    axisLine={false}
+                                                    tick={{ fill: '#0f172a', fontWeight: 600, fontSize: 12 }}
+                                                />
+                                                <RechartsTooltip content={renderSupplierTooltip} cursor={{ fill: 'rgba(15,118,110,0.08)' }} />
+                                                <Bar
+                                                    dataKey="spend"
+                                                    stackId="a"
+                                                    barSize={26}
+                                                >
+                                                    {supplierBarData.map((entry) => (
+                                                        <Cell
+                                                            key={`spend-${entry.id}`}
+                                                            fill={`url(#supplier-gradient-${entry.id})`}
+                                                            stroke="none"
+                                                            radius={showProjections && entry.overdue > 0 ? [0, 0, 0, 0] : [0, 12, 12, 0]}
+                                                        />
+                                                    ))}
+                                                </Bar>
+                                                {showProjections && (
+                                                    <Bar dataKey="overdue" stackId="a" radius={[0, 12, 12, 0]} barSize={26}>
+                                                        {supplierBarData.map((entry) => (
+                                                            <Cell key={`overdue-${entry.id}`} fill="url(#supplier-overdue-gradient)" stroke="none" />
+                                                        ))}
+                                                    </Bar>
                                                 )}
-                                            </span>
-                                        ))}
-                                    </div>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-emerald-200/60 bg-white/60 p-10 text-center text-sm font-semibold text-emerald-600">
+                                            Non ci sono spese registrate per i filtri selezionati.
+                                        </div>
+                                    )}
                                 </div>
-                            );
-                        })}
-                    </div>
-                )}
+                                {supplierBarData.length > 0 && (
+                                    <div className="mt-6">
+                                        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                            {supplierBarData.slice(0, 6).map((entry) => {
+                                                const total = entry.spend + entry.overdue;
+                                                return (
+                                                    <li
+                                                        key={`supplier-summary-${entry.id}`}
+                                                        className="flex items-center justify-between rounded-2xl border border-emerald-100/70 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-emerald-100/40"
+                                                    >
+                                                        <span className="flex items-center gap-3">
+                                                            <span
+                                                                className="inline-flex h-2.5 w-2.5 rounded-full"
+                                                                style={{ backgroundColor: entry.color }}
+                                                            />
+                                                            {entry.name}
+                                                        </span>
+                                                        <span className="text-slate-900">
+                                                            {formatCurrency(total)}
+                                                        </span>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
+                        <div className="flex flex-col">
+                            <div className="rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-teal-100/70 via-white/90 to-emerald-100/50 px-6 py-5">
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-500">
+                                    Ripartizione settoriale
+                                </p>
+                                <h2 className="text-lg font-black text-slate-900">
+                                    Contributo sui costi filtrati
+                                </h2>
+                            </div>
+                            <div className="flex flex-1 flex-col px-6 py-6">
+                                <div className="flex-1">
+                                    {sectorDistributionData.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height={320}>
+                                            <PieChart>
+                                                <Pie
+                                                    data={sectorDistributionData}
+                                                    dataKey="value"
+                                                    nameKey="name"
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    innerRadius="60%"
+                                                    outerRadius="80%"
+                                                    paddingAngle={4}
+                                                    strokeWidth={0}
+                                                >
+                                                    {sectorDistributionData.map((entry) => (
+                                                        <Cell key={`sector-${entry.id}`} fill={entry.color} />
+                                                    ))}
+                                                </Pie>
+                                                <RechartsTooltip content={renderSectorTooltip} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-emerald-200/60 bg-white/60 p-10 text-center text-sm font-semibold text-emerald-600">
+                                            Nessun dato disponibile per generare la ripartizione settoriale.
+                                        </div>
+                                    )}
+                                </div>
+                                {sectorDistributionData.length > 0 && (
+                                    <div className="mt-6">
+                                        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                            {sectorDistributionData.slice(0, 4).map((entry) => {
+                                                const percentage = sectorDistributionTotal > 0
+                                                    ? `${Math.round((entry.value / sectorDistributionTotal) * 100)}%`
+                                                    : '0%';
+                                                return (
+                                                    <li
+                                                        key={`sector-summary-${entry.id}`}
+                                                        className="flex items-center justify-between rounded-2xl border border-emerald-100/70 bg-white px-3 py-2 shadow-sm shadow-emerald-100/40"
+                                                    >
+                                                        <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                                                            <span
+                                                                className="inline-flex h-2.5 w-2.5 rounded-full"
+                                                                style={{ backgroundColor: entry.color }}
+                                                            />
+                                                            {entry.name}
+                                                        </span>
+                                                        <span className="text-sm font-bold text-slate-900">
+                                                            {percentage}
+                                                        </span>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </section>
+                </div>
 
                 {/* Lista Fornitori */}
-                {displayData.length > 0 ? (
-                    <div className="mt-6">
-                        <SupplierTableView
-                            suppliers={displayData}
-                            onManage={handleOpenModal}
-                            sectorMap={sectorMap}
-                            showProjections={showProjections}
-                        />
+                <section className="relative overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl mt-6">
+                    <div className="pointer-events-none absolute inset-0">
+                        <div className="absolute -top-40 right-0 h-72 w-72 rounded-full bg-emerald-200/25 blur-3xl" />
+                        <div className="absolute bottom-[-35%] left-1/4 h-72 w-72 rounded-full bg-teal-200/20 blur-2xl" />
                     </div>
-                ) : (
-                    <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center mt-6">
-                        <div className="p-4 rounded-2xl bg-gray-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
-                            <Search className="w-8 h-8 text-gray-400" />
+                    <div className="relative z-10 flex flex-col">
+                        <div className="flex flex-col gap-3 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-emerald-100/70 via-white/90 to-teal-100/50 px-6 py-5 md:flex-row md:items-center md:justify-between">
+                            <div className="space-y-1">
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-500">
+                                    Fornitori & allocazioni
+                                </p>
+                                <h2 className="text-lg font-black text-slate-900">
+                                    Budget per canale e stato di utilizzo
+                                </h2>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3 justify-end">
+                                <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-emerald-700 shadow-sm shadow-emerald-100/40">
+                                    <Search className="h-4 w-4 text-emerald-400" />
+                                    <input
+                                        type="text"
+                                        value={searchTerm}
+                                        onChange={(event) => setSearchTerm(event.target.value)}
+                                        placeholder="Ricerca libera"
+                                        className="appearance-none bg-transparent text-sm font-semibold text-emerald-700 placeholder:text-emerald-600 focus:outline-none"
+                                    />
+                                </div>
+                                <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-emerald-700 shadow-sm shadow-emerald-100/40">
+                                    <Layers className="h-4 w-4 text-emerald-400" />
+                                    <select
+                                        value={selectedSector}
+                                        onChange={(event) => setSelectedSector(event.target.value)}
+                                        className="w-full bg-transparent text-sm font-semibold text-emerald-700 focus:outline-none"
+                                    >
+                                        <option value="all">Tutti i settori</option>
+                                        {orderedSectors.map((sector) => (
+                                            <option key={sector.id} value={sector.id}>
+                                                {sector.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-emerald-700 shadow-sm shadow-emerald-100/40">
+                                    <MapPin className="h-4 w-4 text-emerald-400" />
+                                    <select
+                                        value={selectedBranch}
+                                        onChange={(event) => setSelectedBranch(event.target.value)}
+                                        className="w-full bg-transparent text-sm font-semibold text-emerald-700 focus:outline-none"
+                                    >
+                                        <option value="all">Tutte le filiali</option>
+                                        {orderedBranches.map((branch) => (
+                                            <option key={branch.id} value={branch.id}>
+                                                {branch.name || 'N/D'}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <BudgetDateRangeDropdown
+                                    isOpen={isDatePanelOpen}
+                                    setIsOpen={(next) => setIsDatePanelOpen(typeof next === 'boolean' ? next : !isDatePanelOpen)}
+                                    startDate={startDate}
+                                    endDate={endDate}
+                                    hasActiveRange={startDate !== defaultStartDate || endDate !== defaultEndDate}
+                                    onChange={({ startDate: newStart, endDate: newEnd }) => {
+                                        setStartDate(newStart);
+                                        setEndDate(newEnd);
+                                    }}
+                                    onClear={() => {
+                                        setStartDate(defaultStartDate);
+                                        setEndDate(defaultEndDate);
+                                    }}
+                                    onToggle={() => setIsFiltersPresetPanelOpen(false)}
+                                />
+                                <div className="relative">
+                                    {isFiltersPresetPanelOpen && (
+                                        <div
+                                            className="fixed inset-0 z-40"
+                                            onClick={() => setIsFiltersPresetPanelOpen(false)}
+                                        />
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsFiltersPresetPanelOpen(prev => !prev);
+                                            setIsDatePanelOpen(false);
+                                        }}
+                                        aria-expanded={isFiltersPresetPanelOpen}
+                                        className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm shadow-emerald-100/40 transition hover:border-emerald-300 hover:text-emerald-600"
+                                    >
+                                        <SlidersHorizontal className="h-4 w-4 text-emerald-400" />
+                                        Preset
+                                    </button>
+                                    {isFiltersPresetPanelOpen && (
+                                        <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-80 max-w-[calc(100vw-3rem)] rounded-3xl border border-white/50 bg-white/95 p-4 shadow-2xl shadow-emerald-900/30 backdrop-blur">
+                                            <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-500">
+                                                Preset salvati
+                                            </span>
+                                            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                                                <input
+                                                    type="text"
+                                                    value={presetName}
+                                                    onChange={(event) => setPresetName(event.target.value)}
+                                                    placeholder="Nome preset (es. Consiglio Q1)"
+                                                    className="w-full sm:flex-1 rounded-2xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-700 shadow-inner focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const name = presetName.trim();
+                                                        if (!name) {
+                                                            toast.error('Inserisci un nome per il preset');
+                                                            return;
+                                                        }
+                                                        const preset = {
+                                                            id: Date.now(),
+                                                            name,
+                                                            startDate,
+                                                            endDate,
+                                                            selectedSector,
+                                                            selectedBranch
+                                                        };
+                                                        setFilterPresets(prev => {
+                                                            const withoutDuplicates = prev.filter(p => p.name.toLowerCase() !== name.toLowerCase());
+                                                            return [...withoutDuplicates, preset];
+                                                        });
+                                                        setPresetName('');
+                                                        setIsFiltersPresetPanelOpen(false);
+                                                        toast.success('Preset salvato');
+                                                    }}
+                                                    disabled={!presetName.trim()}
+                                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-emerald-500/30 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    <Check className="h-4 w-4" />
+                                                    Salva
+                                                </button>
+                                            </div>
+                                            {filterPresets.length > 0 ? (
+                                                <div className="mt-3 flex flex-col gap-2">
+                                                    {filterPresets.map((preset) => (
+                                                        <div
+                                                            key={preset.id}
+                                                            className="inline-flex items-center justify-between gap-2 rounded-2xl border border-emerald-200 bg-white/95 px-3 py-1.5 text-sm font-semibold text-emerald-700 shadow-sm shadow-emerald-100/40"
+                                                        >
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    applyPreset(preset);
+                                                                    setIsFiltersPresetPanelOpen(false);
+                                                                }}
+                                                                className="flex-1 text-left hover:text-teal-600 transition-colors"
+                                                            >
+                                                                {preset.name}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => deletePreset(preset.id)}
+                                                                className="text-emerald-200 hover:text-rose-500 transition-colors"
+                                                            >
+                                                                <X className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="mt-3 text-xs font-medium text-emerald-400">
+                                                    Salva una combinazione per richiamarla rapidamente nelle altre pagine.
+                                                </p>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsFiltersPresetPanelOpen(false)}
+                                                className="mt-3 w-full rounded-xl border border-emerald-200 bg-emerald-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-600 transition hover:bg-emerald-100"
+                                            >
+                                                Chiudi preset
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                {hasActiveFilters && (
+                                    <button
+                                        type="button"
+                                        onClick={resetFilters}
+                                        className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm shadow-rose-100/40 transition hover:border-rose-300 hover:bg-rose-100"
+                                    >
+                                        <XCircle className="w-4 h-4" />
+                                        Resetta filtri
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                        <h3 className="text-xl font-bold text-gray-800 mb-4">Nessun Fornitore Trovato</h3>
-                        <p className="text-gray-600">Non ci sono fornitori che corrispondono ai filtri attuali per l'anno {year}.</p>
+                        <div className="relative z-10 px-6 pb-6 mt-4">
+                            {displayData.length > 0 ? (
+                                <SupplierTableView
+                                    suppliers={displayData}
+                                    onManage={handleOpenModal}
+                                    sectorMap={sectorMap}
+                                    showProjections={showProjections}
+                                    sortConfig={sortConfig}
+                                    onSort={handleSortChange}
+                                />
+                            ) : (
+                                <div className="bg-white/85 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 p-12 text-center">
+                                    <div className="p-4 rounded-2xl bg-emerald-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
+                                        <Search className="w-8 h-8 text-emerald-500" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-slate-800 mb-4">Nessun Fornitore Trovato</h3>
+                                    <p className="text-slate-600">
+                                        Non ci sono fornitori che corrispondono ai filtri attuali per l&apos;anno {year}.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                )}
+                </section>
             </div>
 
             {/* Modal */}

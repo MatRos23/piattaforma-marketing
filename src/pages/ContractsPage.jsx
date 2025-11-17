@@ -5,14 +5,30 @@ import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, serv
 import { 
     PlusCircle, Pencil, Trash2, Search, Layers, XCircle, FileSignature, Check,
     Paperclip, DollarSign, Calendar, Target, AlertTriangle, CheckCircle,
-    ArrowUpDown, MapPin, SlidersHorizontal
+    ArrowUpDown, MapPin, SlidersHorizontal, Bell
 } from 'lucide-react';
 import ContractFormModal from '../components/ContractFormModal';
 import toast from 'react-hot-toast';
 import { KpiCard, MultiSelect } from '../components/SharedComponents';
 import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
+import {
+    ResponsiveContainer,
+    AreaChart,
+    Area,
+    CartesianGrid,
+    XAxis,
+    YAxis,
+    Tooltip as RechartsTooltip,
+    PieChart,
+    Pie,
+    Cell
+} from 'recharts';
+import { getSectorColor } from '../constants/sectorColors';
+import { getTooltipContainerClass } from '../utils/chartTooltipStyles';
 
 const storage = getStorage();
+
+const MONTH_NAMES_IT = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 
 // ===== UTILITY FUNCTIONS =====
 const formatCurrency = (number) => {
@@ -20,59 +36,169 @@ const formatCurrency = (number) => {
     return number.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 };
 
+const formatCompactCurrency = (value) => {
+    const abs = Math.abs(value);
+    if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+    if (abs >= 1000) return `${Math.round(value / 1000)}k`;
+    return value.toFixed(0);
+};
+
 // ===== UI COMPONENTS =====
 
 // Progress Bar Component con gestione sforamenti
 const ProgressBar = ({ spentPercentage = 0, overduePercentage = 0 }) => {
-    const safeSpent = Math.max(0, Math.min(spentPercentage, 100));
-    const combined = Math.max(0, Math.min(spentPercentage + overduePercentage, 100));
-    const overdueWidth = Math.max(0, combined - safeSpent);
-    const totalPercentage = Math.max(0, spentPercentage + overduePercentage);
-    const overrunValue = Math.max(0, totalPercentage - 100);
+    const sanitize = (value) => {
+        if (!Number.isFinite(value)) {
+            if (value === Infinity) return 100;
+            return 0;
+        }
+        return Math.max(0, value);
+    };
+
+    const safeSpentRaw = sanitize(spentPercentage);
+    const overdueRaw = sanitize(overduePercentage);
+    const totalUtilization = safeSpentRaw + overdueRaw;
+    const hasOverrun = totalUtilization >= 101 || !Number.isFinite(totalUtilization);
+
+    const clamp = (value) => Math.max(0, Math.min(100, value));
+
+    let spentWidth = 0;
+    let overdueWidth = 0;
+
+    if (hasOverrun) {
+        const totalForRatio = safeSpentRaw + overdueRaw;
+        if (totalForRatio > 0) {
+            spentWidth = clamp((safeSpentRaw / totalForRatio) * 100);
+            overdueWidth = clamp(100 - spentWidth);
+        }
+    } else {
+        spentWidth = clamp(safeSpentRaw);
+        overdueWidth = clamp(Math.min(overdueRaw, 100 - spentWidth));
+    }
 
     return (
-        <div className="relative w-full h-3 rounded-full bg-slate-200 overflow-hidden">
-            <div
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-700"
-                style={{ width: `${safeSpent}%` }}
-            />
-            {overduePercentage > 0 && (
+        <div
+            className="relative w-full h-[10px] rounded-full bg-slate-200/60 shadow-inner shadow-slate-300/60 overflow-hidden"
+            role="progressbar"
+            aria-valuenow={Math.round(Math.min(Number.isFinite(totalUtilization) ? totalUtilization : 130, 130))}
+            aria-valuemin={0}
+            aria-valuemax={100}
+        >
+            <div className="absolute inset-0 bg-gradient-to-r from-white/30 via-transparent to-white/30 pointer-events-none" />
+
+            {hasOverrun ? (
                 <div
-                    className="absolute inset-y-0 bg-gradient-to-r from-rose-400 to-red-500 transition-all duration-700"
-                    style={{
-                        left: `${safeSpent}%`,
-                        width: `${overdueWidth}%`
-                    }}
+                    className="absolute inset-y-0 left-0 z-[2] rounded-full bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 transition-all duration-500 ease-out"
+                    style={{ width: '100%' }}
                 />
+            ) : (
+                <>
+                    <div
+                        className="absolute inset-y-0 left-0 z-[1] rounded-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500 transition-all duration-500 ease-out"
+                        style={{ width: `${spentWidth}%` }}
+                    />
+
+                    {overdueWidth > 0 && (
+                        <div
+                            className="absolute inset-y-0 z-[2] rounded-full bg-gradient-to-r from-amber-400 via-orange-500 to-amber-500 transition-all duration-500 ease-out"
+                            style={{
+                                left: `${spentWidth}%`,
+                                width: `${overdueWidth}%`
+                            }}
+                        />
+                    )}
+                </>
             )}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent pointer-events-none" />
-            {overrunValue > 0 && (
-                <div className="absolute inset-0 flex items-center justify-end pr-2">
-                    <span className="text-[10px] font-bold text-rose-600 drop-shadow-lg">
-                        +{overrunValue.toFixed(0)}%
-                    </span>
-                </div>
-            )}
+
+            <div
+                className="absolute inset-0 z-[5] rounded-full border border-white/30"
+                aria-hidden="true"
+            />
         </div>
     );
 };
 
 // Vista Tabella
-const ContractsTableView = ({ contracts, sectorMap, supplierMap = new Map(), onEdit, onDelete }) => {
+const ContractsTableView = ({
+    contracts,
+    sectorMap,
+    supplierMap = new Map(),
+    onEdit,
+    onDelete,
+    sortConfig,
+    onSort
+}) => {
+    const columns = [
+        { key: 'supplier', label: 'Fornitore', className: 'px-5 py-3 text-left' },
+        { key: 'description', label: 'Descrizione', className: 'px-5 py-3 text-left hidden lg:table-cell' },
+        { key: 'sectors', label: 'Settori', className: 'px-5 py-3 text-left hidden xl:table-cell' },
+        { key: 'progress', label: 'Progresso', className: 'px-5 py-3 text-left' },
+        { key: 'value', label: 'Valore', className: 'px-5 py-3 text-right' },
+        { key: 'spent', label: 'Speso', className: 'px-5 py-3 text-right' },
+        { key: 'overdue', label: 'Scaduto', className: 'px-5 py-3 text-right' },
+        { key: 'residual', label: 'Residuo', className: 'px-5 py-3 text-right' }
+    ];
+
+    const handleSort = (columnKey) => {
+        if (typeof onSort === 'function') {
+            onSort(columnKey);
+        }
+    };
+
     return (
         <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl shadow-blue-200/60">
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-slate-700">
-                    <thead className="bg-blue-700/95 text-white uppercase text-[11px] font-bold tracking-[0.16em]">
+                    <thead className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white uppercase text-[11px] font-bold tracking-[0.16em]">
                         <tr>
-                            <th className="px-5 py-3 text-left">Fornitore</th>
-                            <th className="px-5 py-3 text-left hidden lg:table-cell">Descrizione</th>
-                            <th className="px-5 py-3 text-left hidden xl:table-cell">Settori</th>
-                            <th className="px-5 py-3 text-left">Progresso</th>
-                            <th className="px-5 py-3 text-right">Valore</th>
-                            <th className="px-5 py-3 text-right">Speso</th>
-                            <th className="px-5 py-3 text-right">Scaduto</th>
-                            <th className="px-5 py-3 text-right">Residuo</th>
+                            {columns.map((column) => {
+                                const isActive = sortConfig?.key === column.key;
+                                const direction = sortConfig?.direction || 'asc';
+                                const isRightAligned = column.className.includes('text-right');
+                                const indicator = (
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 12 12"
+                                        className={`h-3 w-3 text-white transition-opacity ${
+                                            isActive ? 'opacity-100' : 'opacity-40'
+                                        }`}
+                                    >
+                                        <path
+                                            d={
+                                                direction === 'asc'
+                                                    ? 'M6 2l3.5 4h-7L6 2z'
+                                                    : 'M6 10l-3.5-4h7L6 10z'
+                                            }
+                                            fill="currentColor"
+                                        />
+                                    </svg>
+                                );
+
+                                return (
+                                    <th
+                                        key={column.key}
+                                        className={column.className}
+                                        aria-sort={
+                                            isActive
+                                                ? direction === 'asc'
+                                                    ? 'ascending'
+                                                    : 'descending'
+                                                : 'none'
+                                        }
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSort(column.key)}
+                                            className={`flex w-full items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/90 transition-colors hover:text-white ${
+                                                isRightAligned ? 'justify-end' : 'justify-start'
+                                            }`}
+                                        >
+                                            <span>{column.label}</span>
+                                            <span className="text-[10px]">{indicator}</span>
+                                        </button>
+                                    </th>
+                                );
+                            })}
                             <th className="px-5 py-3 text-center">Azioni</th>
                         </tr>
                     </thead>
@@ -86,9 +212,18 @@ const ContractsTableView = ({ contracts, sectorMap, supplierMap = new Map(), onE
                                 : totalAmount - (spentAmount + overdueAmount);
                             const spentPercentage = totalAmount > 0 ? (spentAmount / totalAmount) * 100 : 0;
                             const overduePercentage = totalAmount > 0 ? (overdueAmount / totalAmount) * 100 : 0;
-                            const effectivePercentage = totalAmount > 0
-                                ? ((spentAmount + overdueAmount) / totalAmount) * 100
-                                : (spentAmount > 0 ? Infinity : 0);
+                            const totalPercentage = spentPercentage + overduePercentage;
+                            const hasMeaningfulOverdue = overduePercentage >= 0.5;
+                            const isOverrun = Number.isFinite(totalPercentage)
+                                ? totalPercentage >= 101
+                                : spentAmount > 0;
+                            const progressLabel = Number.isFinite(totalPercentage)
+                                ? (
+                                    hasMeaningfulOverdue
+                                        ? `${Math.round(spentPercentage)}% + ${Math.round(overduePercentage)}%`
+                                        : `${Math.round(totalPercentage)}%`
+                                )
+                                : 'N/D';
                             const supplierDisplayName = contract.supplierName || supplierMap.get(contract.supplierld) || 'N/D';
                             const sectorNames = (contract.effectiveSectors || []).map(id => sectorMap.get(id)).filter(Boolean).join(', ');
                             const residualDisplay = Math.abs(residualAmount) < 0.01 ? 0 : residualAmount;
@@ -115,65 +250,77 @@ const ContractsTableView = ({ contracts, sectorMap, supplierMap = new Map(), onE
                                             {contract.description || '—'}
                                         </div>
                                     </td>
-                                    <td className="px-5 py-4 hidden xl:table-cell text-xs font-semibold text-slate-500">
-                                        {sectorNames || '—'}
+                                    <td className="px-5 py-4 hidden xl:table-cell">
+                                        <span className="text-sm font-medium text-slate-600">
+                                            {sectorNames || '—'}
+                                        </span>
                                     </td>
                                     <td className="px-5 py-4 min-w-[190px]">
                                         <div className="flex items-center gap-3">
-                                            <div className="flex-1 min-w-[120px]">
+                                            <div className="flex-shrink-0 w-40">
                                                 <ProgressBar
                                                     spentPercentage={spentPercentage}
                                                     overduePercentage={overduePercentage}
                                                 />
                                             </div>
-                                            <span className="text-xs font-semibold text-slate-700">
-                                                {Number.isFinite(effectivePercentage) ? `${Math.round(effectivePercentage)}%` : 'N/D'}
+                                            <span className={`inline-flex items-center gap-1 text-xs font-semibold ${isOverrun ? 'text-rose-600' : 'text-slate-700'}`}>
+                                                {isOverrun && <AlertTriangle className="h-3.5 w-3.5" />}
+                                                {progressLabel}
                                             </span>
                                         </div>
                                     </td>
-                                    <td className="px-5 py-4 text-right font-semibold text-slate-900 whitespace-nowrap">
+                                    <td className="px-5 py-4 text-right text-sm font-semibold text-slate-900 whitespace-nowrap">
                                         {formatCurrency(totalAmount)}
                                     </td>
-                                    <td className="px-5 py-4 text-right font-semibold text-blue-700 whitespace-nowrap">
+                                    <td className="px-5 py-4 text-right text-sm font-semibold text-slate-900 whitespace-nowrap">
                                         {formatCurrency(spentAmount)}
                                     </td>
-                                    <td className={`px-5 py-4 text-right font-semibold whitespace-nowrap ${
-                                        overdueAmount > 0 ? 'text-rose-600' : 'text-slate-500'
-                                    }`}>
+                                    <td className="px-5 py-4 text-right text-sm font-semibold text-slate-900 whitespace-nowrap">
                                         {overdueAmount > 0 ? formatCurrency(overdueAmount) : '—'}
                                     </td>
-                                    <td className={`px-5 py-4 text-right font-semibold whitespace-nowrap ${
-                                        residualDisplay < 0 ? 'text-rose-600' : residualDisplay === 0 ? 'text-slate-500' : 'text-emerald-600'
-                                    }`}>
-                                        {formatCurrency(residualDisplay)}
+                                    <td className="px-5 py-4">
+                                        {residualDisplay === 0 ? (
+                                            <div className="flex items-center justify-end text-sm font-semibold text-slate-400">
+                                                —
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center justify-end gap-2">
+                                                {residualDisplay < 0 && (
+                                                    <AlertTriangle className="h-4 w-4 text-rose-500" />
+                                                )}
+                                                <span className="text-right text-sm font-semibold text-slate-900 whitespace-nowrap">
+                                                    {formatCurrency(residualDisplay)}
+                                                </span>
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-5 py-4">
-                                        <div className="flex items-center justify-center gap-1.5">
+                                        <div className="flex items-center justify-center gap-2">
                                             <button
                                                 onClick={() => onEdit(contract)}
-                                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                                                title="Modifica"
+                                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-blue-200 bg-white text-blue-500 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600"
+                                                title="Modifica contratto"
                                             >
-                                                <Pencil className="w-3.5 h-3.5" />
-                                            </button>
-                                            <button
-                                                onClick={() => onDelete(contract)}
-                                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                                                title="Elimina"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
+                                                <Pencil className="h-4 w-4" />
                                             </button>
                                             {contract.contractPdfUrl && (
                                                 <a
                                                     href={contract.contractPdfUrl}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                                                    title="Apri PDF"
+                                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-blue-100 bg-white text-blue-500 transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600"
+                                                    title="Apri documento"
                                                 >
-                                                    <Paperclip className="w-3.5 h-3.5" />
+                                                    <Paperclip className="h-4 w-4" />
                                                 </a>
                                             )}
+                                            <button
+                                                onClick={() => onDelete(contract)}
+                                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-500 transition-all hover:border-rose-400 hover:bg-rose-50 hover:text-rose-600"
+                                                title="Elimina contratto"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -186,13 +333,120 @@ const ContractsTableView = ({ contracts, sectorMap, supplierMap = new Map(), onE
     );
 };
 
-const STATUS_OPTIONS = [
-    { id: 'all', label: 'Tutti gli stati' },
-    { id: 'overrun', label: 'Sforati' },
-    { id: 'active', label: 'Attivi' },
-    { id: 'completed', label: 'Completati' },
-    { id: 'not_started', label: 'Non iniziati' }
-];
+const DateRangeFilter = ({
+    isOpen,
+    setIsOpen,
+    dateFilter,
+    setDateFilter,
+    hasDateRange,
+    setIsPresetPanelOpen
+}) => {
+    const formatDateLabel = (value) => {
+        if (!value) return '—';
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return value;
+        return parsed.toLocaleDateString('it-IT', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+    };
+
+    const dateRangeLabel = hasDateRange
+        ? `${formatDateLabel(dateFilter.startDate)} → ${formatDateLabel(dateFilter.endDate)}`
+        : 'Seleziona periodo';
+
+    return (
+        <div className="relative">
+            {isOpen && (
+                <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsOpen(false)}
+                />
+            )}
+            <button
+                type="button"
+                onClick={() => {
+                    setIsOpen((prev) => !prev);
+                    setIsPresetPanelOpen(false);
+                }}
+                aria-expanded={isOpen}
+                className={`inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm shadow-blue-100/40 transition hover:border-blue-300 hover:text-indigo-600 ${
+                    hasDateRange ? 'ring-2 ring-blue-200' : ''
+                }`}
+            >
+                <Calendar className="h-4 w-4 text-blue-400" />
+                <span>
+                    {dateRangeLabel}
+                </span>
+                <ArrowUpDown
+                    className={`h-4 w-4 text-blue-300 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                />
+            </button>
+            {isOpen && (
+                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-[18rem] rounded-3xl border border-white/60 bg-white/95 p-4 shadow-2xl shadow-blue-900/25 backdrop-blur">
+                    <div className="space-y-4">
+                        <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-500">
+                                intervallo date
+                            </p>
+                            <p className="text-xs font-medium text-slate-500">
+                                Imposta il periodo di firma da includere nella tabella.
+                            </p>
+                        </div>
+                        <div className="space-y-3">
+                            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+                                Da
+                                <input
+                                    type="date"
+                                    value={dateFilter.startDate}
+                                    onChange={(event) =>
+                                        setDateFilter((prev) => ({
+                                            ...prev,
+                                            startDate: event.target.value
+                                        }))
+                                    }
+                                    className="rounded-xl border border-blue-200 bg-white px-2 py-2 text-xs font-semibold text-blue-700 shadow-inner focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-300/40"
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+                                A
+                                <input
+                                    type="date"
+                                    value={dateFilter.endDate}
+                                    onChange={(event) =>
+                                        setDateFilter((prev) => ({
+                                            ...prev,
+                                            endDate: event.target.value
+                                        }))
+                                    }
+                                    className="rounded-xl border border-blue-200 bg-white px-2 py-2 text-xs font-semibold text-blue-700 shadow-inner focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-300/40"
+                                />
+                            </label>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <button
+                                type="button"
+                                onClick={() => setDateFilter({ startDate: '', endDate: '' })}
+                                className="text-xs font-semibold text-blue-400 transition hover:text-rose-500"
+                            >
+                                Pulisci
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIsOpen(false)}
+                                className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-600 transition hover:border-blue-300 hover:bg-blue-100"
+                            >
+                                <Check className="h-3.5 w-3.5" />
+                                Chiudi
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const ContractsTableSection = ({
     searchTerm,
@@ -200,8 +454,8 @@ const ContractsTableSection = ({
     orderedBranches,
     selectedBranch,
     setSelectedBranch,
-    statusFilter,
-    setStatusFilter,
+    selectedSector,
+    setSelectedSector,
     presetName,
     setPresetName,
     filterPresets,
@@ -216,8 +470,13 @@ const ContractsTableSection = ({
     handleOpenEditModal,
     handleDeleteContract,
     handleOpenAddModal,
+    sortConfig,
+    onSortChange,
+    dateFilter,
+    setDateFilter,
 }) => {
     const [isPresetPanelOpen, setIsPresetPanelOpen] = useState(false);
+    const [isDatePanelOpen, setIsDatePanelOpen] = useState(false);
 
     return (
         <section className="relative overflow-hidden rounded-3xl border border-white/60 bg-white/70 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
@@ -239,9 +498,24 @@ const ContractsTableSection = ({
                                     type="text"
                                     value={searchTerm}
                                     onChange={(event) => setSearchTerm(event.target.value)}
-                                    placeholder="Cerca per descrizione, fornitore..."
+                                    placeholder="Ricerca libera"
                                     className="appearance-none bg-transparent text-sm font-semibold text-blue-700 placeholder:text-blue-700 focus:outline-none"
                                 />
+                            </div>
+                            <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-blue-200 bg-white px-3 py-2 text-blue-700 shadow-sm shadow-blue-100/40">
+                                <Layers className="h-4 w-4 text-blue-400" />
+                                <select
+                                    value={selectedSector}
+                                    onChange={(event) => setSelectedSector(event.target.value)}
+                                    className="w-full bg-transparent text-sm font-semibold text-blue-700 focus:outline-none"
+                                >
+                                    <option value="all">Tutti i settori</option>
+                                    {Array.from(sectorMap.entries()).map(([id, name]) => (
+                                        <option key={id} value={id}>
+                                            {name || 'N/D'}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                             <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-blue-200 bg-white px-3 py-2 text-blue-700 shadow-sm shadow-blue-100/40">
                                 <MapPin className="h-4 w-4 text-blue-400" />
@@ -258,96 +532,116 @@ const ContractsTableSection = ({
                                     ))}
                                 </select>
                             </div>
-                            <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-blue-200 bg-white px-3 py-2 text-blue-700 shadow-sm shadow-blue-100/40">
-                                <CheckCircle className="h-4 w-4 text-blue-400" />
-                                <select
-                                    value={statusFilter}
-                                    onChange={(event) => setStatusFilter(event.target.value)}
-                                    className="w-full bg-transparent text-sm font-semibold text-blue-700 focus:outline-none"
-                                >
-                                    {STATUS_OPTIONS.map((option) => (
-                                        <option key={option.id} value={option.id}>
-                                            {option.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="relative">
-                                {isPresetPanelOpen && (
-                                    <>
-                                        <div
-                                            className="fixed inset-0 z-40"
-                                            onClick={() => setIsPresetPanelOpen(false)}
-                                        />
-                                        <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-80 max-w-[calc(100vw-3rem)] rounded-3xl border border-white/50 bg-white/95 p-4 shadow-2xl shadow-blue-900/30 backdrop-blur">
-                                            <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-500">
-                                                Preset salvati
-                                            </span>
-                                            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                                                <input
-                                                    type="text"
-                                                    value={presetName}
-                                                    onChange={(event) => setPresetName(event.target.value)}
-                                                    placeholder="Nome preset (es. Direzione Q1)"
-                                                    className="w-full sm:flex-1 rounded-2xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        savePreset();
-                                                        setIsPresetPanelOpen(false);
-                                                    }}
-                                                    disabled={!presetName.trim()}
-                                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-blue-500/30 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
-                                                >
-                                                    <Check className="w-4 h-4" />
-                                                    Salva
-                                                </button>
-                                            </div>
-                                            {filterPresets.length > 0 ? (
-                                                <div className="mt-2 flex flex-col gap-2">
-                                                    {filterPresets.map((preset) => (
-                                                        <div
-                                                            key={preset.id}
-                                                            className="inline-flex items-center justify-between gap-2 rounded-2xl border border-blue-200 bg-white/95 px-3 py-1.5 text-sm font-semibold text-blue-700 shadow-sm shadow-blue-100/40"
-                                                        >
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    applyPreset(preset);
-                                                                    setIsPresetPanelOpen(false);
-                                                                }}
-                                                                className="flex-1 text-left hover:text-indigo-600 transition-colors"
-                                                            >
-                                                                {preset.name}
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => deletePreset(preset.id)}
-                                                                className="text-blue-300 hover:text-rose-500 transition-colors"
-                                                            >
-                                                                <XCircle className="w-3.5 h-3.5" />
-                                                            </button>
-                                                        </div>
-                                                    ))}
+                            <DateRangeFilter
+                                isOpen={isDatePanelOpen}
+                                setIsOpen={setIsDatePanelOpen}
+                                dateFilter={dateFilter}
+                                setDateFilter={setDateFilter}
+                                hasDateRange={Boolean(dateFilter.startDate || dateFilter.endDate)}
+                                setIsPresetPanelOpen={setIsPresetPanelOpen}
+                            />
+                            <div className="flex items-center gap-3">
+                                <div className="relative">
+                                    {isPresetPanelOpen && (
+                                        <>
+                                            <div
+                                                className="fixed inset-0 z-40"
+                                                onClick={() => setIsPresetPanelOpen(false)}
+                                            />
+                                            <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-80 max-w-[calc(100vw-3rem)] rounded-3xl border border-white/50 bg-white/95 p-4 shadow-2xl shadow-blue-900/30 backdrop-blur">
+                                                <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-500">
+                                                    Preset salvati
+                                                </span>
+                                                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                                                    <input
+                                                        type="text"
+                                                        value={presetName}
+                                                        onChange={(event) => setPresetName(event.target.value)}
+                                                        placeholder="Nome preset (es. Direzione Q1)"
+                                                        className="w-full sm:flex-1 rounded-2xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            savePreset();
+                                                            setIsPresetPanelOpen(false);
+                                                        }}
+                                                        disabled={!presetName.trim()}
+                                                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-blue-500/30 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
+                                                    >
+                                                        <Check className="w-4 h-4" />
+                                                        Salva
+                                                    </button>
                                                 </div>
-                                            ) : (
-                                                <p className="mt-2 text-xs font-medium text-blue-400">
-                                                    Nessun preset salvato. Crea il primo per accelerare le viste.
-                                                </p>
-                                            )}
-                                        </div>
-                                    </>
-                                )}
-                                <button
+                                                {filterPresets.length > 0 ? (
+                                                    <div className="mt-2 flex flex-col gap-2">
+                                                        {filterPresets.map((preset) => (
+                                                            <div
+                                                                key={preset.id}
+                                                                className="inline-flex items-center justify-between gap-2 rounded-2xl border border-blue-200 bg-white/95 px-3 py-1.5 text-sm font-semibold text-blue-700 shadow-sm shadow-blue-100/40"
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        applyPreset(preset);
+                                                                        setIsPresetPanelOpen(false);
+                                                                    }}
+                                                                    className="flex-1 text-left transition-colors hover:text-indigo-600"
+                                                                >
+                                                                    {preset.name}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => deletePreset(preset.id)}
+                                                                    className="text-blue-300 transition-colors hover:text-rose-500"
+                                                                >
+                                                                    <XCircle className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="mt-2 text-xs font-medium text-blue-400">
+                                                        Nessun preset salvato. Crea il primo per accelerare le viste.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
+                                    <button
                                     type="button"
                                     onClick={() => setIsPresetPanelOpen((prev) => !prev)}
                                     aria-expanded={isPresetPanelOpen}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-white/95 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-blue-700 shadow-sm shadow-blue-100/50 transition hover:border-blue-300 hover:text-indigo-600"
-                                >
-                                    <SlidersHorizontal className="h-4 w-4 text-blue-400" />
-                                    Preset
-                                </button>
+                                    >
+                                        <SlidersHorizontal className="h-4 w-4 text-blue-400" />
+                                        Preset
+                                    </button>
+                                </div>
+                                {hasActiveFilters && (
+                                    <button
+                                        type="button"
+                                        onClick={resetFilters}
+                                        className="inline-flex items-center gap-2 rounded-2xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm shadow-rose-100/40 transition-transform hover:-translate-y-[1px] hover:border-rose-400"
+                                    >
+                                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-rose-500 to-rose-600 text-white text-[11px] font-bold">
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 0 20 20"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                                className="h-3.5 w-3.5"
+                                            >
+                                                <path d="M4 4v5h5" />
+                                                <path d="M16 16v-5h-5" />
+                                                <path d="M5 9a6 6 0 0 1 9-3.7L16 8" />
+                                                <path d="M15 11a6 6 0 0 1-9 3.7L4 12" />
+                                            </svg>
+                                        </span>
+                                        Resetta filtri
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -383,33 +677,6 @@ const ContractsTableSection = ({
                         </div>
                     )}
 
-                    {hasActiveFilters && (
-                        <div className="flex justify-end">
-                            <button
-                                type="button"
-                                onClick={resetFilters}
-                                className="inline-flex items-center gap-2 rounded-2xl border border-blue-300 bg-white px-4 py-2 text-sm font-semibold text-blue-600 shadow-sm shadow-blue-100/40 transition-transform hover:-translate-y-[1px] hover:border-blue-400"
-                            >
-                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-[11px] font-bold">
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 20 20"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        className="h-3.5 w-3.5"
-                                    >
-                                        <path d="M4 4v5h5" />
-                                        <path d="M16 16v-5h-5" />
-                                        <path d="M5 9a6 6 0 0 1 9-3.7L16 8" />
-                                        <path d="M15 11a6 6 0 0 1-9 3.7L4 12" />
-                                    </svg>
-                                </span>
-                                Resetta filtri
-                            </button>
-                        </div>
-                    )}
-
                     <div className="overflow-hidden rounded-3xl border border-blue-100 shadow-inner shadow-blue-100/70 mt-4">
                         {processedContracts.length > 0 ? (
                             <ContractsTableView
@@ -418,6 +685,8 @@ const ContractsTableSection = ({
                                 sectorMap={sectorMap}
                                 onEdit={handleOpenEditModal}
                                 onDelete={handleDeleteContract}
+                                sortConfig={sortConfig}
+                                onSort={onSortChange}
                             />
                         ) : (
                             <div className="bg-white/85 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 p-12 text-center">
@@ -473,7 +742,7 @@ export default function ContractsPage({ user }) {
     const [editingContract, setEditingContract] = useState(null);
     const [selectedBranch, setSelectedBranch] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
-    const [statusFilter, setStatusFilter] = useState('all');
+    const [selectedSector, setSelectedSector] = useState('all');
     const [dateFilter, setDateFilter] = useState({ startDate: '', endDate: '' }); // intervallo firma
     const otherPresetsRef = useRef([]);
     const [filterPresets, setFilterPresets] = useState(() => {
@@ -491,8 +760,9 @@ export default function ContractsPage({ user }) {
         return contractPresets;
     });
     const [presetName, setPresetName] = useState('');
-    const [isOverrunPanelOpen, setIsOverrunPanelOpen] = useState(false);
+    const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
     const presetsMountedRef = useRef(false);
+    const [sortConfig, setSortConfig] = useState({ key: 'supplier', direction: 'asc' });
     
     const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers]);
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
@@ -746,26 +1016,81 @@ export default function ContractsPage({ user }) {
             });
         }
 
-        if (statusFilter === 'overrun') {
-            filtered = filtered.filter(c => c.progress > 100);
-        } else if (statusFilter === 'active') {
-            filtered = filtered.filter(c => c.actualProgress > 0 && c.actualProgress < 100);
-        } else if (statusFilter === 'completed') {
-            filtered = filtered.filter(c => c.actualProgress >= 100);
-        } else if (statusFilter === 'not_started') {
-            filtered = filtered.filter(c => c.actualProgress === 0);
+        if (selectedSector !== 'all') {
+            filtered = filtered.filter(contract => {
+                const sectorsList = Array.isArray(contract.effectiveSectors) ? contract.effectiveSectors : [];
+                if (sectorsList.includes(selectedSector)) return true;
+                if (!contract.effectiveSectors && contract.sectorId) {
+                    return contract.sectorId === selectedSector;
+                }
+                return false;
+            });
         }
 
-        return filtered;
+        const directionMultiplier = sortConfig.direction === 'asc' ? 1 : -1;
+        const getSortValue = (contract, key) => {
+            switch (key) {
+                case 'supplier':
+                    return contract.supplierName || supplierMap.get(contract.supplierld) || '';
+                case 'description':
+                    return contract.description || '';
+                case 'sectors':
+                    return (contract.effectiveSectors || [])
+                        .map(id => sectorMap.get(id))
+                        .filter(Boolean)
+                        .join(', ');
+                case 'progress':
+                    return Number.isFinite(contract.progress) ? contract.progress : contract.progress === Infinity ? Number.MAX_SAFE_INTEGER : 0;
+                case 'value':
+                    return contract.totalAmount || 0;
+                case 'spent':
+                    return contract.spentAmount || 0;
+                case 'overdue':
+                    return contract.overdueAmount || 0;
+                case 'residual':
+                    return Number.isFinite(contract.residualAmount)
+                        ? contract.residualAmount
+                        : contract.residualAmount === Infinity
+                            ? Number.MAX_SAFE_INTEGER
+                            : 0;
+                default:
+                    return '';
+            }
+        };
+
+        const normalizeNumber = (value) => {
+            if (typeof value !== 'number' || Number.isNaN(value)) return 0;
+            if (!Number.isFinite(value)) {
+                return value === -Infinity ? Number.MIN_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+            }
+            return value;
+        };
+
+        return [...filtered].sort((a, b) => {
+            const aValue = getSortValue(a, sortConfig.key);
+            const bValue = getSortValue(b, sortConfig.key);
+
+            if (typeof aValue === 'number' && typeof bValue === 'number') {
+                const normalizedA = normalizeNumber(aValue);
+                const normalizedB = normalizeNumber(bValue);
+                if (normalizedA === normalizedB) return 0;
+                return normalizedA > normalizedB ? directionMultiplier : -directionMultiplier;
+            }
+
+            return String(aValue)
+                .localeCompare(String(bValue), 'it', { sensitivity: 'base' }) * directionMultiplier;
+        });
     }, [
         allContracts,
         allExpenses,
         searchTerm,
-        statusFilter,
         supplierMap,
         selectedBranch,
+        selectedSector,
         dateFilter.startDate,
-        dateFilter.endDate
+        dateFilter.endDate,
+        sortConfig,
+        sectorMap
     ]);
     const savePreset = useCallback(() => {
         const name = presetName.trim();
@@ -782,7 +1107,7 @@ export default function ContractsPage({ user }) {
             startDate: dateFilter.startDate,
             endDate: dateFilter.endDate,
             selectedBranch,
-            statusFilter
+            selectedSector
         };
         setFilterPresets(prev => {
             const withoutDuplicates = prev.filter(p => p.name.toLowerCase() !== name.toLowerCase());
@@ -790,7 +1115,7 @@ export default function ContractsPage({ user }) {
         });
         setPresetName('');
         toast.success('Preset salvato');
-    }, [presetName, searchTerm, dateFilter.startDate, dateFilter.endDate, selectedBranch, statusFilter]);
+    }, [presetName, searchTerm, dateFilter.startDate, dateFilter.endDate, selectedBranch, selectedSector]);
 
     const applyPreset = useCallback((preset) => {
         setSearchTerm(preset.searchTerm || '');
@@ -799,13 +1124,25 @@ export default function ContractsPage({ user }) {
             endDate: preset.endDate ?? ''
         });
                 setSelectedBranch(preset.selectedBranch || 'all');
-                setStatusFilter(preset.statusFilter || 'all');
+                setSelectedSector(preset.selectedSector || 'all');
                 toast.success(`Preset "${preset.name}" applicato`);
     }, []);
 
     const deletePreset = useCallback((id) => {
         setFilterPresets(prev => prev.filter(p => p.id !== id));
         toast.success('Preset eliminato');
+    }, []);
+
+    const handleSortChange = useCallback((columnKey) => {
+        setSortConfig((prev) => {
+            if (prev.key === columnKey) {
+                return {
+                    key: columnKey,
+                    direction: prev.direction === 'asc' ? 'desc' : 'asc'
+                };
+            }
+            return { key: columnKey, direction: 'asc' };
+        });
     }, []);
 
     const contractStats = useMemo(() => {
@@ -858,6 +1195,143 @@ export default function ContractsPage({ user }) {
             }
         ];
     }, [contractStats]);
+
+    const contractsTrendData = useMemo(() => {
+        const monthMap = new Map();
+
+        processedContracts.forEach(contract => {
+            if (!contract.signingDate) return;
+            const date = new Date(contract.signingDate);
+            if (Number.isNaN(date.getTime())) return;
+
+            const year = date.getFullYear();
+            const month = date.getMonth();
+            const key = `${year}-${month}`;
+
+            if (!monthMap.has(key)) {
+                monthMap.set(key, {
+                    sortKey: year * 100 + month,
+                    label: `${MONTH_NAMES_IT[month]} '${String(year).slice(-2)}`,
+                    fullLabel: `${MONTH_NAMES_IT[month]} ${year}`,
+                    spend: 0,
+                    overdue: 0,
+                    total: 0
+                });
+            }
+
+            const bucket = monthMap.get(key);
+            bucket.spend += contract.spentAmount || 0;
+            bucket.overdue += contract.overdueAmount || 0;
+            bucket.total += contract.totalAmount || 0;
+        });
+
+        return Array.from(monthMap.values())
+            .sort((a, b) => a.sortKey - b.sortKey)
+            .slice(-12);
+    }, [processedContracts]);
+
+    const contractsTrendSummary = useMemo(() => {
+        if (contractsTrendData.length === 0) return [];
+        return [...contractsTrendData].slice(-4).reverse();
+    }, [contractsTrendData]);
+
+    const contractSectorDistribution = useMemo(() => {
+        const totals = new Map();
+
+        processedContracts.forEach(contract => {
+            const effectiveAmount = (() => {
+                const spend = (contract.spentAmount || 0) + (contract.overdueAmount || 0);
+                if (spend > 0) return spend;
+                return contract.totalAmount || 0;
+            })();
+
+            if (effectiveAmount <= 0) return;
+
+            const sectorsList = Array.isArray(contract.effectiveSectors) && contract.effectiveSectors.length > 0
+                ? contract.effectiveSectors
+                : ['unassigned'];
+
+            const share = effectiveAmount / sectorsList.length;
+            sectorsList.forEach(sectorId => {
+                const key = sectorId || 'unassigned';
+                totals.set(key, (totals.get(key) || 0) + share);
+            });
+        });
+
+        return Array.from(totals.entries())
+            .map(([sectorId, value], index) => {
+                const name = sectorId === 'unassigned'
+                    ? 'Non classificato'
+                    : (sectorMap.get(sectorId) || 'Non classificato');
+                return {
+                    id: sectorId,
+                    name,
+                    value,
+                    color: getSectorColor(name, index)
+                };
+            })
+            .filter(entry => entry.value > 0)
+            .sort((a, b) => b.value - a.value);
+    }, [processedContracts, sectorMap]);
+
+    const contractSectorTotal = useMemo(
+        () => contractSectorDistribution.reduce((sum, entry) => sum + entry.value, 0),
+        [contractSectorDistribution]
+    );
+
+    const renderContractsTrendTooltip = useCallback(({ active, payload }) => {
+        if (!active || !payload || payload.length === 0) return null;
+        const data = payload[0]?.payload;
+        if (!data) return null;
+        const spendEntry = payload.find(item => item.dataKey === 'spend');
+        const overdueEntry = payload.find(item => item.dataKey === 'overdue');
+
+        return (
+            <div className={getTooltipContainerClass('blue')}>
+                <p className="text-sm font-bold text-slate-900">
+                    {data.fullLabel}
+                </p>
+                <div className="mt-2 space-y-1 text-xs font-semibold text-slate-600">
+                    <div className="flex items-center justify-between gap-6">
+                        <span className="flex items-center gap-2 text-blue-600">
+                            <span className="inline-block h-2 w-2 rounded-full bg-blue-500" />
+                            Speso
+                        </span>
+                        <span>{formatCurrency(spendEntry?.value || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-6">
+                        <span className="flex items-center gap-2 text-amber-600">
+                            <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
+                            Scaduto
+                        </span>
+                        <span>{formatCurrency(overdueEntry?.value || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-6 border-t border-slate-100 pt-2">
+                        <span className="text-slate-500">Valore contratti</span>
+                        <span className="text-slate-900">{formatCurrency(data.total || 0)}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }, []);
+
+    const renderContractsSectorTooltip = useCallback(({ active, payload }) => {
+        if (!active || !payload || payload.length === 0) return null;
+        const data = payload[0]?.payload;
+        if (!data) return null;
+        const percentage = contractSectorTotal > 0
+            ? ((data.value / contractSectorTotal) * 100).toFixed(1)
+            : '0.0';
+
+        return (
+            <div className={getTooltipContainerClass('blue')}>
+                <p className="text-sm font-bold text-slate-900">{data.name}</p>
+                <p className="text-xs font-semibold text-slate-600 mt-1">
+                    {formatCurrency(data.value)} · {percentage}%
+                </p>
+            </div>
+        );
+    }, [contractSectorTotal]);
 
     const handleOpenAddModal = () => { setEditingContract(null); setIsModalOpen(true); };
     const handleOpenEditModal = (contract) => { setEditingContract(contract); setIsModalOpen(true); };
@@ -918,7 +1392,7 @@ export default function ContractsPage({ user }) {
     const resetFilters = () => {
         setSearchTerm(''); 
         setSelectedBranch('all');
-        setStatusFilter('all');
+        setSelectedSector('all');
         setDateFilter({ startDate: '', endDate: '' });
         setPresetName('');
         toast.success("Filtri resettati!");
@@ -928,7 +1402,7 @@ export default function ContractsPage({ user }) {
     const hasActiveFilters = Boolean(
         trimmedSearchTerm ||
         selectedBranch !== 'all' ||
-        statusFilter !== 'all' ||
+        selectedSector !== 'all' ||
         dateFilter.startDate ||
         dateFilter.endDate
     );
@@ -939,11 +1413,12 @@ export default function ContractsPage({ user }) {
             budgetOverrun: Math.max(0, (c.spentAmount + (c.overdueAmount || 0)) - c.totalAmount)
         }));
     const totalOverrunAmount = overrunContracts.reduce((sum, c) => sum + (c.budgetOverrun || 0), 0);
+    const notificationCount = overrunContracts.length;
     useEffect(() => {
-        if (overrunContracts.length === 0 && isOverrunPanelOpen) {
-            setIsOverrunPanelOpen(false);
+        if (notificationCount === 0 && isNotificationsPanelOpen) {
+            setIsNotificationsPanelOpen(false);
         }
-    }, [overrunContracts.length, isOverrunPanelOpen]);
+    }, [notificationCount, isNotificationsPanelOpen]);
 
     if (isLoading) {
         return (
@@ -963,7 +1438,7 @@ export default function ContractsPage({ user }) {
                 <div className="space-y-6">
                     <div className="relative rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-sky-600 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.3),transparent_55%)]" />
-                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                             <div className="space-y-4">
                                 <div className="flex items-center gap-4">
                                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-blue-900/30 ring-4 ring-white/20">
@@ -978,27 +1453,6 @@ export default function ContractsPage({ user }) {
                                     Monitora accordi e impegni con i fornitori mantenendo un'esperienza coerente con dashboard, spese e budget.
                                 </p>
                                 <div className="flex flex-wrap items-center gap-3">
-                                    <div className="inline-flex items-center gap-3 rounded-2xl border border-white/30 bg-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/85 shadow-lg shadow-blue-900/30 backdrop-blur-sm">
-                                        <Calendar className="w-4 h-4" />
-                                        Periodo
-                                        <input
-                                            type="date"
-                                            value={dateFilter.startDate}
-                                            onChange={(event) =>
-                                                setDateFilter(prev => ({ ...prev, startDate: event.target.value }))
-                                            }
-                                            className="rounded-xl border border-white/30 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/90 backdrop-blur focus:border-white/70 focus:outline-none focus:ring-2 focus:ring-white/40"
-                                        />
-                                        <span className="text-white/50">→</span>
-                                        <input
-                                            type="date"
-                                            value={dateFilter.endDate}
-                                            onChange={(event) =>
-                                                setDateFilter(prev => ({ ...prev, endDate: event.target.value }))
-                                            }
-                                            className="rounded-xl border border-white/30 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/90 backdrop-blur focus:border-white/70 focus:outline-none focus:ring-2 focus:ring-white/40"
-                                        />
-                                    </div>
                                     <button
                                         type="button"
                                         onClick={handleOpenAddModal}
@@ -1009,91 +1463,257 @@ export default function ContractsPage({ user }) {
                                     </button>
                                 </div>
                             </div>
-                        </div>
-                        {overrunContracts.length > 0 && (
-                            <div className="absolute bottom-6 right-6">
-                                {isOverrunPanelOpen && (
-                                    <div
-                                        className="fixed inset-0 z-40"
-                                        onClick={() => setIsOverrunPanelOpen(false)}
-                                    />
-                                )}
-                                <div className="relative z-50 flex flex-col items-end gap-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsOverrunPanelOpen(prev => !prev)}
-                                        className="group inline-flex items-center gap-3 rounded-2xl border border-white/30 bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 backdrop-blur transition-all hover:bg-white/25"
-                                    >
-                                    <span className="relative">
-                                        <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-rose-400 animate-pulse" />
-                                        <AlertTriangle className="h-4 w-4 text-rose-200 group-hover:text-rose-100 transition-colors" />
-                                    </span>
-                                    <span>Contratti oltre budget</span>
-                                    <span className="inline-flex items-center justify-center rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">
-                                        {overrunContracts.length}
-                                    </span>
-                                    <ArrowUpDown
-                                        className={`h-4 w-4 transition-transform duration-200 ${isOverrunPanelOpen ? 'rotate-180' : ''}`}
-                                    />
-                                </button>
-                                    {isOverrunPanelOpen && (
-                                    <div className="absolute right-0 top-[calc(100%+0.75rem)] w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-4 shadow-2xl shadow-blue-900/30 backdrop-blur sm:w-80">
-                                        <div className="flex items-start justify-between">
-                                            <div>
-                                                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
-                                                    Oltre budget
-                                                </p>
-                                                <h3 className="text-sm font-black text-slate-900">
-                                                    {formatCurrency(totalOverrunAmount)}
-                                                </h3>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsOverrunPanelOpen(false)}
-                                                className="rounded-full bg-rose-50 p-1 text-rose-500 transition hover:bg-rose-100"
-                                            >
-                                                <XCircle className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                        <div className="mt-3 max-h-48 space-y-2 overflow-y-auto pr-1">
-                                            {overrunContracts.map(contract => (
-                                                <div
-                                                    key={contract.id}
-                                                    className="flex items-center justify-between rounded-2xl border border-rose-100/80 bg-white px-3 py-2 shadow-sm shadow-rose-100/50"
-                                                >
-                                                    <div className="flex flex-col">
-                                                        <span className="text-xs font-semibold text-slate-700">
-                                                            {supplierMap.get(contract.supplierld) || 'N/D'}
-                                                        </span>
-                                                        <span className="text-[11px] font-semibold text-rose-500">
-                                                            +{(contract.progress - 100).toFixed(1)}%
-                                                        </span>
-                                                    </div>
-                                                    <span className="text-xs font-bold text-slate-900">
-                                                        {formatCurrency(contract.budgetOverrun || 0)}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
+                            <div className="flex items-center justify-end">
+                                <div className="flex flex-col items-end gap-3">
+                                    <div className="relative">
                                         <button
                                             type="button"
-                                            onClick={() => setIsOverrunPanelOpen(false)}
-                                            className="mt-3 w-full rounded-xl border border-rose-200 bg-rose-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-rose-500 transition hover:bg-rose-100"
+                                            onClick={() => setIsNotificationsPanelOpen(prev => !prev)}
+                                            className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] shadow-lg backdrop-blur-sm transition-all ${
+                                                overrunContracts.length > 0
+                                                    ? 'bg-white/15 text-white hover:bg-white/25 shadow-blue-900/30'
+                                                    : 'bg-white/10 text-white/60 hover:bg-white/15 shadow-blue-900/10'
+                                            }`}
                                         >
-                                            Chiudi dettagli
+                                            <Bell className="w-4 h-4" />
+                                            {notificationCount} Notifiche
                                         </button>
+                                        {isNotificationsPanelOpen && (
+                                            <>
+                                                <div
+                                                    className="absolute inset-0 z-40"
+                                                    onClick={() => setIsNotificationsPanelOpen(false)}
+                                                />
+                                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-blue-900/30 backdrop-blur sm:w-80 space-y-3">
+                                                    {overrunContracts.length > 0 ? (
+                                                        <>
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div>
+                                                                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                                                                        Contratti oltre budget
+                                                                    </p>
+                                                                    <h3 className="text-sm font-black text-slate-900">
+                                                                        {formatCurrency(totalOverrunAmount)}
+                                                                    </h3>
+                                                                </div>
+                                                                <span className="inline-flex items-center gap-2 rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-600">
+                                                                    <AlertTriangle className="h-4 w-4" />
+                                                                    {overrunContracts.length}
+                                                                </span>
+                                                            </div>
+                                                            <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                                                                {overrunContracts.map(contract => (
+                                                                    <div
+                                                                        key={contract.id}
+                                                                        className="flex items-center justify-between rounded-2xl border border-rose-100/80 bg-white px-3 py-2 shadow-sm shadow-rose-100/50"
+                                                                    >
+                                                                        <div className="flex flex-col">
+                                                                            <span className="text-xs font-semibold text-slate-700">
+                                                                                {supplierMap.get(contract.supplierld) || 'N/D'}
+                                                                            </span>
+                                                                            <span className="text-[11px] font-semibold text-rose-500">
+                                                                                +{(contract.progress - 100).toFixed(1)}%
+                                                                            </span>
+                                                                        </div>
+                                                                        <span className="text-xs font-bold text-slate-900">
+                                                                            {formatCurrency(contract.budgetOverrun || 0)}
+                                                                        </span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <p className="text-sm font-semibold text-slate-600">
+                                                            Nessuna notifica disponibile.
+                                                        </p>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsNotificationsPanelOpen(false)}
+                                                        className="w-full rounded-xl border border-blue-200 bg-blue-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-600 transition hover:bg-blue-100"
+                                                    >
+                                                        Chiudi notifiche
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
-                                    )}
                                 </div>
                             </div>
-                        )}
+                        </div>
                     </div>
                 </div>
-
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
                     {kpiCards.map(({ key, ...card }) => (
                         <KpiCard key={key} {...card} />
                     ))}
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
+                        <div className="flex flex-col">
+                            <div className="rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-blue-100/70 via-white/90 to-indigo-100/60 px-6 py-5">
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-500">
+                                    Andamento contratti
+                                </p>
+                                <h2 className="text-lg font-black text-slate-900">
+                                    Valore vs spesa · Ultimi 12 mesi
+                                </h2>
+                            </div>
+                            <div className="flex flex-1 flex-col px-6 py-6">
+                                <div className="flex-1">
+                                    {contractsTrendData.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height={320}>
+                                            <AreaChart
+                                                data={contractsTrendData}
+                                                margin={{ top: 16, right: 24, left: 0, bottom: 8 }}
+                                            >
+                                                <defs>
+                                                    <linearGradient id="contracts-spend-gradient" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="0%" stopColor="#2563eb" stopOpacity={0.95} />
+                                                        <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.25} />
+                                                    </linearGradient>
+                                                    <linearGradient id="contracts-overdue-gradient" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="0%" stopColor="#f97316" stopOpacity={0.9} />
+                                                        <stop offset="100%" stopColor="#fbbf24" stopOpacity={0.2} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid stroke="rgba(15,23,42,0.06)" vertical={false} />
+                                                <XAxis
+                                                    dataKey="label"
+                                                    tickLine={false}
+                                                    axisLine={false}
+                                                    tick={{ fill: '#1e293b', fontSize: 12, fontWeight: 600 }}
+                                                />
+                                                <YAxis
+                                                    tickFormatter={(value) => `${formatCompactCurrency(value)}€`}
+                                                    tickLine={false}
+                                                    axisLine={false}
+                                                    tick={{ fill: '#1e293b', fontSize: 12, fontWeight: 600 }}
+                                                />
+                                                <RechartsTooltip
+                                                    content={renderContractsTrendTooltip}
+                                                    cursor={{ stroke: 'rgba(37,99,235,0.25)', strokeWidth: 2 }}
+                                                />
+                                                <Area
+                                                    type="monotone"
+                                                    dataKey="spend"
+                                                    stackId="1"
+                                                    stroke="#2563eb"
+                                                    strokeWidth={2}
+                                                    fill="url(#contracts-spend-gradient)"
+                                                    dot={{ r: 3 }}
+                                                />
+                                                <Area
+                                                    type="monotone"
+                                                    dataKey="overdue"
+                                                    stackId="1"
+                                                    stroke="#f97316"
+                                                    strokeWidth={2}
+                                                    fill="url(#contracts-overdue-gradient)"
+                                                    dot={{ r: 3 }}
+                                                />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200/70 bg-white/60 p-10 text-center text-sm font-semibold text-blue-600">
+                                            Non ci sono contratti nel periodo selezionato.
+                                        </div>
+                                    )}
+                                </div>
+                                {contractsTrendSummary.length > 0 && (
+                                    <div className="mt-6">
+                                        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                            {contractsTrendSummary.map((entry) => (
+                                                <li
+                                                    key={`trend-summary-${entry.sortKey}`}
+                                                    className="flex items-center justify-between rounded-2xl border border-blue-100/70 bg-white px-3 py-2 shadow-sm shadow-blue-100/40"
+                                                >
+                                                    <span className="text-sm font-semibold text-slate-700">
+                                                        {entry.fullLabel}
+                                                    </span>
+                                                    <span className="text-sm font-bold text-slate-900">
+                                                        {formatCurrency(entry.spend + entry.overdue)}
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
+                        <div className="flex flex-col">
+                            <div className="rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-indigo-100/70 via-white/90 to-blue-100/60 px-6 py-5">
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-500">
+                                    Ripartizione fornitori
+                                </p>
+                                <h2 className="text-lg font-black text-slate-900">
+                                    Peso economico per settore
+                                </h2>
+                            </div>
+                            <div className="flex flex-1 flex-col px-6 py-6">
+                                <div className="flex-1">
+                                    {contractSectorDistribution.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height={320}>
+                                            <PieChart>
+                                                <Pie
+                                                    data={contractSectorDistribution}
+                                                    dataKey="value"
+                                                    nameKey="name"
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    innerRadius="60%"
+                                                    outerRadius="80%"
+                                                    paddingAngle={4}
+                                                    strokeWidth={0}
+                                                >
+                                                    {contractSectorDistribution.map((entry) => (
+                                                        <Cell key={`sector-${entry.id}`} fill={entry.color} />
+                                                    ))}
+                                                </Pie>
+                                                <RechartsTooltip content={renderContractsSectorTooltip} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200/70 bg-white/60 p-10 text-center text-sm font-semibold text-blue-600">
+                                            Nessun dato disponibile per generare la ripartizione.
+                                        </div>
+                                    )}
+                                </div>
+                                {contractSectorDistribution.length > 0 && (
+                                    <div className="mt-6">
+                                        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                            {contractSectorDistribution.slice(0, 4).map((entry) => {
+                                                const percentage = contractSectorTotal > 0
+                                                    ? `${Math.round((entry.value / contractSectorTotal) * 100)}%`
+                                                    : '0%';
+                                                return (
+                                                    <li
+                                                        key={`sector-summary-${entry.id}`}
+                                                        className="flex items-center justify-between rounded-2xl border border-blue-100/70 bg-white px-3 py-2 shadow-sm shadow-blue-100/40"
+                                                    >
+                                                        <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                                                            <span
+                                                                className="inline-flex h-2.5 w-2.5 rounded-full"
+                                                                style={{ backgroundColor: entry.color }}
+                                                            />
+                                                            {entry.name}
+                                                        </span>
+                                                        <span className="text-sm font-bold text-slate-900">
+                                                            {percentage}
+                                                        </span>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </section>
                 </div>
 
                 <ContractsTableSection
@@ -1102,8 +1722,8 @@ export default function ContractsPage({ user }) {
                     orderedBranches={orderedBranches}
                     selectedBranch={selectedBranch}
                     setSelectedBranch={setSelectedBranch}
-                    statusFilter={statusFilter}
-                    setStatusFilter={setStatusFilter}
+                    selectedSector={selectedSector}
+                    setSelectedSector={setSelectedSector}
                     presetName={presetName}
                     setPresetName={setPresetName}
                     filterPresets={filterPresets}
@@ -1118,6 +1738,10 @@ export default function ContractsPage({ user }) {
                     handleOpenEditModal={handleOpenEditModal}
                     handleDeleteContract={handleDeleteContract}
                     handleOpenAddModal={handleOpenAddModal}
+                    sortConfig={sortConfig}
+                    onSortChange={handleSortChange}
+                    dateFilter={dateFilter}
+                    setDateFilter={setDateFilter}
                 />
 
             {/* Modal */}
