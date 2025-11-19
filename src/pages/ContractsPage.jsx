@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import { getSectorColor } from '../constants/sectorColors';
 import { getTooltipContainerClass } from '../utils/chartTooltipStyles';
+import SortIndicatorIcon from '../components/SortIndicatorIcon';
 
 const storage = getStorage();
 
@@ -161,24 +162,6 @@ const ContractsTableView = ({
                                 const isActive = sortConfig?.key === column.key;
                                 const direction = sortConfig?.direction || 'asc';
                                 const isRightAligned = column.className.includes('text-right');
-                                const indicator = (
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 12 12"
-                                        className={`h-3 w-3 text-white transition-opacity ${
-                                            isActive ? 'opacity-100' : 'opacity-40'
-                                        }`}
-                                    >
-                                        <path
-                                            d={
-                                                direction === 'asc'
-                                                    ? 'M6 2l3.5 4h-7L6 2z'
-                                                    : 'M6 10l-3.5-4h7L6 10z'
-                                            }
-                                            fill="currentColor"
-                                        />
-                                    </svg>
-                                );
 
                                 return (
                                     <th
@@ -200,7 +183,10 @@ const ContractsTableView = ({
                                             }`}
                                         >
                                             <span>{column.label}</span>
-                                            <span className="text-[10px]">{indicator}</span>
+                                            <SortIndicatorIcon
+                                                active={isActive}
+                                                direction={direction}
+                                            />
                                         </button>
                                     </th>
                                 );
@@ -490,36 +476,38 @@ const ContractsTableSection = ({
                 <div className="absolute bottom-[-35%] left-1/4 h-72 w-72 rounded-full bg-indigo-200/20 blur-2xl" />
             </div>
             <div className="relative z-10 flex flex-col">
-                <div className="flex flex-col gap-4 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-blue-100/80 via-white/95 to-blue-100/50 px-6 py-5 lg:flex-row lg:items-end lg:justify-between">
+                <div className="flex flex-col gap-4 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 px-6 py-5 text-white lg:flex-row lg:items-end lg:justify-between">
                     <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                         <div className="space-y-1">
-                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-500">Elenco contratti</p>
-                            <h2 className="text-lg font-black text-slate-900">Dettaglio budget &amp; stato</h2>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                Elenco contratti
+                            </p>
+                            <h2 className="text-lg font-black text-white">Dettaglio budget &amp; stato</h2>
                         </div>
                     </div>
                 </div>
                 <div className="relative z-10 px-6 pb-6 space-y-6">
                     {filterPresets.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-blue-100/70 bg-white/85 px-4 py-3 shadow-inner shadow-blue-100/40">
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-500">
+                        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-white shadow-inner shadow-black/10 backdrop-blur">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
                                 Preset rapidi
                             </span>
                             {filterPresets.map((preset) => (
                                 <div
                                     key={preset.id}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 shadow-sm shadow-blue-100/40"
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/40 bg-white/15 px-3 py-1.5 text-sm font-semibold text-white shadow-sm shadow-black/10"
                                 >
                                     <button
                                         type="button"
                                         onClick={() => applyPreset(preset)}
-                                        className="flex-1 text-left transition-colors hover:text-indigo-600"
+                                        className="flex-1 text-left transition-colors hover:text-white/80"
                                     >
                                         {preset.name}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => deletePreset(preset.id)}
-                                        className="text-blue-300 transition-colors hover:text-rose-500"
+                                        className="text-white/70 transition-colors hover:text-rose-100"
                                     >
                                         <XCircle className="h-3.5 w-3.5" />
                                     </button>
@@ -1331,102 +1319,103 @@ export default function ContractsPage({ user }) {
                                 <p className="text-sm lg:text-base text-white/85 max-w-3xl">
                                     Monitora accordi e impegni con i fornitori mantenendo un'esperienza coerente con dashboard, spese e budget.
                                 </p>
-                                <div className="mt-6 flex flex-wrap items-center gap-3">
+                            </div>
+                            <div className="flex w-full flex-col gap-4 lg:ml-auto lg:w-auto lg:max-w-4xl">
+                                {notificationCount > 0 && (
+                                    <div className="flex flex-col items-end gap-3 w-full">
+                                        <div className="relative w-full">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsNotificationsPanelOpen((prev) => !prev)}
+                                                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold shadow-lg shadow-blue-900/30 backdrop-blur-sm transition-all bg-white/15 text-white hover:bg-white/25"
+                                            >
+                                                <Bell className="w-4 h-4" />
+                                                Notifiche
+                                                <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/90 px-2 text-xs font-bold text-blue-600">
+                                                    {notificationCount}
+                                                </span>
+                                            </button>
+                                            {isNotificationsPanelOpen && (
+                                                <>
+                                                    <div
+                                                        className="fixed inset-0 z-40"
+                                                        onClick={() => setIsNotificationsPanelOpen(false)}
+                                                    />
+                                                    <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-blue-900/30 backdrop-blur sm:w-80 space-y-3">
+                                                        {overrunContracts.length > 0 ? (
+                                                            <>
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                    <div>
+                                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                                                                            Contratti oltre budget
+                                                                        </p>
+                                                                        <h3 className="text-sm font-black text-slate-900">
+                                                                            {formatCurrency(totalOverrunAmount)}
+                                                                        </h3>
+                                                                    </div>
+                                                                    <span className="inline-flex items-center gap-2 rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-600">
+                                                                        <AlertTriangle className="h-4 w-4" />
+                                                                        {overrunContracts.length}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                                                                    {overrunContracts.map(contract => (
+                                                                        <div
+                                                                            key={contract.id}
+                                                                            className="flex items-center justify-between rounded-2xl border border-rose-100/80 bg-white px-3 py-2 shadow-sm shadow-rose-100/50"
+                                                                        >
+                                                                            <div className="flex flex-col">
+                                                                                <span className="text-xs font-semibold text-slate-700">
+                                                                                    {supplierMap.get(contract.supplierld) || 'N/D'}
+                                                                                </span>
+                                                                                <span className="text-[11px] font-semibold text-rose-500">
+                                                                                    +{(contract.progress - 100).toFixed(1)}%
+                                                                                </span>
+                                                                            </div>
+                                                                            <span className="text-xs font-bold text-slate-900">
+                                                                                {formatCurrency(contract.budgetOverrun || 0)}
+                                                                            </span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <p className="text-sm font-semibold text-slate-600">
+                                                                Nessuna notifica disponibile.
+                                                            </p>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setIsNotificationsPanelOpen(false)}
+                                                            className="w-full rounded-xl border border-blue-200 bg-blue-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-600 transition hover:bg-blue-100"
+                                                        >
+                                                            Chiudi notifiche
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="flex flex-col items-end gap-3 w-full">
                                     <button
                                         type="button"
                                         onClick={handleOpenAddModal}
-                                        className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
+                                        className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
                                     >
                                         <PlusCircle className="w-4 h-4" />
                                         Nuovo contratto
                                     </button>
                                 </div>
                             </div>
-                            <div className="flex w-full flex-col gap-4 lg:ml-auto lg:w-auto lg:max-w-4xl">
-                                <div className="flex flex-wrap items-center justify-end gap-3">
-                                    <div className="relative">
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsNotificationsPanelOpen((prev) => !prev)}
-                                            className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] shadow-lg backdrop-blur-sm transition-all ${
-                                                notificationCount > 0
-                                                    ? 'bg-white/15 text-white hover:bg-white/25 shadow-blue-900/30'
-                                                    : 'bg-white/10 text-white/60 hover:bg-white/15 shadow-blue-900/10'
-                                            }`}
-                                        >
-                                            <Bell className="w-4 h-4" />
-                                            {notificationCount} Notifiche
-                                        </button>
-                                        {isNotificationsPanelOpen && (
-                                            <>
-                                                <div
-                                                    className="fixed inset-0 z-40"
-                                                    onClick={() => setIsNotificationsPanelOpen(false)}
-                                                />
-                                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-blue-900/30 backdrop-blur sm:w-80 space-y-3">
-                                                    {overrunContracts.length > 0 ? (
-                                                        <>
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div>
-                                                                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
-                                                                        Contratti oltre budget
-                                                                    </p>
-                                                                    <h3 className="text-sm font-black text-slate-900">
-                                                                        {formatCurrency(totalOverrunAmount)}
-                                                                    </h3>
-                                                                </div>
-                                                                <span className="inline-flex items-center gap-2 rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-600">
-                                                                    <AlertTriangle className="h-4 w-4" />
-                                                                    {overrunContracts.length}
-                                                                </span>
-                                                            </div>
-                                                            <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
-                                                                {overrunContracts.map(contract => (
-                                                                    <div
-                                                                        key={contract.id}
-                                                                        className="flex items-center justify-between rounded-2xl border border-rose-100/80 bg-white px-3 py-2 shadow-sm shadow-rose-100/50"
-                                                                    >
-                                                                        <div className="flex flex-col">
-                                                                            <span className="text-xs font-semibold text-slate-700">
-                                                                                {supplierMap.get(contract.supplierld) || 'N/D'}
-                                                                            </span>
-                                                                            <span className="text-[11px] font-semibold text-rose-500">
-                                                                                +{(contract.progress - 100).toFixed(1)}%
-                                                                            </span>
-                                                                        </div>
-                                                                        <span className="text-xs font-bold text-slate-900">
-                                                                            {formatCurrency(contract.budgetOverrun || 0)}
-                                                                        </span>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </>
-                                                    ) : (
-                                                        <p className="text-sm font-semibold text-slate-600">
-                                                            Nessuna notifica disponibile.
-                                                        </p>
-                                                    )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setIsNotificationsPanelOpen(false)}
-                                                        className="w-full rounded-xl border border-blue-200 bg-blue-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-600 transition hover:bg-blue-100"
-                                                    >
-                                                        Chiudi notifiche
-                                                    </button>
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
                 {/* Sezione Filtri */}
-                <section className="relative z-20 rounded-3xl border border-white/70 bg-gradient-to-r from-slate-300/90 via-slate-200/85 to-slate-300/80 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
+                <section className="relative z-20 rounded-3xl border border-white/80 bg-gradient-to-r from-slate-300/95 via-slate-100/90 to-white/90 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
                     <div className="pointer-events-none absolute inset-0">
-                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-white/45 blur-3xl" />
-                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-400/40 blur-3xl" />
+                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-indigo-100/35 blur-3xl" />
+                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-200/55 blur-3xl" />
                     </div>
                     <div className="relative z-10 flex flex-wrap lg:flex-nowrap items-center justify-center gap-3 lg:gap-4 w-full max-w-6xl mx-auto">
                         <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
@@ -1688,11 +1677,11 @@ export default function ContractsPage({ user }) {
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
                         <div className="flex flex-col">
-                            <div className="rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-blue-100/70 via-white/90 to-indigo-100/60 px-6 py-5">
-                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-500">
+                            <div className="rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 px-6 py-5 text-white">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
                                     Andamento contratti
                                 </p>
-                                <h2 className="text-lg font-black text-slate-900">
+                                <h2 className="text-lg font-black text-white">
                                     Valore vs spesa · Ultimi 12 mesi
                                 </h2>
                             </div>
@@ -1702,19 +1691,20 @@ export default function ContractsPage({ user }) {
                                         <ResponsiveContainer width="100%" height={320}>
                                             <AreaChart
                                                 data={contractsTrendData}
-                                                margin={{ top: 16, right: 24, left: 0, bottom: 8 }}
+                                                stackOffset="none"
+                                                margin={{ top: 12, right: 8, left: -12, bottom: 0 }}
                                             >
                                                 <defs>
                                                     <linearGradient id="contracts-spend-gradient" x1="0" y1="0" x2="0" y2="1">
                                                         <stop offset="0%" stopColor="#2563eb" stopOpacity={0.95} />
-                                                        <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.25} />
+                                                        <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.35} />
                                                     </linearGradient>
                                                     <linearGradient id="contracts-overdue-gradient" x1="0" y1="0" x2="0" y2="1">
                                                         <stop offset="0%" stopColor="#f97316" stopOpacity={0.9} />
-                                                        <stop offset="100%" stopColor="#fbbf24" stopOpacity={0.2} />
+                                                        <stop offset="100%" stopColor="#fbbf24" stopOpacity={0.35} />
                                                     </linearGradient>
                                                 </defs>
-                                                <CartesianGrid stroke="rgba(15,23,42,0.06)" vertical={false} />
+                                                <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
                                                 <XAxis
                                                     dataKey="label"
                                                     tickLine={false}
@@ -1722,14 +1712,14 @@ export default function ContractsPage({ user }) {
                                                     tick={{ fill: '#1e293b', fontSize: 12, fontWeight: 600 }}
                                                 />
                                                 <YAxis
-                                                    tickFormatter={(value) => `${formatCompactCurrency(value)}€`}
+                                                    tickFormatter={(value) => formatCompactCurrency(value)}
                                                     tickLine={false}
                                                     axisLine={false}
                                                     tick={{ fill: '#1e293b', fontSize: 12, fontWeight: 600 }}
                                                 />
                                                 <RechartsTooltip
                                                     content={renderContractsTrendTooltip}
-                                                    cursor={{ stroke: 'rgba(37,99,235,0.25)', strokeWidth: 2 }}
+                                                    cursor={{ stroke: '#4f46e5', strokeWidth: 1, strokeDasharray: '4 4' }}
                                                 />
                                                 <Area
                                                     type="monotone"
@@ -1738,7 +1728,9 @@ export default function ContractsPage({ user }) {
                                                     stroke="#2563eb"
                                                     strokeWidth={2}
                                                     fill="url(#contracts-spend-gradient)"
-                                                    dot={{ r: 3 }}
+                                                    fillOpacity={1}
+                                                    activeDot={{ r: 4, strokeWidth: 0 }}
+                                                    isAnimationActive={false}
                                                 />
                                                 <Area
                                                     type="monotone"
@@ -1747,7 +1739,9 @@ export default function ContractsPage({ user }) {
                                                     stroke="#f97316"
                                                     strokeWidth={2}
                                                     fill="url(#contracts-overdue-gradient)"
-                                                    dot={{ r: 3 }}
+                                                    fillOpacity={1}
+                                                    activeDot={{ r: 4, strokeWidth: 0 }}
+                                                    isAnimationActive={false}
                                                 />
                                             </AreaChart>
                                         </ResponsiveContainer>
@@ -1782,11 +1776,11 @@ export default function ContractsPage({ user }) {
 
                     <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
                         <div className="flex flex-col">
-                            <div className="rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-indigo-100/70 via-white/90 to-blue-100/60 px-6 py-5">
-                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-500">
+                            <div className="rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 px-6 py-5 text-white">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
                                     Ripartizione fornitori
                                 </p>
-                                <h2 className="text-lg font-black text-slate-900">
+                                <h2 className="text-lg font-black text-white">
                                     Peso economico per settore
                                 </h2>
                             </div>

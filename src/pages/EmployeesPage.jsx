@@ -39,6 +39,7 @@ import EmptyState from '../components/EmptyState';
 import { KpiCard } from '../components/SharedComponents';
 import { getSectorColor } from '../constants/sectorColors';
 import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
+import SortIndicatorIcon from '../components/SortIndicatorIcon';
 import {
     PieChart,
     Pie,
@@ -804,85 +805,73 @@ const monthlySectorData = useMemo(() => {
                                 <p className="text-sm lg:text-base text-white/85 max-w-3xl">
                                     Controlla l’organico aziendale e monitora l’impatto dei costi del personale sui centri di costo, mantenendo coerenza con il resto della piattaforma.
                                 </p>
-                                <div className="mt-6 flex flex-wrap items-center gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={openCreateModal}
-                                        className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-rose-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
-                                    >
-                                        <PlusCircle className="w-4 h-4" />
-                                        Nuovo dipendente
-                                    </button>
-                                </div>
                             </div>
                             <div className="flex w-full flex-col gap-4 lg:ml-auto lg:w-auto lg:max-w-5xl">
-                                <div className="flex flex-wrap items-center justify-end gap-3">
-                                    <div className="inline-flex items-center gap-3 rounded-2xl border border-white/30 bg-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/85 shadow-lg shadow-rose-900/20 backdrop-blur-sm">
-                                        <Calendar className="w-4 h-4" />
-                                        Anno
-                                        <select
-                                            value={selectedYear}
-                                            onChange={(event) => setSelectedYear(String(event.target.value))}
-                                            className="bg-transparent text-[11px] font-bold uppercase tracking-[0.2em] text-white focus:outline-none"
-                                        >
-                                            {availableYears.map((year) => (
-                                                <option key={year} value={year}>
-                                                    {year}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="relative">
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsNotificationsPanelOpen(prev => !prev)}
-                                            className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] shadow-lg backdrop-blur-sm transition-all ${
-                                                notificationCount > 0
-                                                    ? 'bg-white/15 text-white hover:bg-white/25 shadow-rose-900/30'
-                                                    : 'bg-white/10 text-white/60 hover:bg-white/15 shadow-rose-900/10'
-                                            }`}
-                                        >
-                                            <Bell className="w-4 h-4" />
-                                            {notificationCount} Notifiche
-                                        </button>
-                                        {isNotificationsPanelOpen && (
-                                            <>
-                                                <div
-                                                    className="fixed inset-0 z-40"
-                                                    onClick={() => setIsNotificationsPanelOpen(false)}
-                                                />
-                                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-rose-900/30 backdrop-blur sm:w-80 space-y-3">
-                                                    <div>
-                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
-                                                            Centro notifiche
-                                                        </p>
-                                                        <p className="text-sm font-black text-slate-900 mt-1">
-                                                            Nessun avviso disponibile
-                                                        </p>
-                                                        <p className="text-xs font-medium text-slate-500 mt-1">
-                                                            Le comunicazioni relative al personale verranno mostrate qui quando disponibili.
-                                                        </p>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setIsNotificationsPanelOpen(false)}
-                                                        className="w-full rounded-xl border border-rose-200 bg-rose-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-rose-600 transition hover:bg-rose-100"
-                                                    >
-                                                        Chiudi notifiche
-                                                    </button>
-                                                </div>
-                                            </>
+                                <div className="flex flex-col items-end gap-3">
+                                    <div className="inline-flex w-full flex-col gap-3 sm:w-auto">
+                                        {notificationCount > 0 && (
+                                            <div className="relative w-full sm:w-auto">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsNotificationsPanelOpen(prev => !prev)}
+                                                    className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold shadow-lg shadow-rose-900/30 backdrop-blur-sm transition-all bg-white/15 text-white hover:bg-white/25"
+                                                >
+                                                    <Bell className="w-4 h-4" />
+                                                    Notifiche
+                                                    <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/90 px-2 text-xs font-bold text-rose-600">
+                                                        {notificationCount}
+                                                    </span>
+                                                </button>
+                                                {isNotificationsPanelOpen && (
+                                                    <>
+                                                        <div
+                                                            className="fixed inset-0 z-40"
+                                                            onClick={() => setIsNotificationsPanelOpen(false)}
+                                                        />
+                                                        <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-rose-900/30 backdrop-blur sm:w-80 space-y-3">
+                                                            <div>
+                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                                                                    Centro notifiche
+                                                                </p>
+                                                                <p className="text-sm font-black text-slate-900 mt-1">
+                                                                    Nessun avviso disponibile
+                                                                </p>
+                                                                <p className="text-xs font-medium text-slate-500 mt-1">
+                                                                    Le comunicazioni relative al personale verranno mostrate qui quando disponibili.
+                                                                </p>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setIsNotificationsPanelOpen(false)}
+                                                                className="w-full rounded-xl border border-rose-200 bg-rose-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-rose-600 transition hover:bg-rose-100"
+                                                            >
+                                                                Chiudi notifiche
+                                                            </button>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
                                         )}
+                                        <div className="flex flex-wrap items-center justify-end gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={openCreateModal}
+                                                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-rose-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
+                                            >
+                                                <PlusCircle className="w-4 h-4" />
+                                                Nuovo dipendente
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                 </div>
                 {/* Sezione Filtri */}
-                <section className="relative z-20 rounded-3xl border border-white/70 bg-gradient-to-r from-slate-300/90 via-slate-200/85 to-slate-300/80 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
+                <section className="relative z-20 rounded-3xl border border-white/80 bg-gradient-to-r from-slate-300/95 via-slate-100/90 to-white/90 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
                     <div className="pointer-events-none absolute inset-0">
-                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-white/45 blur-3xl" />
-                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-400/40 blur-3xl" />
+                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-indigo-100/35 blur-3xl" />
+                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-200/55 blur-3xl" />
                     </div>
                     <div className="relative z-10 flex flex-wrap lg:flex-nowrap items-center justify-center gap-3 lg:gap-4 w-full max-w-6xl mx-auto">
                         <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
@@ -1179,11 +1168,11 @@ const monthlySectorData = useMemo(() => {
                             <div className="absolute -top-32 right-0 h-72 w-72 rounded-full bg-rose-200/25 blur-3xl" />
                             <div className="absolute bottom-[-40%] left-1/3 h-56 w-56 rounded-full bg-rose-100/20 blur-2xl" />
                         </div>
-                        <div className="relative z-10 flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-rose-100/70 via-white/90 to-rose-100/40 px-6 py-5">
-                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-500">
+                        <div className="relative z-10 flex flex-col gap-1 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-rose-500 via-pink-500 to-rose-400 px-6 py-5 text-white">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
                                 Settori
                             </p>
-                            <h2 className="text-lg font-black text-slate-900">
+                            <h2 className="text-lg font-black text-white">
                                 Distribuzione mensile {selectedYearKey}
                             </h2>
                         </div>
@@ -1285,11 +1274,11 @@ const monthlySectorData = useMemo(() => {
                             <div className="absolute -top-40 left-1/4 h-64 w-64 rounded-full bg-rose-100/25 blur-3xl" />
                             <div className="absolute bottom-[-35%] right-0 h-72 w-72 rounded-full bg-rose-200/25 blur-2xl" />
                         </div>
-                        <div className="relative z-10 flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-rose-100/70 via-white/90 to-rose-100/40 px-6 py-5">
-                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-500">
+                        <div className="relative z-10 flex flex-col gap-1 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-rose-500 via-pink-500 to-rose-400 px-6 py-5 text-white">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
                                 Reparti
                             </p>
-                            <h2 className="text-lg font-black text-slate-900">
+                            <h2 className="text-lg font-black text-white">
                                 Incidenza sui costi {selectedYearKey}
                             </h2>
                         </div>
@@ -1376,12 +1365,12 @@ const monthlySectorData = useMemo(() => {
                         <div className="absolute bottom-[-35%] left-1/4 h-72 w-72 rounded-full bg-rose-100/20 blur-2xl" />
                     </div>
                     <div className="relative z-10 flex flex-col">
-                        <div className="flex flex-col gap-4 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-rose-100/70 via-white/90 to-rose-100/40 px-6 py-5 lg:flex-row lg:items-end lg:justify-between">
+                        <div className="flex flex-col gap-4 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-rose-500 via-pink-500 to-rose-400 px-6 py-5 text-white lg:flex-row lg:items-end lg:justify-between">
                             <div>
-                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-500">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
                                     Anagrafica dipendenti
                                 </p>
-                                <h2 className="text-lg font-black text-slate-900">Organico e costi ricorrenti</h2>
+                                <h2 className="text-lg font-black text-white">Organico e costi ricorrenti</h2>
                             </div>
                         </div>
                         <div className="relative z-10 px-6 pb-6 pt-6">
@@ -1412,24 +1401,6 @@ const monthlySectorData = useMemo(() => {
                                                 { key: 'cost', label: `Costo ${selectedYearKey}`, align: 'text-right' },
                                             ].map((column) => {
                                                 const isActive = sortConfig.key === column.key;
-                                                const indicator = (
-                                                    <svg
-                                                        xmlns="http://www.w3.org/2000/svg"
-                                                        viewBox="0 0 12 12"
-                                                        className={`h-3 w-3 text-white transition-opacity ${
-                                                            isActive ? 'opacity-100' : 'opacity-40'
-                                                        }`}
-                                                    >
-                                                        <path
-                                                            d={
-                                                                sortConfig.direction === 'asc'
-                                                                    ? 'M6 2l3.5 4h-7L6 2z'
-                                                                    : 'M6 10l-3.5-4h7L6 10z'
-                                                            }
-                                                            fill="currentColor"
-                                                        />
-                                                    </svg>
-                                                );
                                                 return (
                                                     <th
                                                         key={column.key}
@@ -1450,7 +1421,10 @@ const monthlySectorData = useMemo(() => {
                                                             }`}
                                                         >
                                                             <span>{column.label}</span>
-                                                            <span className="text-[10px]">{indicator}</span>
+                                                            <SortIndicatorIcon
+                                                                active={isActive}
+                                                                direction={sortConfig.direction}
+                                                            />
                                                         </button>
                                                     </th>
                                                 );

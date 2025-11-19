@@ -6,7 +6,7 @@ import { collection, query, orderBy, onSnapshot, doc, setDoc, updateDoc, deleteD
 import { 
     PlusCircle, Search, Wallet, Car, Sailboat, Caravan, Building2, Layers, MapPin,
     DollarSign, FileText, Paperclip, Copy, Pencil, Trash2, AlertTriangle, CheckCircle2, 
-    SlidersHorizontal, Activity, ArrowUpDown, TrendingUp, TrendingDown,
+    SlidersHorizontal, Activity, ArrowUpDown, TrendingDown,
     FileSignature, X, XCircle, Check, Calendar, Filter, Bell
 } from 'lucide-react';
 import ExpenseFormModal from '../components/ExpenseFormModal';
@@ -18,10 +18,11 @@ import { COST_DOMAINS, DEFAULT_COST_DOMAIN } from '../constants/costDomains';
 import { getSectorColor } from '../constants/sectorColors';
 import EmptyState from '../components/EmptyState';
 import { getTooltipContainerClass } from '../utils/chartTooltipStyles';
+import SortIndicatorIcon from '../components/SortIndicatorIcon';
 import {
     ResponsiveContainer,
-    BarChart,
-    Bar,
+    AreaChart,
+    Area,
     XAxis,
     YAxis,
     CartesianGrid,
@@ -47,6 +48,8 @@ const MONTHS = [
     { id: '11', label: 'Novembre' },
     { id: '12', label: 'Dicembre' },
 ];
+
+const EXCLUDED_BRANCH_NAMES = new Set(['rossano yachting']);
 
 const branchColorPalette = [
     '#6366F1',
@@ -133,7 +136,7 @@ const buildNonOperationsTrendData = ({
         .sort((a, b) => b[1] - a[1]);
 
     const topBranchCount = branchColorPalette.length;
-    const primaryBranchEntries = orderedBranchTotals.slice(0, topBranchCount).map(([branchId, totalValue], index) => ({
+    const rawPrimaryEntries = orderedBranchTotals.slice(0, topBranchCount).map(([branchId, totalValue], index) => ({
         id: branchId || 'unassigned',
         key: `nonops-branch-${branchId || 'unassigned'}`,
         name:
@@ -141,9 +144,22 @@ const buildNonOperationsTrendData = ({
             (branchId === 'unassigned' ? 'Non assegnata' : branchId || 'Filiale'),
         color: branchColorPalette[index % branchColorPalette.length],
         total: totalValue || 0,
+        isOthers: false,
     }));
 
-    const remainingTotal = orderedBranchTotals.slice(topBranchCount).reduce((sum, [, value]) => sum + value, 0);
+    let excludedPrimaryTotal = 0;
+    const primaryBranchEntries = rawPrimaryEntries.filter(entry => {
+        const normalizedName = (entry.name || '').trim().toLowerCase();
+        if (EXCLUDED_BRANCH_NAMES.has(normalizedName)) {
+            excludedPrimaryTotal += entry.total || 0;
+            return false;
+        }
+        return true;
+    });
+
+    const remainingTotal =
+        orderedBranchTotals.slice(topBranchCount).reduce((sum, [, value]) => sum + value, 0) +
+        excludedPrimaryTotal;
     const includeOthers = remainingTotal > 0;
     const monthlyBranchKeys = includeOthers
         ? [
@@ -154,6 +170,7 @@ const buildNonOperationsTrendData = ({
                   name: 'Altre filiali',
                   color: '#CBD5F5',
                   total: remainingTotal,
+                  isOthers: true,
               },
           ]
         : primaryBranchEntries;
@@ -166,20 +183,36 @@ const buildNonOperationsTrendData = ({
         const dataPoint = {
             ...entry,
             total: totalForMonth,
+            othersBreakdown: [],
         };
 
+        let topBranchKey = null;
+
         monthlyBranchKeys.forEach((branch) => {
+            let branchValue = 0;
             if (branch.id === '__others__') {
-                const othersValue = Array.from(branchBucket.entries()).reduce((sum, [branchId, value]) => {
-                    if (primaryBranchIdSet.has(branchId)) return sum;
-                    return sum + value;
-                }, 0);
-                dataPoint[branch.key] = othersValue;
+                const breakdownEntries = Array.from(branchBucket.entries()).filter(([branchId]) => !primaryBranchIdSet.has(branchId));
+                branchValue = breakdownEntries.reduce((sum, [, value]) => sum + value, 0);
+                dataPoint.othersBreakdown = breakdownEntries
+                    .filter(([, value]) => value > 0)
+                    .map(([branchId, value]) => ({
+                        branchId,
+                        name:
+                            branchMap?.get(branchId) ||
+                            (branchId === 'unassigned' ? 'Non assegnata' : branchId || 'Filiale'),
+                        value,
+                    }))
+                    .sort((a, b) => b.value - a.value);
             } else {
-                dataPoint[branch.key] = branchBucket.get(branch.id) || 0;
+                branchValue = branchBucket.get(branch.id) || 0;
+            }
+            dataPoint[branch.key] = branchValue;
+            if (branchValue > 0) {
+                topBranchKey = branch.key;
             }
         });
 
+        dataPoint.topBranchKey = topBranchKey;
         return dataPoint;
     });
 
@@ -588,14 +621,12 @@ const ExpenseTableView = React.memo(({
         });
     };
 
-    const getSortIndicator = (column) => {
-        if (sortState.column !== column || !sortState.direction) {
-            return <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />;
-        }
-        return sortState.direction === 'asc'
-            ? <TrendingUp className="w-3.5 h-3.5 text-orange-500" />
-            : <TrendingDown className="w-3.5 h-3.5 text-rose-500" />;
-    };
+    const renderSortIndicator = (column) => (
+        <SortIndicatorIcon
+            active={sortState.column === column}
+            direction={sortState.direction || 'asc'}
+        />
+    );
 
     const buildBranchName = (expense) => {
         const branchIds = new Set();
@@ -656,7 +687,7 @@ const ExpenseTableView = React.memo(({
                             <th className="px-4 py-3 text-left">
                                 <button type="button" onClick={() => handleSort('supplier')} className="inline-flex items-center gap-2">
                                     FORNITORE
-                                    {getSortIndicator('supplier')}
+                                    {renderSortIndicator('supplier')}
                                 </button>
                             </th>
                             <th className="px-4 py-3 text-left hidden lg:table-cell">DESCRIZIONE</th>
@@ -665,13 +696,13 @@ const ExpenseTableView = React.memo(({
                             <th className="px-4 py-3 text-left">
                                 <button type="button" onClick={() => handleSort('date')} className="inline-flex items-center gap-2">
                                     DATA
-                                    {getSortIndicator('date')}
+                                    {renderSortIndicator('date')}
                                 </button>
                             </th>
                             <th className="px-4 py-3 text-right">
                                 <button type="button" onClick={() => handleSort('amount')} className="inline-flex items-center gap-2">
                                     IMPORTO
-                                    {getSortIndicator('amount')}
+                                    {renderSortIndicator('amount')}
                                 </button>
                             </th>
                             {showDocuments && <th className="px-4 py-3 text-center">DOCUMENTI</th>}
@@ -1708,6 +1739,16 @@ if (supplierFilter.length > 0) {
             }
         });
 
+        monthBase.forEach((entry) => {
+            let topBranchKey = null;
+            operationsTopBranchKeys.forEach((branch) => {
+                if ((entry[branch.key] || 0) > 0) {
+                    topBranchKey = branch.key;
+                }
+            });
+            entry.topBranchKey = topBranchKey;
+        });
+
         return monthBase;
     }, [isOperationsDomain, operationsTopBranchKeys, processedExpenses, selectedOperationsYear]);
 
@@ -2091,8 +2132,9 @@ if (supplierFilter.length > 0) {
     const renderNonOpsMonthlyTooltip = useCallback(
         ({ active, payload }) => {
             if (!active || !payload || payload.length === 0) return null;
-            const monthId = payload[0]?.payload?.monthId;
-            const monthLabelRaw = payload[0]?.payload?.monthLabel;
+            const dataPoint = payload[0]?.payload;
+            const monthId = dataPoint?.monthId;
+            const monthLabelRaw = dataPoint?.monthLabel;
             const monthEntry = monthId
                 ? MONTHS.find((month) => month.id === monthId)
                 : MONTHS.find((month) => month.label.startsWith(monthLabelRaw || ''));
@@ -2110,6 +2152,7 @@ if (supplierFilter.length > 0) {
                         name: branchMeta.name,
                         value: item.value,
                         color: branchMeta.color,
+                        isOthers: branchMeta.isOthers,
                     };
                 })
                 .filter(Boolean);
@@ -2121,15 +2164,33 @@ if (supplierFilter.length > 0) {
                     <p className="text-sm font-bold text-slate-900">{title}</p>
                     <div className="mt-2 space-y-1 text-xs font-semibold text-slate-600">
                         {rows.map((row) => (
-                            <div key={row.id} className="flex items-center justify-between gap-6">
-                                <span className="flex items-center gap-2 text-slate-600">
-                                    <span
-                                        className="inline-block h-2.5 w-2.5 rounded-full"
-                                        style={{ backgroundColor: row.color }}
-                                    />
-                                    {row.name}
-                                </span>
-                                <span>{formatCurrency(row.value)}</span>
+                            <div key={row.id} className="space-y-1">
+                                <div className="flex items-center justify-between gap-6">
+                                    <span className="flex items-center gap-2 text-slate-600">
+                                        <span
+                                            className="inline-block h-2.5 w-2.5 rounded-full"
+                                            style={{ backgroundColor: row.color }}
+                                        />
+                                        {row.name}
+                                    </span>
+                                    <span>{formatCurrency(row.value)}</span>
+                                </div>
+                                {row.isOthers && dataPoint?.othersBreakdown?.length > 0 && (
+                                    <div className="space-y-0.5 pl-4 text-[11px] font-medium text-slate-500">
+                                        {dataPoint.othersBreakdown.slice(0, 4).map((child) => (
+                                            <div
+                                                key={`${row.id}-${child.branchId || child.name}`}
+                                                className="flex items-center justify-between gap-4"
+                                            >
+                                                <span className="flex items-center gap-1.5">
+                                                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300" />
+                                                    {child.name}
+                                                </span>
+                                                <span className="text-slate-600">{formatCurrency(child.value)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -2192,98 +2253,88 @@ if (supplierFilter.length > 0) {
                                 <p className="text-sm lg:text-base text-white/85">
                                     {heroDescription}
                                 </p>
-                                <div className="mt-6 flex flex-wrap items-center gap-3">
+                            </div>
+                            <div className="flex w-full flex-col gap-4 lg:w-auto">
+                                {notificationCount > 0 && (
+                                    <div className="flex flex-wrap items-center justify-end gap-3">
+                                        <div className="relative">
+                                            {isNotificationsPanelOpen && (
+                                                <div
+                                                    className="fixed inset-0 z-40"
+                                                    onClick={() => setIsNotificationsPanelOpen(false)}
+                                                />
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsNotificationsPanelOpen(prev => !prev)}
+                                                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold shadow-lg shadow-orange-900/30 backdrop-blur-sm transition-all bg-white/15 text-white hover:bg-white/25"
+                                            >
+                                                <Bell className="w-4 h-4" />
+                                                Notifiche
+                                                <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/90 px-2 text-xs font-bold text-orange-600">
+                                                    {notificationCount}
+                                                </span>
+                                            </button>
+                                            {isNotificationsPanelOpen && (
+                                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-orange-900/30 backdrop-blur space-y-3">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div>
+                                                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-500">
+                                                                Notifiche attive
+                                                            </p>
+                                                            <h3 className="text-sm font-black text-slate-900">
+                                                                {notificationCount} alert
+                                                            </h3>
+                                                        </div>
+                                                        <span className="inline-flex items-center gap-2 rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-600">
+                                                            {formatCurrency(totalNotificationsAmount)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                                                        {expenseAlerts.map((alert) => (
+                                                            <div
+                                                                key={alert.key}
+                                                                className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
+                                                            >
+                                                                <p className="text-xs font-bold text-slate-900">{alert.title}</p>
+                                                                <p className="text-[11px] text-slate-500">{alert.description}</p>
+                                                                <p className="mt-1 text-[11px] font-semibold text-slate-600">
+                                                                    {alert.totalLabel}: {formatCurrency(alert.totalAmount)}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsNotificationsPanelOpen(false)}
+                                                        className="w-full rounded-xl border border-orange-200 bg-orange-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-600 transition hover:bg-orange-100"
+                                                    >
+                                                        Chiudi notifiche
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="flex flex-wrap items-center justify-end gap-3">
                                     <button
                                         type="button"
                                         onClick={handleOpenAddModal}
-                                        className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-orange-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
+                                        className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-orange-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
                                     >
                                         <PlusCircle className="w-4 h-4" />
                                         {newExpenseLabel}
                                     </button>
-                                    <span className="text-xs font-semibold uppercase tracking-[0.25em] text-white/70">
-                                        Aggiorna in tempo reale
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="flex w-full flex-col gap-4 lg:w-auto">
-                                <div className="flex flex-wrap items-center justify-end gap-3">
-                                    <div className="relative">
-                                        {isNotificationsPanelOpen && (
-                                            <div
-                                                className="fixed inset-0 z-40"
-                                                onClick={() => setIsNotificationsPanelOpen(false)}
-                                            />
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsNotificationsPanelOpen(prev => !prev)}
-                                            className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] shadow-lg backdrop-blur-sm transition-all ${
-                                                notificationCount > 0
-                                                    ? 'bg-white/15 text-white hover:bg-white/25 shadow-orange-900/30'
-                                                    : 'bg-white/10 text-white/60 hover:bg-white/15 shadow-orange-900/10'
-                                            }`}
-                                        >
-                                            <Bell className="w-4 h-4" />
-                                            {notificationCount} Notifiche
-                                        </button>
-                                        {isNotificationsPanelOpen && (
-                                            <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-orange-900/30 backdrop-blur space-y-3">
-                                                {notificationCount > 0 ? (
-                                                    <>
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div>
-                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-500">
-                                                                    Notifiche attive
-                                                                </p>
-                                                                <h3 className="text-sm font-black text-slate-900">
-                                                                    {notificationCount} alert
-                                                                </h3>
-                                                            </div>
-                                                            <span className="inline-flex items-center gap-2 rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-600">
-                                                                {formatCurrency(totalNotificationsAmount)}
-                                                            </span>
-                                                        </div>
-                                                        <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
-                                                            {expenseAlerts.map((alert) => (
-                                                                <div
-                                                                    key={alert.key}
-                                                                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
-                                                                >
-                                                                    <p className="text-xs font-bold text-slate-900">{alert.title}</p>
-                                                                    <p className="text-[11px] text-slate-500">{alert.description}</p>
-                                                                    <p className="mt-1 text-[11px] font-semibold text-slate-600">
-                                                                        {alert.totalLabel}: {formatCurrency(alert.totalAmount)}
-                                                                    </p>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <p className="text-sm font-semibold text-slate-600">
-                                                        Nessuna notifica disponibile.
-                                                    </p>
-                                                )}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsNotificationsPanelOpen(false)}
-                                                    className="w-full rounded-xl border border-orange-200 bg-orange-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-600 transition hover:bg-orange-100"
-                                                >
-                                                    Chiudi notifiche
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                 {/* Sezione Filtri */}
-                <section className="relative z-20 rounded-3xl border border-white/70 bg-gradient-to-r from-slate-300/90 via-slate-200/85 to-slate-300/80 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
+                <section className="relative z-20 rounded-3xl border border-white/80 bg-gradient-to-r from-slate-300/95 via-slate-100/90 to-white/90 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
                     <div className="pointer-events-none absolute inset-0">
-                        <div className="absolute -top-16 left-14 h-32 w-32 rounded-full bg-white/45 blur-3xl" />
-                        <div className="absolute -bottom-20 right-12 h-36 w-36 rounded-full bg-slate-400/40 blur-3xl" />
+                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-indigo-100/35 blur-3xl" />
+                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-200/55 blur-3xl" />
                     </div>
                     <div className="relative z-10 flex flex-wrap lg:flex-nowrap items-center justify-center gap-3 lg:gap-4 w-full max-w-6xl mx-auto">
                         <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
@@ -2540,48 +2591,56 @@ if (supplierFilter.length > 0) {
         {!isOperationsDomain && (
             <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
                 <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
-                    <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-orange-200/30 via-white to-orange-100/40 px-6 py-5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-500">
-                            Andamento
-                        </p>
-                        <h2 className="text-lg font-black text-slate-900">
-                            Spesa mensile {selectedOperationsYear}
-                        </h2>
+                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                        <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                Andamento
+                            </p>
+                            <h2 className="text-lg font-black text-white">
+                                Spesa mensile {selectedOperationsYear}
+                            </h2>
+                        </div>
                     </div>
                     <div className="flex-1 bg-white px-6 py-6">
                         {nonOperationsTrendData.hasMonthlyTrendData ? (
                             <>
                                 <ResponsiveContainer width="100%" height={320}>
-                                    <BarChart data={nonOperationsTrendData.monthlyTrendData}>
+                                    <AreaChart
+                                        data={nonOperationsTrendData.monthlyTrendData}
+                                        stackOffset="none"
+                                        margin={{ top: 10, right: 8, left: -12, bottom: 0 }}
+                                    >
                                         <defs>
-                                        {nonOperationsTrendData.monthlyBranchKeys.length > 0 ? (
-                                            nonOperationsTrendData.monthlyBranchKeys.map((branch) => (
+                                            {nonOperationsTrendData.monthlyBranchKeys.length > 0 ? (
+                                                nonOperationsTrendData.monthlyBranchKeys.map((branch) => (
+                                                    <linearGradient
+                                                        key={`non-ops-monthly-gradient-${branch.key}`}
+                                                        id={`non-ops-monthly-gradient-${branch.key}`}
+                                                        x1="0"
+                                                        y1="0"
+                                                        x2="0"
+                                                        y2="1"
+                                                    >
+                                                        <stop offset="0%" stopColor={branch.color} stopOpacity={0.9} />
+                                                        <stop offset="100%" stopColor={branch.color} stopOpacity={0.35} />
+                                                    </linearGradient>
+                                                ))
+                                            ) : (
                                                 <linearGradient
-                                                    key={`non-ops-monthly-gradient-${branch.key}`}
-                                                    id={`non-ops-monthly-gradient-${branch.key}`}
+                                                    id="non-ops-monthly-gradient-fallback"
                                                     x1="0"
-                                                    y1="1"
+                                                    y1="0"
                                                     x2="0"
-                                                    y2="0"
+                                                    y2="1"
                                                 >
-                                                    <stop offset="0%" stopColor={branch.color} stopOpacity={0.7} />
-                                                    <stop offset="100%" stopColor={branch.color} stopOpacity={1} />
+                                                    <stop offset="0%" stopColor="#fb923c" stopOpacity={0.95} />
+                                                    <stop offset="100%" stopColor="#f97316" stopOpacity={0.35} />
                                                 </linearGradient>
-                                            ))
-                                        ) : (
-                                            <linearGradient
-                                                id="non-ops-monthly-gradient-fallback"
-                                                x1="0"
-                                                y1="1"
-                                                x2="0"
-                                                y2="0"
-                                            >
-                                                <stop offset="0%" stopColor="#fb923c" stopOpacity={0.7} />
-                                                <stop offset="100%" stopColor="#f97316" stopOpacity={1} />
-                                            </linearGradient>
-                                        )}
+                                            )}
                                         </defs>
-                                        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                                        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
                                         <XAxis
                                             dataKey="monthLabel"
                                             tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
@@ -2598,57 +2657,62 @@ if (supplierFilter.length > 0) {
                                             axisLine={false}
                                             tickLine={false}
                                         />
-                                    <Tooltip
-                                        cursor={{ fill: 'rgba(249, 115, 22, 0.08)' }}
-                                        content={renderNonOpsMonthlyTooltip}
-                                    />
+                                        <Tooltip
+                                            cursor={{ stroke: '#fb923c', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                            content={renderNonOpsMonthlyTooltip}
+                                        />
                                         {nonOperationsTrendData.monthlyBranchKeys.length > 0 ? (
-                                            nonOperationsTrendData.monthlyBranchKeys.map((branch, index) => (
-                                                <Bar
-                                                    key={`non-ops-monthly-bar-${branch.key}`}
+                                            nonOperationsTrendData.monthlyBranchKeys.map((branch) => (
+                                                <Area
+                                                    key={`non-ops-monthly-area-${branch.key}`}
+                                                    type="monotone"
                                                     dataKey={branch.key}
                                                     name={branch.name}
                                                     stackId="non-ops-monthly"
+                                                    stroke={branch.color}
+                                                    strokeWidth={2}
                                                     fill={`url(#non-ops-monthly-gradient-${branch.key})`}
-                                                    radius={
-                                                        index ===
-                                                        nonOperationsTrendData.monthlyBranchKeys.length - 1
-                                                            ? [8, 8, 0, 0]
-                                                            : [0, 0, 0, 0]
-                                                    }
-                                                    maxBarSize={48}
+                                                    fillOpacity={1}
+                                                    activeDot={{ r: 4, strokeWidth: 0 }}
+                                                    isAnimationActive={false}
                                                 />
                                             ))
                                         ) : (
-                                            <Bar
+                                            <Area
+                                                type="monotone"
                                                 dataKey="total"
                                                 name="Spesa"
+                                                stroke="#fb923c"
+                                                strokeWidth={3}
                                                 fill="url(#non-ops-monthly-gradient-fallback)"
-                                                radius={[8, 8, 0, 0]}
-                                                maxBarSize={48}
+                                                fillOpacity={1}
+                                                activeDot={{ r: 4, strokeWidth: 0 }}
+                                                isAnimationActive={false}
                                             />
                                         )}
-                                    </BarChart>
+                                    </AreaChart>
                                 </ResponsiveContainer>
                                 {nonOperationsTrendData.monthlyBranchKeys.length > 0 && (
-                                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                        {nonOperationsTrendData.monthlyBranchKeys.map((branch) => (
-                                            <div
-                                                key={`non-ops-monthly-legend-${branch.key}`}
-                                                className="flex items-center justify-between rounded-2xl border border-orange-100 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm shadow-orange-50"
-                                            >
-                                                <span className="flex items-center gap-2">
-                                                    <span
-                                                        className="inline-flex h-2.5 w-2.5 rounded-full"
-                                                        style={{ backgroundColor: branch.color }}
-                                                    />
-                                                    {branch.name}
-                                                </span>
-                                                <span className="text-slate-900">
-                                                    {formatCurrency(branch.total || 0)}
-                                                </span>
-                                            </div>
-                                        ))}
+                                    <div className="mt-6">
+                                        <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                                            {nonOperationsTrendData.monthlyBranchKeys.map((branch) => (
+                                                <li
+                                                    key={`non-ops-monthly-legend-${branch.key}`}
+                                                    className="flex items-center justify-between rounded-2xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-orange-50"
+                                                >
+                                                    <span className="flex items-center gap-2">
+                                                        <span
+                                                            className="inline-flex h-2.5 w-2.5 rounded-full"
+                                                            style={{ backgroundColor: branch.color }}
+                                                        />
+                                                        {branch.name}
+                                                    </span>
+                                                    <span className="text-sm font-semibold text-slate-900">
+                                                        {formatCurrency(branch.total || 0)}
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        </ul>
                                     </div>
                                 )}
                             </>
@@ -2665,13 +2729,17 @@ if (supplierFilter.length > 0) {
                 </div>
 
                 <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
-                    <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-orange-200/30 via-white to-orange-100/40 px-6 py-5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-500">
-                            Ripartizione spese
-                        </p>
-                        <h2 className="text-lg font-black text-slate-900">
-                            Peso economico per settore
-                        </h2>
+                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                        <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                Ripartizione spese
+                            </p>
+                            <h2 className="text-lg font-black text-white">
+                                Peso economico per settore
+                            </h2>
+                        </div>
                     </div>
                     <div className="flex-1 bg-white px-6 py-6">
                         {nonOperationsTrendData.hasSectorSplitData ? (
@@ -2736,13 +2804,17 @@ if (supplierFilter.length > 0) {
             <>
             <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
                 <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
-                    <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-orange-200/30 via-white to-orange-100/40 px-6 py-5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-500">
-                            Filiali
-                        </p>
-                        <h2 className="text-lg font-black text-slate-900">
-                            Distribuzione mensile {selectedOperationsYear}
-                        </h2>
+                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                        <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                Filiali
+                            </p>
+                            <h2 className="text-lg font-black text-white">
+                                Distribuzione mensile {selectedOperationsYear}
+                            </h2>
+                        </div>
                     </div>
                     <div className="relative flex flex-1 flex-col px-6 py-6 bg-white">
                         <div className="flex-1">
@@ -2756,23 +2828,27 @@ if (supplierFilter.length > 0) {
                                 </div>
                             ) : (
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={operationsMonthlyBranchData}>
+                                    <AreaChart
+                                        data={operationsMonthlyBranchData}
+                                        stackOffset="none"
+                                        margin={{ top: 10, right: 8, left: -12, bottom: 0 }}
+                                    >
                                         <defs>
                                             {operationsTopBranchKeys.map((branch) => (
                                                 <linearGradient
                                                     key={`ops-branch-gradient-${branch.id}`}
                                                     id={`ops-branch-gradient-${branch.id}`}
                                                     x1="0"
-                                                    y1="1"
+                                                    y1="0"
                                                     x2="0"
-                                                    y2="0"
+                                                    y2="1"
                                                 >
-                                                    <stop offset="0%" stopColor={branch.color} stopOpacity={0.7} />
-                                                    <stop offset="100%" stopColor={branch.color} stopOpacity={1} />
+                                                    <stop offset="0%" stopColor={branch.color} stopOpacity={0.9} />
+                                                    <stop offset="100%" stopColor={branch.color} stopOpacity={0.35} />
                                                 </linearGradient>
                                             ))}
                                         </defs>
-                                        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                                        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
                                         <XAxis
                                             dataKey="monthLabel"
                                             tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
@@ -2790,20 +2866,25 @@ if (supplierFilter.length > 0) {
                                             tickLine={false}
                                         />
                                         <Tooltip
-                                            cursor={{ fill: 'rgba(59, 130, 246, 0.08)' }}
+                                            cursor={{ stroke: '#6366f1', strokeWidth: 1, strokeDasharray: '4 4' }}
                                             content={renderOperationsMonthlyTooltip}
                                         />
                                         {operationsTopBranchKeys.map((branch) => (
-                                            <Bar
-                                                key={`ops-bar-${branch.id}`}
+                                            <Area
+                                                key={`ops-area-${branch.id}`}
+                                                type="monotone"
                                                 dataKey={branch.key}
                                                 name={branch.name}
+                                                stackId="ops-monthly"
+                                                stroke={branch.color}
+                                                strokeWidth={2}
                                                 fill={`url(#ops-branch-gradient-${branch.id})`}
-                                                radius={[8, 8, 0, 0]}
-                                                maxBarSize={48}
+                                                fillOpacity={1}
+                                                activeDot={{ r: 4, strokeWidth: 0 }}
+                                                isAnimationActive={false}
                                             />
                                         ))}
-                                    </BarChart>
+                                    </AreaChart>
                                 </ResponsiveContainer>
                             )}
                         </div>
@@ -2836,13 +2917,17 @@ if (supplierFilter.length > 0) {
                 </div>
 
                 <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
-                    <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-orange-200/30 via-white to-orange-100/40 px-6 py-5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-500">
-                            Filiali
-                        </p>
-                        <h2 className="text-lg font-black text-slate-900">
-                            Incidenza sui costi {selectedOperationsYear}
-                        </h2>
+                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                        <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                Filiali
+                            </p>
+                            <h2 className="text-lg font-black text-white">
+                                Incidenza sui costi {selectedOperationsYear}
+                            </h2>
+                        </div>
                     </div>
                     <div className="relative flex flex-1 flex-col px-6 py-6 bg-white">
                         <div className="flex-1">
@@ -2928,25 +3013,29 @@ if (supplierFilter.length > 0) {
                         key={branch.key}
                         className="relative overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]"
                     >
-                        <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-orange-200/30 via-white to-orange-100/40 px-6 py-5 md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-500">
-                                    Filiale
-                                </p>
-                                <h2 className="text-lg font-black text-slate-900">
-                                    {branch.displayName}
-                                </h2>
-                            </div>
-                            <div className="text-left md:text-right">
-                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                                    Totale {selectedOperationsYear}
-                                </p>
-                                <p className="text-lg font-black text-slate-900">
-                                    {formatCurrency(branch.totalAmount)}
-                                </p>
-                                <p className="text-xs font-semibold text-slate-400">
-                                    Incidenza: {share.toFixed(1)}% del totale sedi
-                                </p>
+                        <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                            <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                            <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white md:flex-row md:items-center md:justify-between">
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                        Filiale
+                                    </p>
+                                    <h2 className="text-lg font-black text-white">
+                                        {branch.displayName}
+                                    </h2>
+                                </div>
+                                <div className="text-left md:text-right">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                        Totale {selectedOperationsYear}
+                                    </p>
+                                    <p className="text-lg font-black text-white">
+                                        {formatCurrency(branch.totalAmount)}
+                                    </p>
+                                    <p className="text-xs font-semibold text-white/70">
+                                        Incidenza: {share.toFixed(1)}% del totale sedi
+                                    </p>
+                                </div>
                             </div>
                         </div>
 
@@ -2993,44 +3082,48 @@ if (supplierFilter.length > 0) {
                     <div className="absolute bottom-[-35%] left-1/4 h-64 w-64 rounded-full bg-orange-200/20 blur-3xl" />
                 </div>
                 <div className="relative z-10 flex flex-col">
-                    <div className="flex flex-col gap-4 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-orange-100/80 via-white/95 to-orange-100/50 px-6 py-5">
-                    <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-500">
-                            Elenco spese
-                        </p>
-                        <h2 className="text-lg font-black text-slate-900">
-                            Dettaglio fornitori e documentazione
-                        </h2>
-                    </div>
-                    
-                        {filterPresets.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-orange-100/70 bg-white/85 px-4 py-3 shadow-inner shadow-orange-100/40">
-                                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-500">
-                                    Preset rapidi
-                                </span>
-                                {filterPresets.map(preset => (
-                                    <div
-                                        key={preset.id}
-                                        className="inline-flex items-center gap-2 rounded-2xl border border-orange-200 bg-white px-3 py-1.5 text-sm font-semibold text-orange-700 shadow-sm shadow-orange-100/40"
-                                    >
-                                        <button
-                                            type="button"
-                                            onClick={() => applyPreset(preset)}
-                                            className="flex-1 text-left transition-colors hover:text-orange-600"
-                                        >
-                                            {preset.name}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => deletePreset(preset.id)}
-                                            className="text-orange-300 transition-colors hover:text-rose-500"
-                                        >
-                                            <XCircle className="h-3.5 w-3.5" />
-                                        </button>
-                                    </div>
-                                ))}
+                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                        <div className="relative z-10 flex flex-col gap-4 px-6 py-5 text-white">
+                            <div className="space-y-1">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                    Elenco spese
+                                </p>
+                                <h2 className="text-lg font-black text-white">
+                                    Dettaglio fornitori e documentazione
+                                </h2>
                             </div>
-                        )}
+
+                            {filterPresets.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-white shadow-inner shadow-black/10 backdrop-blur">
+                                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
+                                        Preset rapidi
+                                    </span>
+                                    {filterPresets.map(preset => (
+                                        <div
+                                            key={preset.id}
+                                            className="inline-flex items-center gap-2 rounded-2xl border border-white/40 bg-white/15 px-3 py-1.5 text-sm font-semibold text-white shadow-sm shadow-black/10"
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => applyPreset(preset)}
+                                                className="flex-1 text-left transition-colors hover:text-white/80"
+                                            >
+                                                {preset.name}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => deletePreset(preset.id)}
+                                                className="text-white/70 transition-colors hover:text-rose-100"
+                                            >
+                                                <XCircle className="h-3.5 w-3.5" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                     <div className="relative z-10 px-6 pb-6 pt-6">
                         {processedExpenses.length > 0 ? (

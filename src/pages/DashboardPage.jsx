@@ -4,7 +4,7 @@ import { collection, query, onSnapshot, where, orderBy } from 'firebase/firestor
 import {
     BarChart3, TrendingUp, DollarSign, Target, AlertTriangle,
     CheckCircle, Layers, Car, Sailboat, Caravan, Building2,
-    ChevronRight, ChevronDown, Activity, Award, XCircle, ArrowUpDown, MapPin, Calendar, X, HelpCircle, PieChart, FileSignature, Check, SlidersHorizontal, Search, Filter
+    ChevronRight, ChevronDown, Activity, Award, XCircle, ArrowUpDown, MapPin, Calendar, X, HelpCircle, PieChart, FileSignature, Check, SlidersHorizontal, Search, Filter, Wallet, Bell
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { KpiCard } from '../components/SharedComponents';
@@ -542,7 +542,7 @@ export default function DashboardPage({ navigate, user }) {
     const [isPresetPanelOpen, setIsPresetPanelOpen] = useState(false);
     const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
     const [isAdvancedPanelOpen, setIsAdvancedPanelOpen] = useState(false);
-    const [isOverdueExpanded, setIsOverdueExpanded] = useState(false);
+    const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
     
     const [startDate, setStartDate] = useState(() => {
         const currentYear = new Date().getFullYear();
@@ -1211,7 +1211,6 @@ export default function DashboardPage({ navigate, user }) {
     const remainingBudget = metrics.budgetTotale - totalForecast;
     const isOverBudgetRisk = totalForecast > metrics.budgetTotale;
     const topSuppliersProjections = Math.max(0, (metrics.totalSuppliersSpent || 0) - (metrics.topSuppliersSpentOnly || 0));
-    const suppliersBaselineTotal = showProjections ? metrics.totalSuppliersSpent : metrics.topSuppliersSpentOnly;
     const branchesSpentOnly = useMemo(
         () => metrics.allBranches.reduce((sum, branch) => sum + (branch.spent || 0), 0),
         [metrics.allBranches]
@@ -1221,6 +1220,53 @@ export default function DashboardPage({ navigate, user }) {
         [metrics.allBranches]
     );
     const branchesBaselineCommitted = showProjections ? metrics.totalBranchesSpent : branchesSpentOnly;
+
+    const priorityInsights = useMemo(() => {
+        const items = [];
+        if (isOverBudgetRisk) {
+            items.push({
+                id: 'budget-risk',
+                label: 'Budget',
+                title: 'Rischio di sforamento',
+                description: 'Allinea budget e contratti attivi.',
+                value: formatCurrency(Math.abs(remainingBudget)),
+                tone: 'rose',
+                actionLabel: 'Apri Budget',
+                onClick: () => navigate && navigate('budget'),
+                icon: AlertTriangle,
+            });
+        }
+        if (overdueList.length > 0) {
+            items.push({
+                id: 'overdue',
+                label: 'Contratti',
+                title: 'Impegni scaduti',
+                description: `${overdueSummary.supplierCount} fornitori coinvolti`,
+                value: formatCurrency(metrics.spesaPrevistaScaduta || 0),
+                tone: 'amber',
+                actionLabel: 'Apri contratti',
+                onClick: () => navigate && navigate('contracts'),
+                icon: FileSignature,
+            });
+        }
+        if (topSuppliersProjections > 0) {
+            items.push({
+                id: 'supplier-projections',
+                label: 'Fornitori',
+                title: 'Quote da confermare',
+                description: 'Proiezioni ancora da convertire in spesa.',
+                value: formatCurrency(topSuppliersProjections),
+                tone: 'indigo',
+                actionLabel: 'Gestisci fornitori',
+                onClick: () => navigate && navigate('contracts'),
+                icon: Wallet,
+            });
+        }
+        return items.slice(0, 3);
+    }, [isOverBudgetRisk, remainingBudget, overdueList.length, overdueSummary.supplierCount, metrics.spesaPrevistaScaduta, topSuppliersProjections, navigate]);
+    const hasPriorityInsights = priorityInsights.length > 0;
+    const notificationCount = priorityInsights.length;
+
     const monthlyTrendStats = useMemo(() => {
         const chartData = metrics.monthlyData.map((month = {}, index) => {
             const real = Number(month.real) || 0;
@@ -1473,17 +1519,8 @@ export default function DashboardPage({ navigate, user }) {
     const dateLabel = hasCustomDateRange
         ? `${formatDate(startDate)} → ${formatDate(endDate)}`
         : 'Seleziona periodo';
-    const normalizedSearchTerm = trimmedSearchTerm.toLowerCase();
-    const suppliersToDisplay = useMemo(() => {
-        if (!normalizedSearchTerm) return metrics.topSuppliers;
-        return metrics.topSuppliers.filter(supplier =>
-            (supplier.name || 'N/D').toLowerCase().includes(normalizedSearchTerm)
-        );
-    }, [metrics.topSuppliers, normalizedSearchTerm]);
-    const hasSupplierMatches = suppliersToDisplay.length > 0;
-    const suppliersEmptyMessage = normalizedSearchTerm
-        ? 'Nessun fornitore corrisponde ai filtri attivi.'
-        : 'Non ci sono dati per il periodo selezionato.';
+    const visibleSectors = useMemo(() => metrics.sectorData.slice(0, 4), [metrics.sectorData]);
+    const visibleBranches = useMemo(() => metrics.allBranches.slice(0, 4), [metrics.allBranches]);
 
     if (isLoading) {
         return (
@@ -1506,47 +1543,126 @@ export default function DashboardPage({ navigate, user }) {
                     <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.35),transparent_55%)]" />
                         <div className="relative flex flex-col gap-5">
-                            <div className="flex items-center gap-4">
-                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-indigo-900/30 ring-4 ring-white/25">
-                                    <BarChart3 className="w-7 h-7 lg:w-8 lg:h-8" />
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-indigo-900/30 ring-4 ring-white/25">
+                                        <BarChart3 className="w-7 h-7 lg:w-8 lg:h-8" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs uppercase tracking-[0.4em] text-white/70 font-semibold">Dashboard</p>
+                                        <h1 className="text-3xl lg:text-4xl xl:text-5xl font-black leading-tight">
+                                            Marketing Control Center
+                                        </h1>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-[0.4em] text-white/70 font-semibold">Dashboard</p>
-                                    <h1 className="text-3xl lg:text-4xl xl:text-5xl font-black leading-tight">
-                                        Marketing Control Center
-                                    </h1>
+                                <div className="relative self-start">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsNotificationsPanelOpen(prev => !prev);
+                                            setIsPresetPanelOpen(false);
+                                            setIsAdvancedPanelOpen(false);
+                                            setIsDateDropdownOpen(false);
+                                        }}
+                                        className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold shadow-lg shadow-indigo-900/30 backdrop-blur-sm transition-all ${
+                                            hasPriorityInsights ? 'bg-white/15 text-white' : 'bg-white/10 text-white/70 hover:text-white'
+                                        }`}
+                                        aria-expanded={isNotificationsPanelOpen}
+                                    >
+                                        <Bell className="w-4 h-4" />
+                                        Notifiche
+                                        {notificationCount > 0 && (
+                                            <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/90 px-2 text-xs font-bold text-indigo-600">
+                                                {notificationCount}
+                                            </span>
+                                        )}
+                                    </button>
+                                    {isNotificationsPanelOpen && (
+                                        <>
+                                            <div
+                                                className="fixed inset-0 z-40"
+                                                onClick={() => setIsNotificationsPanelOpen(false)}
+                                            />
+                                            <div className="fixed right-4 top-28 z-[120] w-[calc(100vw-3rem)] max-w-sm rounded-3xl border border-indigo-100 bg-white p-3 shadow-2xl shadow-indigo-900/25 lg:right-10 lg:top-32">
+                                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                                    <div>
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-500">
+                                                            Notifiche operative
+                                                        </p>
+                                                        <p className="text-xs font-semibold text-slate-900">
+                                                            {hasPriorityInsights ? 'Azioni consigliate' : 'Nessuna priorità in sospeso'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3 space-y-2 max-h-[60vh] overflow-y-auto pr-1 text-xs">
+                                                    {priorityInsights.length > 0 ? (
+                                                        priorityInsights.map(item => {
+                                                            const Icon = item.icon;
+                                                            return (
+                                                                <div
+                                                                    key={item.id}
+                                                                    className="flex flex-col gap-2 rounded-2xl border border-indigo-100 bg-white px-3 py-3 text-xs shadow-sm shadow-indigo-100/60"
+                                                                >
+                                                                    <div className="flex items-start gap-2">
+                                                                        <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-500">
+                                                                            <Icon className="h-4 w-4" />
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-indigo-500">
+                                                                                {item.label}
+                                                                            </span>
+                                                                            <p className="text-sm font-black text-slate-900">{item.title}</p>
+                                                                            <p className="text-[11px] text-slate-500">{item.description}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-base font-black text-indigo-600">{item.value}</span>
+                                                                        {item.actionLabel && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setIsNotificationsPanelOpen(false);
+                                                                                    item.onClick && item.onClick();
+                                                                                }}
+                                                                                className="rounded-full border border-indigo-100 px-3 py-1 text-[11px] font-semibold text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-50"
+                                                                            >
+                                                                                {item.actionLabel}
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <p className="text-sm font-semibold text-slate-500">
+                                                            Nessuna azione richiesta al momento.
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsNotificationsPanelOpen(false)}
+                                                    className="mt-3 w-full rounded-2xl border border-indigo-100 bg-indigo-50 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-100"
+                                                >
+                                                    Chiudi notifiche
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                             <p className="text-sm lg:text-base text-white/85 max-w-3xl">
                                 Monitora budget, spese e proiezioni in tempo reale. I filtri selezionati vengono condivisi con tutte le sezioni della piattaforma per mantenere la stessa vista analitica.
                             </p>
-                            <div className="mt-6 flex flex-wrap items-center gap-3 lg:gap-4">
-                                <button
-                                    type="button"
-                                    onClick={() => navigate('expenses')}
-                                    className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
-                                >
-                                    <Layers className="w-4 h-4" />
-                                    Vai a Spese
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => navigate('contracts')}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold text-white/90 shadow-lg shadow-indigo-900/30 backdrop-blur-sm transition-all hover:border-white/60"
-                                >
-                                    <FileSignature className="w-4 h-4" />
-                                    Contratti attivi
-                                </button>
-                            </div>
                         </div>
                     </div>
 
                 </div>
 
-                <section className="relative z-20 rounded-3xl border border-white/70 bg-gradient-to-r from-slate-300/90 via-slate-200/85 to-slate-300/80 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
+                <section className="relative z-20 rounded-3xl border border-white/80 bg-gradient-to-r from-slate-300/95 via-slate-100/90 to-white/90 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
                     <div className="pointer-events-none absolute inset-0">
-                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-white/45 blur-3xl" />
-                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-400/40 blur-3xl" />
+                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-indigo-100/45 blur-3xl" />
+                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-200/50 blur-3xl" />
                     </div>
                     <div className="relative z-10 flex flex-wrap lg:flex-nowrap items-center justify-center gap-3 lg:gap-4 w-full max-w-6xl mx-auto">
                         <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
@@ -1911,22 +2027,13 @@ export default function DashboardPage({ navigate, user }) {
                         <div className="absolute bottom-[-35%] left-1/4 h-72 w-72 rounded-full bg-blue-200/25 blur-3xl" />
                     </div>
                     <div className="relative z-10 flex flex-col">
-                        <div className="flex flex-col gap-4 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-indigo-100/75 via-white/90 to-purple-100/60 px-6 py-5">
-                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                <div className="flex items-start gap-4">
-                                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-600 text-white shadow-lg shadow-indigo-500/20 ring-4 ring-indigo-500/15">
-                                        <Activity className="w-6 h-6 lg:w-7 lg:h-7" />
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-500">
-                                            Trend mensile
-                                        </p>
-                                        <div className="flex items-center gap-2">
-                                            <h2 className="text-lg font-black text-slate-900">Andamento spesa mensile</h2>
-                                            <InfoTooltip message="Confronto mensile tra spesa realizzata, proiezioni e budget medio assegnato." />
-                                        </div>
-                                    </div>
-                                </div>
+                        <div className="flex flex-col gap-1 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 px-6 py-5 text-white">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                Trend mensile
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-lg font-black text-white">Andamento spesa mensile</h2>
+                                <InfoTooltip message="Confronto mensile tra spesa realizzata, proiezioni e budget medio assegnato." />
                             </div>
                         </div>
                         <div className="relative z-10 flex flex-col px-6 pb-6 pt-6 bg-white">
@@ -1940,12 +2047,12 @@ export default function DashboardPage({ navigate, user }) {
                                             >
                                                 <defs>
                                                     <linearGradient id="monthly-real-gradient" x1="0" y1="1" x2="0" y2="0">
-                                                        <stop offset="0%" stopColor="#F97316" stopOpacity={0.9} />
-                                                        <stop offset="100%" stopColor="#FDBA74" stopOpacity={0.95} />
+                                                        <stop offset="0%" stopColor="#F97316" stopOpacity={1} />
+                                                        <stop offset="100%" stopColor="#FDBA74" stopOpacity={1} />
                                                     </linearGradient>
                                                     <linearGradient id="monthly-projected-gradient" x1="0" y1="1" x2="0" y2="0">
-                                                        <stop offset="0%" stopColor="#818CF8" stopOpacity={0.6} />
-                                                        <stop offset="100%" stopColor="#A855F7" stopOpacity={0.85} />
+                                                        <stop offset="0%" stopColor="#818CF8" stopOpacity={1} />
+                                                        <stop offset="100%" stopColor="#A855F7" stopOpacity={1} />
                                                     </linearGradient>
                                                 </defs>
                                                 <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
@@ -1973,9 +2080,18 @@ export default function DashboardPage({ navigate, user }) {
                                                     dataKey="real"
                                                     stackId="spend"
                                                     fill="url(#monthly-real-gradient)"
-                                                    radius={showProjections ? [0, 0, 0, 0] : [8, 8, 0, 0]}
                                                     maxBarSize={32}
-                                                />
+                                                >
+                                                    {monthlyTrendStats.chartData.map((entry, index) => {
+                                                        const hasProjected = showProjections && entry.projected > 0;
+                                                        return (
+                                                            <Cell
+                                                                key={`monthly-real-${entry.mese}-${index}`}
+                                                                radius={hasProjected ? [0, 0, 0, 0] : [8, 8, 0, 0]}
+                                                            />
+                                                        );
+                                                    })}
+                                                </Bar>
                                                 {showProjections && (
                                                     <Bar
                                                         dataKey="projected"
@@ -2019,12 +2135,12 @@ export default function DashboardPage({ navigate, user }) {
                             <div className="absolute -top-32 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-indigo-200/35 blur-3xl" />
                             <div className="absolute bottom-[-35%] right-1/4 h-56 w-56 rounded-full bg-purple-200/25 blur-3xl" />
                         </div>
-                        <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-indigo-100/75 via-white/90 to-purple-100/60 px-6 py-5 z-10">
-                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-500">
+                        <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 px-6 py-5 z-10 text-white">
+                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/70">
                                 Composizione settori
                             </p>
                             <div className="flex items-center gap-2">
-                                <h2 className="text-lg font-black text-slate-900">Distribuzione per settore</h2>
+                                <h2 className="text-lg font-black text-white">Distribuzione per settore</h2>
                                 <InfoTooltip message="Ripartizione dell'impegno economico per settore, con proiezioni incluse se abilitate." />
                             </div>
                         </div>
@@ -2079,412 +2195,240 @@ export default function DashboardPage({ navigate, user }) {
 
                 {/* PERFORMANCE SETTORI */}
                 {selectedSector === 'all' && selectedBranch === 'all' && (
-                    <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-6 lg:p-8 space-y-6">
-                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-                            <div className="flex items-start gap-4">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-600 text-white shadow-lg shadow-indigo-500/20 ring-4 ring-indigo-500/15">
-                                    <Layers className="w-6 h-6 lg:w-7 lg:h-7" />
-                                </div>
+                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/90 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                        <div className="pointer-events-none absolute inset-0">
+                            <div className="absolute -top-32 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-indigo-200/35 blur-3xl" />
+                            <div className="absolute bottom-[-35%] right-1/4 h-56 w-56 rounded-full bg-purple-200/25 blur-3xl" />
+                        </div>
+                        <div className="relative z-10 flex flex-col">
+                            <div className="flex flex-wrap items-center justify-between gap-4 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 px-6 py-5 text-white">
                                 <div>
-                                    <div className="flex items-center gap-2">
-                                        <h2 className="text-2xl lg:text-3xl font-black text-gray-900">Performance per Settore</h2>
-                                        <InfoTooltip message="Panoramica dell'utilizzo budget dei settori nel periodo filtrato." />
-                                    </div>
-                                    <p className="mt-2 text-sm lg:text-base text-gray-600 font-medium">
-                                        Analisi dettagliata dell'utilizzo budget per business unit.
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                        Performance settori
                                     </p>
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-lg font-black text-white">Utilizzo per business unit</h2>
+                                        <InfoTooltip message="Panoramica dell'utilizzo budget dei settori e consigli operativi per le business unit." />
+                                    </div>
                                 </div>
-                            </div>
-                            <button
-                                onClick={() => navigate && navigate('expenses')}
-                                className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 lg:px-6 py-2 lg:py-3 text-sm lg:text-base font-bold text-white transition-all hover:scale-105 hover:shadow-lg"
-                            >
-                                Vedi Spese
-                                <ChevronRight className="w-4 h-4 lg:w-5 lg:h-5" />
+                                <button
+                                    onClick={() => navigate && navigate('expenses')}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/20 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-indigo-900/30 backdrop-blur transition hover:border-white/80 hover:bg-white/30"
+                                >
+                                Vedi tutte le spese
+                                <ChevronRight className="w-4 h-4" />
                             </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex flex-col justify-between">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-                                    Budget attivo
-                                    <InfoTooltip message="Budget complessivo disponibile per i settori nel periodo selezionato." />
-                                </div>
-                                <p className="mt-2 text-lg font-black text-slate-900">
-                                    {formatCurrency(metrics.budgetTotale)}
-                                </p>
                             </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
-                                    Spesa effettiva
-                                    <InfoTooltip message="Somma delle spese già registrate nei settori attivi." />
+                            <div className="relative z-10 space-y-6 px-6 pb-6 pt-6">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:gap-6">
+                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex flex-col justify-between">
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                                            Budget attivo
+                                            <InfoTooltip message="Budget complessivo disponibile per i settori nel periodo selezionato." />
+                                        </div>
+                                        <p className="mt-2 text-lg font-black text-slate-900">
+                                            {formatCurrency(metrics.budgetTotale)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
+                                            Spesa effettiva
+                                            <InfoTooltip message="Somma delle spese già registrate nei settori attivi." />
+                                        </div>
+                                        <p className="mt-2 text-lg font-black text-slate-900">
+                                            {formatCurrency(metrics.spesaSostenuta)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
+                                            Proiezioni attive
+                                            <InfoTooltip message="Quote future o scadute legate ai contratti dei settori. Visibili solo se le proiezioni sono abilitate." />
+                                        </div>
+                                        <p className={`mt-2 text-lg font-black ${showProjections ? 'text-slate-900' : 'text-slate-300'}`}>
+                                            {showProjections ? formatCurrency(metrics.spesaPrevistaTotale) : '—'}
+                                        </p>
+                                    </div>
                                 </div>
-                                <p className="mt-2 text-lg font-black text-slate-900">
-                                    {formatCurrency(metrics.spesaSostenuta)}
-                                </p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
-                                    Proiezioni attive
-                                    <InfoTooltip message="Quote future o scadute legate ai contratti dei settori. Visibili solo se le proiezioni sono abilitate." />
+                                
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 lg:gap-6">
+                                    {visibleSectors.map(sector => (
+                                        <SectorCard
+                                            key={sector.id}
+                                            sector={sector}
+                                            includeProjections={showProjections}
+                                            onClick={() => {
+                                                setSelectedSector(sector.id);
+                                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                                            }}
+                                        />
+                                    ))}
                                 </div>
-                                <p className={`mt-2 text-lg font-black ${showProjections ? 'text-slate-900' : 'text-slate-300'}`}>
-                                    {showProjections ? formatCurrency(metrics.spesaPrevistaTotale) : '—'}
-                                </p>
+                                {metrics.sectorData.length > visibleSectors.length && (
+                                    <div className="flex justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate && navigate('budget')}
+                                            className="inline-flex items-center rounded-2xl border border-indigo-200/70 bg-white/30 px-4 py-2 text-xs font-semibold text-indigo-700 shadow-sm shadow-indigo-100 backdrop-blur transition hover:bg-white/60"
+                                        >
+                                            Vedi tutti i settori
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
-                            {metrics.sectorData.map(sector => (
-                                <SectorCard
-                                    key={sector.id}
-                                    sector={sector}
-                                    includeProjections={showProjections}
-                                    onClick={() => {
-                                        setSelectedSector(sector.id);
-                                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                                    }}
-                                />
-                            ))}
-                        </div>
-                    </div>
+                    </section>
                 )}
                 
                 {/* TOP FORNITORI */}
                 {metrics.topSuppliers.length > 0 && (
-                    <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-6 lg:p-8 space-y-6">
-                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-                            <div className="flex items-start gap-4">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg shadow-amber-500/20 ring-4 ring-amber-500/15">
-                                    <Award className="w-7 h-7" />
-                                </div>
+                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                        <div className="relative z-10 flex flex-col">
+                            <div className="flex flex-wrap items-center justify-between gap-4 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 px-6 py-5 text-white">
                                 <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                        Top fornitori
+                                    </p>
                                     <div className="flex items-center gap-2">
-                                        <h2 className="text-xl lg:text-2xl font-black text-gray-900">Top {TOP_SUPPLIERS_LIMIT} Fornitori</h2>
-                                        <InfoTooltip message="Classifica basata sull'impegno complessivo (spesa effettiva + proiezioni attive) dei fornitori nel periodo filtrato." />
+                                        <h2 className="text-lg font-black text-white">Partner principali</h2>
+                                        <InfoTooltip message="Monitoraggio dei fornitori con maggiore esposizione economica nel periodo filtrato." />
                                     </div>
-                                    <p className="mt-2 text-sm text-gray-600 font-medium">
-                                        Monitoraggio dei partner con maggiore esposizione economica.
-                                    </p>
                                 </div>
-                            </div>
-                            <div className="inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-xs font-bold tracking-[0.16em] text-slate-600 ring-1 ring-inset ring-slate-200">
-                                Aggiornato al {formatDate(endDate)}
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
-                                    Impegno Top {TOP_SUPPLIERS_LIMIT}
-                                    <InfoTooltip message={showProjections ? `Somma di spesa effettiva e proiezioni per i primi ${TOP_SUPPLIERS_LIMIT} fornitori.` : `Somma della sola spesa effettiva per i primi ${TOP_SUPPLIERS_LIMIT} fornitori.`} />
-                                </div>
-                                <p className="mt-auto pt-2 text-lg font-black text-slate-900">
-                                    {formatCurrency(showProjections ? metrics.totalSuppliersSpent : metrics.topSuppliersSpentOnly)}
-                                </p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
-                                    Spesa effettiva
-                                    <InfoTooltip message={`Totale della spesa già registrata per i fornitori Top ${TOP_SUPPLIERS_LIMIT}.`} />
-                                </div>
-                                <p className="mt-auto pt-2 text-lg font-black text-slate-900">
-                                    {formatCurrency(metrics.topSuppliersSpentOnly)}
-                                </p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
-                                    Proiezioni attive
-                                    <InfoTooltip message={`Quote contrattuali future o scadute ancora da coprire per i fornitori Top ${TOP_SUPPLIERS_LIMIT}.`} />
-                                </div>
-                                <p className={`mt-auto pt-2 text-lg font-black ${showProjections ? 'text-slate-900' : 'text-slate-300'}`}>
-                                    {showProjections ? formatCurrency(topSuppliersProjections) : '—'}
-                                </p>
-                            </div>
-                        </div>
-
-                        {hasSupplierMatches ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                                {suppliersToDisplay.map((supplier, index) => (
-                                    <SupplierRankItem
-                                        key={supplier.id}
-                                        supplier={supplier}
-                                        rank={index}
-                                        baselineCommitted={suppliersBaselineTotal}
-                                        includeProjections={showProjections}
-                                    />
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-6 py-8 text-center text-sm font-semibold text-slate-500">
-                                {suppliersEmptyMessage}
-                            </div>
-                        )}
-                    </div>
-                )}
-                
-                {/* CLASSIFICA FILIALI */}
-                {metrics.allBranches.length > 0 && selectedBranch === 'all' && (
-                    <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-6 lg:p-8 space-y-6">
-                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-                            <div className="flex items-start gap-4">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-cyan-500 text-white shadow-lg shadow-blue-500/20 ring-4 ring-blue-500/15">
-                                    <MapPin className="w-6 h-6 lg:w-7 lg:h-7" />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h2 className="text-xl lg:text-2xl font-black text-gray-900">Performance Filiali</h2>
-                                        <InfoTooltip message="Classifica delle filiali basata sull'impegno economico (spesa + proiezioni) nel periodo." />
-                                    </div>
-                                    <p className="mt-2 text-sm text-gray-600 font-medium">
-                                        Tutte le sedi aziendali ordinate per spesa e contratti attivi.
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-xs font-bold tracking-[0.16em] text-slate-600 ring-1 ring-inset ring-slate-200">
-                                {metrics.allBranches.length} filiali attive
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-                                    Impegno filiali
-                                    <InfoTooltip message="Somma di spesa e proiezioni di tutte le filiali attive." />
-                                </div>
-                                <p className="mt-auto pt-2 text-lg font-black text-slate-900">
-                                    {formatCurrency(showProjections ? metrics.totalBranchesSpent : branchesSpentOnly)}
-                                </p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
-                                    Spesa effettiva
-                                    <InfoTooltip message="Importo contabile già registrato sulle filiali." />
-                                </div>
-                                <p className="mt-auto pt-2 text-lg font-black text-slate-900">
-                                    {formatCurrency(branchesSpentOnly)}
-                                </p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
-                                    Proiezioni attive
-                                    <InfoTooltip message="Residuo futuro e importi scaduti dei contratti associati alle filiali." />
-                                </div>
-                                <p className={`mt-auto pt-2 text-lg font-black ${showProjections ? 'text-slate-900' : 'text-slate-300'}`}>
-                                    {showProjections ? formatCurrency(branchesProjectionsTotal) : '—'}
-                                </p>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                            {metrics.allBranches.map((branch, index) => (
-                                <BranchItem 
-                                    key={branch.id} 
-                                    branch={branch} 
-                                    rank={index}
-                                    onClick={() => {
-                                        if (navigate) {
-                                            navigate('expenses', { branchId: branch.id });
-                                        }
-                                    }}
-                                    totalCommitted={branchesBaselineCommitted}
-                                    includeProjections={showProjections}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {showProjections && overdueList.length > 0 && (
-                    <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-6 lg:p-8 space-y-6">
-                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-                            <div className="flex items-start gap-4">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 via-rose-500 to-orange-500 text-white shadow-lg shadow-rose-500/20 ring-4 ring-rose-500/15">
-                                    <AlertTriangle className="w-6 h-6 lg:w-7 lg:h-7" />
-                                </div>
-                                <div>
-                                    <div className="flex flex-wrap items-center gap-3">
-                                        <h2 className="text-xl lg:text-2xl font-black text-gray-900">Impegni Scaduti</h2>
-                                        <div className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-xs font-bold tracking-[0.16em] text-slate-600 ring-1 ring-inset ring-slate-200">
-                                            {overdueList.length} voci aperte
-                                        </div>
-                                    </div>
-                                    <p className="mt-2 text-sm text-gray-600 font-medium">
-                                        Voci oltre la data programmata senza copertura di spesa registrata.
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full lg:w-auto">
-                                <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 text-sm shadow-sm">
-                                    <p className="text-xs font-semibold text-gray-500 tracking-wide">
-                                        Spesa registrata
-                                    </p>
-                                    <p className="text-lg font-black text-gray-900">
-                                        {formatCurrency(overdueSummary.spentTotal)}
-                                    </p>
-                                </div>
-                                <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 text-sm shadow-sm">
-                                    <p className="text-xs font-semibold text-gray-500 tracking-wide">
-                                        Residuo medio
-                                    </p>
-                                    <p className="text-lg font-black text-gray-900">
-                                        {formatCurrency(overdueList.length ? metrics.spesaPrevistaScaduta / overdueList.length : 0)}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex flex-col justify-between">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-                                    Totale scaduto
-                                    <InfoTooltip message="Somma delle quote già scadute e non ancora coperte da spesa per tutte le voci elencate." />
-                                </div>
-                                <p className="mt-2 text-lg font-black text-slate-900">
-                                    {formatCurrency(metrics.spesaPrevistaScaduta)}
-                                </p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-                                    Residuo futuro
-                                    <InfoTooltip message="Importo residuo pianificato oltre la data odierna per le stesse voci contrattuali." />
-                                </div>
-                                <p className="mt-2 text-lg font-black text-slate-900">
-                                    {overdueSummary.futureTotal > 0 ? formatCurrency(overdueSummary.futureTotal) : '—'}
-                                </p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-                                    Fornitori coinvolti
-                                    <InfoTooltip message="Numero di fornitori coinvolti negli impegni scaduti presenti in questo elenco." />
-                                </div>
-                                <p className="mt-2 text-lg font-black text-slate-900">
-                                    {overdueSummary.supplierCount}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div>
-                            <p className="text-[11px] font-bold text-slate-500 tracking-[0.16em] uppercase mb-3">
-                                Voci più critiche
-                            </p>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
-                                {overdueSummary.preview.map((entry, index) => (
-                                    <div
-                                        key={`${entry.contractId}-${entry.lineItemDescription}-preview-${index}`}
-                                        className="relative rounded-2xl border border-slate-200/60 bg-white/90 p-4 shadow-sm"
-                                    >
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-black text-gray-900 truncate">
-                                                    {entry.supplierName}
-                                                </p>
-                                                <p className="text-xs text-gray-500 truncate">{entry.lineItemDescription}</p>
-                                            </div>
-                                            <span className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 ring-1 ring-inset ring-rose-200 whitespace-nowrap">
-                                                <AlertTriangle className="w-3.5 h-3.5" />
-                                                {formatCurrency(entry.overdueAmount)}
-                                            </span>
-                                        </div>
-                                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold tracking-[0.08em] text-slate-500">
-                                            <span>{entry.branchName || '-'}</span>
-                                            <span>
-                                                {formatDate(entry.startDate)} → {formatDate(entry.endDate)}
-                                            </span>
-                                        </div>
-                                        {entry.futureAmount > 0 && (
-                                            <span className="mt-3 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-600 ring-1 ring-inset ring-indigo-200">
-                                                <TrendingUp className="w-3.5 h-3.5" />
-                                                Residuo futuro {formatCurrency(entry.futureAmount)}
-                                            </span>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {overdueList.length > overdueSummary.preview.length && (
-                            <div className="pt-2">
                                 <button
                                     type="button"
-                                    onClick={() => setIsOverdueExpanded(prev => !prev)}
-                                    className="inline-flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
-                                    aria-expanded={isOverdueExpanded}
+                                    onClick={() => navigate && navigate('contracts')}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/20 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-indigo-900/30 backdrop-blur transition hover:border-white/80 hover:bg-white/30"
                                 >
-                                    {isOverdueExpanded
-                                        ? 'Nascondi elenco completo'
-                                        : `Mostra elenco completo (${overdueList.length})`}
-                                    <ChevronDown
-                                        className={`w-4 h-4 transition-transform ${isOverdueExpanded ? 'rotate-180' : ''}`}
-                                    />
+                                    Vedi tutti i fornitori
+                                    <ChevronRight className="w-4 h-4" />
                                 </button>
                             </div>
-                        )}
 
-                        <div
-                            className={`transition-[max-height] duration-500 ease-in-out overflow-hidden ${
-                                isOverdueExpanded ? 'max-h-[2000px]' : 'max-h-0'
-                            }`}
-                        >
-                            <div
-                                className={`mt-4 overflow-x-auto rounded-2xl border border-rose-100/80 bg-white/80 shadow-inner transition-opacity duration-300 ${
-                                    isOverdueExpanded ? 'opacity-100' : 'opacity-0'
-                                }`}
-                            >
-                                <table className="w-full text-xs">
-                                    <thead className="bg-rose-50 text-rose-700 uppercase text-[11px] font-bold tracking-[0.16em]">
-                                        <tr>
-                                            <th className="px-3 py-2 text-left">Fornitore</th>
-                                            <th className="px-3 py-2 text-left">Contratto</th>
-                                            <th className="px-3 py-2 text-left">Voce</th>
-                                            <th className="px-3 py-2 text-left">Settore</th>
-                                            <th className="px-3 py-2 text-left">Filiale</th>
-                                            <th className="px-3 py-2 text-left">Periodo</th>
-                                            <th className="px-3 py-2 text-right">Totale</th>
-                                            <th className="px-3 py-2 text-right">Speso</th>
-                                            <th className="px-3 py-2 text-right">Scaduto</th>
-                                            <th className="px-3 py-2 text-right">Residuo Futuro</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-rose-100">
-                                        {overdueList.map((entry, index) => (
-                                            <tr
-                                                key={`${entry.contractId}-${entry.lineItemDescription}-${index}`}
-                                                className="bg-white/60 hover:bg-rose-50/60 transition-colors"
-                                            >
-                                                <td className="px-3 py-2 font-semibold text-gray-900 truncate max-w-[190px]">
-                                                    {entry.supplierName}
-                                                </td>
-                                                <td className="px-3 py-2 text-gray-700 truncate max-w-[200px]">
-                                                    {entry.contractDescription}
-                                                </td>
-                                                <td className="px-3 py-2 text-gray-700 truncate max-w-[220px]">
-                                                    {entry.lineItemDescription}
-                                                </td>
-                                                <td className="px-3 py-2 text-gray-600">{entry.sectorName}</td>
-                                                <td className="px-3 py-2 text-gray-600">{entry.branchName || '-'}</td>
-                                                <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
-                                                    {formatDate(entry.startDate)} → {formatDate(entry.endDate)}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">
-                                                    {formatCurrency(entry.lineTotal)}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">
-                                                    {formatCurrency(entry.lineSpent)}
-                                                </td>
-                                                <td className="px-3 py-2 text-right font-bold text-rose-600 whitespace-nowrap">
-                                                    {formatCurrency(entry.overdueAmount)}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-500 whitespace-nowrap">
-                                                    {entry.futureAmount > 0 ? formatCurrency(entry.futureAmount) : '-'}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                            <div className="relative z-10 space-y-6 px-6 pb-6 pt-6">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:gap-6">
+                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex flex-col">
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
+                                            Impegno Top {TOP_SUPPLIERS_LIMIT}
+                                            <InfoTooltip message={showProjections ? `Somma di spesa effettiva e proiezioni per i primi ${TOP_SUPPLIERS_LIMIT} fornitori.` : `Somma della sola spesa effettiva per i primi ${TOP_SUPPLIERS_LIMIT} fornitori.`} />
+                                        </div>
+                                        <p className="mt-auto text-lg font-black text-slate-900">
+                                            {formatCurrency(showProjections ? metrics.totalSuppliersSpent : metrics.topSuppliersSpentOnly)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex flex-col">
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
+                                            Spesa effettiva
+                                            <InfoTooltip message={`Totale della spesa già registrata per i fornitori Top ${TOP_SUPPLIERS_LIMIT}.`} />
+                                        </div>
+                                        <p className="mt-auto text-lg font-black text-slate-900">
+                                            {formatCurrency(metrics.topSuppliersSpentOnly)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex flex-col">
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
+                                            Proiezioni attive
+                                            <InfoTooltip message={`Quote contrattuali future o scadute ancora da coprire per i fornitori Top ${TOP_SUPPLIERS_LIMIT}.`} />
+                                        </div>
+                                        <p className={`mt-auto text-lg font-black ${showProjections ? 'text-slate-900' : 'text-slate-300'}`}>
+                                            {showProjections ? formatCurrency(topSuppliersProjections) : '—'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                    {metrics.topSuppliers.slice(0, 4).map((supplier, index) => (
+                                        <SupplierRankItem
+                                            key={supplier.id}
+                                            supplier={supplier}
+                                            rank={index}
+                                            baselineCommitted={showProjections ? metrics.totalSuppliersSpent : metrics.topSuppliersSpentOnly}
+                                            includeProjections={showProjections}
+                                        />
+                                    ))}
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    </section>
                 )}
+
+                {/* CLASSIFICA FILIALI */}
+                {metrics.allBranches.length > 0 && selectedBranch === 'all' && (
+                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/90 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                        <div className="pointer-events-none absolute inset-0">
+                            <div className="absolute -top-24 left-1/3 h-64 w-64 rounded-full bg-indigo-100/40 blur-3xl" />
+                            <div className="absolute bottom-[-25%] right-0 h-72 w-72 rounded-full bg-purple-100/35 blur-3xl" />
+                        </div>
+                        <div className="relative z-10 flex flex-col">
+                            <div className="flex flex-wrap items-center justify-between gap-4 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 px-6 py-5 text-white">
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                        Classifica filiali
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-lg font-black text-white">Performance filiali</h2>
+                                        <InfoTooltip message="Tutte le sedi aziendali ordinate per spesa effettiva e proiezioni attive." />
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => navigate && navigate('expenses')}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/20 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-indigo-900/30 backdrop-blur transition hover:border-white/80 hover:bg-white/30"
+                                >
+                                    Vedi tutte le filiali
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <div className="relative z-10 space-y-6 px-6 pb-6 pt-6">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:gap-6">
+                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                                            Impegno filiali
+                                            <InfoTooltip message="Somma di spesa e proiezioni di tutte le filiali attive." />
+                                        </div>
+                                        <p className="mt-auto pt-2 text-lg font-black text-slate-900">
+                                            {formatCurrency(showProjections ? metrics.totalBranchesSpent : branchesSpentOnly)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
+                                            Spesa effettiva
+                                            <InfoTooltip message="Importo contabile già registrato sulle filiali." />
+                                        </div>
+                                        <p className="mt-auto pt-2 text-lg font-black text-slate-900">
+                                            {formatCurrency(branchesSpentOnly)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
+                                            Proiezioni attive
+                                            <InfoTooltip message="Residuo futuro e importi scaduti dei contratti associati alle filiali." />
+                                        </div>
+                                        <p className={`mt-auto pt-2 text-lg font-black ${showProjections ? 'text-slate-900' : 'text-slate-300'}`}>
+                                            {showProjections ? formatCurrency(branchesProjectionsTotal) : '—'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                    {visibleBranches.map((branch, index) => (
+                                        <BranchItem 
+                                            key={branch.id} 
+                                            branch={branch} 
+                                            rank={index}
+                                            onClick={() => {
+                                                if (navigate) {
+                                                    navigate('expenses', { branchId: branch.id });
+                                                }
+                                            }}
+                                            totalCommitted={branchesBaselineCommitted}
+                                            includeProjections={showProjections}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                )}
+
                 
             </div>
         </div>

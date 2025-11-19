@@ -23,13 +23,15 @@ import {
     SlidersHorizontal,
     Info,
     Bell,
-    Filter
+    Filter,
+    Pencil,
+    HelpCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
     ResponsiveContainer,
-    BarChart,
-    Bar,
+    AreaChart,
+    Area,
     CartesianGrid,
     XAxis,
     YAxis,
@@ -44,6 +46,58 @@ import { KpiCard } from '../components/SharedComponents';
 import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
 import { DEFAULT_COST_DOMAIN } from '../constants/costDomains';
 import { getTooltipContainerClass } from '../utils/chartTooltipStyles';
+import SortIndicatorIcon from '../components/SortIndicatorIcon';
+
+const InfoTooltip = ({ message }) => {
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const handleClickOutside = (event) => {
+            if (containerRef.current && !containerRef.current.contains(event.target)) {
+                setOpen(false);
+            }
+        };
+        window.addEventListener('mousedown', handleClickOutside);
+        window.addEventListener('touchstart', handleClickOutside);
+        return () => {
+            window.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('touchstart', handleClickOutside);
+        };
+    }, [open]);
+
+    const handleToggle = (event) => {
+        event.stopPropagation();
+        setOpen(prev => !prev);
+    };
+
+    return (
+        <span ref={containerRef} className="relative inline-flex">
+            <button
+                type="button"
+                onClick={handleToggle}
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+                <HelpCircle className="w-3.5 h-3.5" />
+            </button>
+            {open && (
+                <div
+                    role="tooltip"
+                    className="absolute left-1/2 top-full z-30 mt-2 w-max max-w-[240px] -translate-x-1/2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-semibold text-white shadow-xl shadow-slate-900/25"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    {message}
+                </div>
+            )}
+        </span>
+    );
+};
+
+const formatCurrency = (value) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) return '€ 0,00';
+    return value.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+};
 
 const formatDateInput = (year, month, day) => new Date(Date.UTC(year, month, day)).toISOString().split('T')[0];
 
@@ -54,313 +108,199 @@ const BUDGET_ADVANCED_FILTERS = [
     { key: 'overrun', label: 'Oltre 100% / arretrati' }
 ];
 
-const BudgetDateRangeDropdown = ({
-    isOpen,
-    setIsOpen,
-    startDate,
-    endDate,
-    onChange,
-    hasActiveRange,
-    onClear,
-    onToggle
-}) => {
-    const formatDateLabel = (value) => {
-        if (!value) return '—';
-        const parsed = new Date(value);
-        if (Number.isNaN(parsed.getTime())) return value;
-        return parsed.toLocaleDateString('it-IT', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        });
-    };
+const BudgetProgressBar = ({ spent = 0, forecast = 0, budget = 0 }) => {
+    const safeBudget = Math.max(0, budget || 0);
+    const spentPercentage = safeBudget > 0 ? (spent / safeBudget) * 100 : 0;
+    const forecastPercentage = safeBudget > 0 ? (forecast / safeBudget) * 100 : forecast > 0 ? 100 : 0;
+    const totalUtilization = spentPercentage + forecastPercentage;
+    const hasOverrun = totalUtilization >= 100.5;
 
-    const label = hasActiveRange
-        ? `${formatDateLabel(startDate)} → ${formatDateLabel(endDate)}`
-        : 'Seleziona periodo';
+    const clamp = (value) => Math.max(0, Math.min(100, value));
+    let spentWidth = clamp(spentPercentage);
+    let forecastWidth = clamp(forecastPercentage);
+
+    if (hasOverrun) {
+        const total = spentPercentage + forecastPercentage;
+        if (total > 0) {
+            spentWidth = clamp((spentPercentage / total) * 100);
+            forecastWidth = clamp(100 - spentWidth);
+        } else {
+            spentWidth = 50;
+            forecastWidth = 50;
+        }
+    } else if (spentWidth + forecastWidth > 100) {
+        forecastWidth = clamp(100 - spentWidth);
+    }
 
     return (
-        <div className="relative">
-            {isOpen && (
-                <div
-                    className="fixed inset-0 z-[210]"
-                    onClick={() => setIsOpen(false)}
-                />
-            )}
-            <button
-                type="button"
-                onClick={() => {
-                    if (onToggle) {
-                        onToggle();
-                    }
-                    setIsOpen(prev => !prev);
-                }}
-                aria-expanded={isOpen}
-                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
-                    hasActiveRange ? 'ring-2 ring-indigo-100' : ''
+        <div className="relative h-[10px] w-full rounded-full bg-slate-200/70 shadow-inner shadow-slate-300/70 overflow-hidden" role="progressbar" aria-valuenow={Math.min(totalUtilization, 130)} aria-valuemin={0} aria-valuemax={100}>
+            <div className="absolute inset-0 bg-gradient-to-r from-white/25 via-transparent to-white/25 pointer-events-none" />
+            <div
+                className={`absolute inset-y-0 left-0 z-[1] rounded-full transition-all duration-500 ease-out ${
+                    hasOverrun
+                        ? 'bg-gradient-to-r from-rose-500 via-rose-500 to-red-600'
+                        : 'bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500'
                 }`}
-            >
-                <Calendar className="h-4 w-4 text-slate-500" />
-                <span className="whitespace-nowrap">{label}</span>
-                <ArrowUpDown
-                    className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                style={{ width: `${clamp(spentWidth)}%` }}
+            />
+            {forecastWidth > 0 && (
+                <div
+                    className={`absolute inset-y-0 z-[2] rounded-full transition-all duration-500 ease-out ${
+                        hasOverrun
+                            ? 'bg-gradient-to-r from-rose-300 via-rose-400 to-red-400'
+                            : 'bg-gradient-to-r from-amber-400 via-orange-500 to-amber-500'
+                    }`}
+                    style={{
+                        left: `${clamp(spentWidth)}%`,
+                        width: `${clamp(forecastWidth)}%`
+                    }}
                 />
-            </button>
-            {isOpen && (
-                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur">
-                    <div className="space-y-4">
-                        <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                                Intervallo temporale
-                            </p>
-                            <p className="text-xs font-medium text-slate-500">
-                                Definisci il periodo di analisi per budget e proiezioni.
-                            </p>
-                        </div>
-                        <div className="space-y-3">
-                            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-                                Da
-                                <input
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(event) =>
-                                        onChange({
-                                            startDate: event.target.value,
-                                            endDate
-                                        })
-                                    }
-                                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
-                                />
-                            </label>
-                            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-                                A
-                                <input
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(event) =>
-                                        onChange({
-                                            startDate,
-                                            endDate: event.target.value
-                                        })
-                                    }
-                                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
-                                />
-                            </label>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <button
-                                type="button"
-                                onClick={onClear}
-                                className="text-xs font-semibold text-indigo-500 transition hover:text-rose-500"
-                            >
-                                Pulisci
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setIsOpen(false)}
-                                className="inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-100"
-                            >
-                                <Check className="h-3.5 w-3.5" />
-                                Chiudi
-                            </button>
-                        </div>
-                    </div>
-                </div>
             )}
+            <div className="absolute inset-0 z-[3] rounded-full border border-white/30" />
         </div>
     );
 };
 
-const SupplierTableView = ({ suppliers, onManage, sectorMap, showProjections, sortConfig, onSort }) => {
+const SupplierTableView = React.memo(({
+    suppliers,
+    onManage,
+    sectorMap,
+    showProjections,
+    sortConfig,
+    onSort
+}) => {
     const columns = [
-        { key: "supplier", label: "Fornitore", className: "px-4 py-3 text-left", sortable: true },
-        { key: "sector", label: "Settori", className: "px-4 py-3 text-left hidden lg:table-cell", sortable: true },
-        { key: "utilization", label: "Utilizzo", className: "px-4 py-3 text-left hidden md:table-cell", sortable: true },
-        { key: "budget", label: "Budget", className: "px-4 py-3 text-right", sortable: true },
-        { key: "spend", label: "Speso", className: "px-4 py-3 text-right", sortable: true },
+        { key: 'supplier', label: 'FORNITORE', align: 'text-left' },
+        { key: 'sector', label: 'SETTORI', align: 'text-left' },
+        { key: 'progress', label: 'PROGRESSO', align: 'text-left' },
+        { key: 'budget', label: 'BUDGET', align: 'text-right' },
+        { key: 'spend', label: 'SPESA', align: 'text-right' },
+        ...(showProjections ? [{ key: 'forecast', label: 'PREVISIONI', align: 'text-right' }] : []),
+        { key: 'overdue', label: 'SCADUTI', align: 'text-right' },
+        { key: 'actions', label: 'AZIONI', align: 'text-center' }
     ];
-    if (showProjections) {
-        columns.push({ key: "overdue", label: "Scaduto", className: "px-4 py-3 text-right", sortable: true });
-        columns.push({ key: "forecast", label: "Proiezioni", className: "px-4 py-3 text-right", sortable: true });
-    }
-    columns.push({ key: "actions", label: "Azioni", className: "px-4 py-3 text-center", sortable: false });
 
-    const handleSort = (key) => {
-        if (typeof onSort === "function") {
-            onSort(key);
+    const getSectorNames = (item) =>
+        (item.associatedSectors || [])
+            .map(id => sectorMap.get(id))
+            .filter(Boolean)
+            .join(', ') || '—';
+
+    const handleSort = (columnKey) => {
+        if (columnKey === 'actions') return;
+        if (typeof onSort === 'function') {
+            onSort(columnKey);
         }
     };
 
-    const renderIndicator = (columnKey) => {
-        const isActive = sortConfig?.key === columnKey;
-        const direction = sortConfig?.direction || "asc";
-        return (
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 12 12"
-                className={`h-3 w-3 text-white transition-opacity ${isActive ? "opacity-100" : "opacity-40"}`}
-            >
-                <path
-                    d={direction === "asc" ? "M6 2l3.5 4h-7L6 2z" : "M6 10l-3.5-4h7L6 10z"}
-                    fill="currentColor"
-                />
-            </svg>
-        );
-    };
-
     return (
-        <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl shadow-slate-200/60">
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm text-slate-700">
-                    <thead className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white uppercase text-[11px] font-bold tracking-[0.16em]">
-                        <tr>
-                            {columns.map((column) => {
-                                if (!column.sortable) {
-                                    return (
-                                        <th key={column.key} className={column.className}>
-                                            {column.label}
-                                        </th>
-                                    );
-                                }
-
-                                const isActive = sortConfig?.key === column.key;
-                                const direction = sortConfig?.direction || 'asc';
-                                const isRightAligned = column.className.includes('text-right');
-
-                                return (
-                                    <th
-                                        key={column.key}
-                                        className={column.className}
-                                        aria-sort={
-                                            isActive
-                                                ? direction === 'asc'
-                                                    ? 'ascending'
-                                                    : 'descending'
-                                                : 'none'
-                                        }
+        <div className="overflow-x-auto rounded-2xl border border-emerald-100 bg-white shadow-inner shadow-emerald-100/40">
+            <table className="min-w-full divide-y divide-emerald-100 text-sm text-slate-900">
+                <thead className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-[11px] font-bold uppercase tracking-[0.16em] text-white">
+                    <tr>
+                        {columns.map(column => (
+                            <th
+                                key={column.key}
+                                className={`px-3 py-3 ${column.align} whitespace-nowrap`}
+                            >
+                                {column.key === 'actions' ? (
+                                    column.label
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSort(column.key)}
+                                        className="inline-flex items-center gap-1"
                                     >
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSort(column.key)}
-                                            className={`group flex w-full items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/90 transition hover:text-white ${
-                                                isRightAligned ? 'justify-end' : 'justify-start'
-                                            }`}
-                                        >
-                                            <span className="truncate">{column.label}</span>
-                                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white/10 text-white group-hover:bg-white/20">
-                                                {renderIndicator(column.key)}
-                                            </span>
-                                        </button>
-                                    </th>
-                                );
-                            })}
-                        </tr>
-                    </thead>
-                <tbody className="divide-y divide-slate-100">
-                    {suppliers.map((supplier) => {
+                                        {column.label}
+                                        <SortIndicatorIcon
+                                            active={sortConfig?.key === column.key}
+                                            direction={sortConfig?.direction || 'asc'}
+                                        />
+                                    </button>
+                                )}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-emerald-50">
+                    {suppliers.map((supplier, index) => {
                         const budgetValue = supplier.displayBudget || 0;
-                        const spendPercent = budgetValue > 0
-                            ? (supplier.displaySpend / budgetValue) * 100
-                            : 0;
-                        const overdueAmount = supplier.overdue || 0;
-                        const sectorNames = (supplier.associatedSectors || []).map(id => sectorMap.get(id)).filter(Boolean);
-                        const futureAmount = supplier.projections || 0;
-                        const overduePercent = budgetValue > 0
-                            ? (overdueAmount / budgetValue) * 100
-                            : 0;
-                        const totalPercent = spendPercent + overduePercent;
-                        const spendWidth = Math.min(Math.max(spendPercent, 0), 100);
-                        const overdueWidth = Math.min(
-                            Math.max(overduePercent, 0),
-                            Math.max(0, 100 - spendWidth)
-                        );
-                        const isOverrun = totalPercent >= 101;
-                        const hasMeaningfulOverdue = overduePercent >= 0.5;
-                        const utilizationLabel = hasMeaningfulOverdue
-                            ? `${Math.round(spendPercent)}% + ${Math.round(overduePercent)}%`
-                            : `${Math.round(totalPercent)}%`;
+                        const spentValue = supplier.displaySpend || 0;
+                        const forecastValue = showProjections ? (supplier.projections || 0) : 0;
+                        const isExtraBudget = budgetValue <= 0;
+                        const spentPercentage = budgetValue > 0 ? (spentValue / budgetValue) * 100 : spentValue > 0 ? 150 : 0;
+                        const forecastPercentage = budgetValue > 0 ? (forecastValue / budgetValue) * 100 : forecastValue > 0 ? 150 : 0;
+                        const totalPercentage = spentPercentage + forecastPercentage;
+                        const hasMeaningfulForecast = forecastPercentage >= 0.5;
+                        const progressLabel = isExtraBudget
+                            ? 'Extra Budget'
+                            : Number.isFinite(totalPercentage)
+                            ? (hasMeaningfulForecast
+                                ? `${Math.round(spentPercentage)}% + ${Math.round(forecastPercentage)}%`
+                                : `${Math.round(spentPercentage)}%`)
+                            : 'N/D';
+                        const isOverrun = !isExtraBudget && (Number.isFinite(totalPercentage)
+                            ? totalPercentage >= 101
+                            : spentValue > 0);
 
                         return (
-                            <tr key={supplier.id} className="bg-white/80 hover:bg-emerald-50/30 transition-colors">
-                                <td className="px-4 py-3">
-                                    <p className="min-w-0 max-w-xs truncate font-semibold text-slate-900">{supplier.name || 'N/D'}</p>
+                            <tr
+                                key={supplier.supplierId || `supplier-${index}`}
+                                className="hover:bg-emerald-50/60 transition-colors"
+                            >
+                                <td className="px-3 py-3 text-left font-semibold text-slate-900">
+                                    {supplier.name || 'Fornitore'}
                                 </td>
-                                <td className="px-4 py-3 hidden lg:table-cell text-sm text-slate-600">
-                                    {sectorNames.length > 0 ? sectorNames.join(', ') : '—'}
+                                <td className="px-3 py-3 text-left font-semibold text-slate-900">
+                                    {getSectorNames(supplier)}
                                 </td>
-                                <td className="px-4 py-3 hidden md:table-cell">
-                                    {supplier.displayBudget > 0 ? (
-                                        <div className="flex items-center gap-3">
-                                            <div
-                                                className="relative h-[10px] w-40 rounded-full bg-slate-200/60 shadow-inner shadow-slate-300/60 overflow-hidden"
-                                                role="progressbar"
-                                                aria-valuenow={Math.round(Math.min(totalPercent, 130))}
-                                                aria-valuemin={0}
-                                                aria-valuemax={100}
-                                            >
-                                                <div className="absolute inset-0 bg-gradient-to-r from-white/30 via-transparent to-white/30 pointer-events-none" />
-                                                {isOverrun ? (
-                                                    <div
-                                                        className="absolute inset-y-0 left-0 z-[2] rounded-full bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 transition-all duration-500 ease-out"
-                                                        style={{ width: '100%' }}
-                                                    />
-                                                ) : (
-                                                    <>
-                                                        <div
-                                                            className="absolute inset-y-0 left-0 z-[1] rounded-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500 transition-all duration-500 ease-out"
-                                                            style={{ width: `${spendWidth}%` }}
-                                                        />
-                                                        <div
-                                                            className="absolute inset-y-0 z-[2] rounded-full bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 transition-all duration-500 ease-out"
-                                                            style={{
-                                                                left: `${spendWidth}%`,
-                                                                width: `${overdueWidth}%`
-                                                            }}
-                                                        />
-                                                    </>
-                                                )}
-                                                <div className="absolute inset-0 z-[5] rounded-full border border-white/30" aria-hidden="true" />
-                                            </div>
-                                            <span className={`inline-flex items-center gap-1 text-xs font-bold ${isOverrun ? 'text-rose-600' : 'text-slate-600'}`}>
-                                                {isOverrun && (
-                                                    <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
-                                                )}
-                                                {utilizationLabel}
-                                            </span>
-                                        </div>
-                                    ) : supplier.displaySpend > 0 ? (
-                                        <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white/90 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-600 shadow-sm shadow-amber-100/40">
-                                            <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                                <td className="px-3 py-3 text-left">
+                                    {isExtraBudget ? (
+                                        <span className="inline-flex items-center rounded-2xl border border-emerald-200/70 bg-emerald-50/80 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-600 shadow-inner shadow-emerald-100">
                                             Extra Budget
                                         </span>
                                     ) : (
-                                        <span className="text-xs font-semibold text-slate-400">—</span>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-36">
+                                                <BudgetProgressBar
+                                                    spent={spentValue}
+                                                    forecast={forecastValue}
+                                                    budget={budgetValue}
+                                                />
+                                            </div>
+                                            <span className={`inline-flex items-center gap-1 text-xs font-semibold ${isOverrun ? 'text-rose-600' : 'text-slate-900'}`}>
+                                                {isOverrun && <AlertTriangle className="h-3.5 w-3.5" />}
+                                                {progressLabel}
+                                            </span>
+                                        </div>
                                     )}
                                 </td>
-                                <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">
-                                    {formatCurrency(supplier.displayBudget)}
+                                <td className="px-3 py-3 text-right font-semibold text-slate-900">
+                                    {formatCurrency(supplier.displayBudget || 0)}
                                 </td>
-                                <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">
-                                    {formatCurrency(supplier.displaySpend)}
+                                <td className="px-3 py-3 text-right font-semibold text-slate-900">
+                                    {formatCurrency(supplier.displaySpend || 0)}
                                 </td>
                                 {showProjections && (
-                                    <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">
-                                        {overdueAmount > 0 ? formatCurrency(overdueAmount) : '—'}
+                                    <td className="px-3 py-3 text-right font-semibold text-slate-900">
+                                        {formatCurrency(supplier.projections || 0)}
                                     </td>
                                 )}
-                                {showProjections && (
-                                    <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">
-                                        {futureAmount > 0 ? formatCurrency(futureAmount) : '—'}
-                                    </td>
-                                )}
-                                <td className="px-4 py-3 text-center">
-                                    <button
-                                        onClick={() => onManage(supplier)}
-                                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-600 transition-all hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"
-                                        title="Gestisci allocazione"
-                                    >
-                                        <Settings className="w-4 h-4" />
-                                    </button>
+                                <td className="px-3 py-3 text-right font-semibold text-slate-900">
+                                    {formatCurrency(supplier.overdue || 0)}
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                    <div className="flex items-center justify-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => onManage(supplier)}
+                                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-600 transition-all hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"
+                                            title="Gestisci fornitore"
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                            <span className="sr-only">Gestisci</span>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         );
@@ -368,11 +308,9 @@ const SupplierTableView = ({ suppliers, onManage, sectorMap, showProjections, so
                 </tbody>
             </table>
         </div>
-    </div>
-);
-};
+    );
+});
 
-const formatCurrency = (value) => (value || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 
 export default function BudgetPage() {
     const [year, setYear] = useState(() => new Date().getFullYear());
@@ -414,7 +352,6 @@ export default function BudgetPage() {
     const [presetName, setPresetName] = useState('');
     const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
     const [isFiltersPresetPanelOpen, setIsFiltersPresetPanelOpen] = useState(false);
-    const [isDatePanelOpen, setIsDatePanelOpen] = useState(false);
     const [advancedFilter, setAdvancedFilter] = useState('');
     const [isAdvancedPanelOpen, setIsAdvancedPanelOpen] = useState(false);
     const marketingExpenses = useMemo(
@@ -771,8 +708,13 @@ export default function BudgetPage() {
         };
 
         const getUtilization = (item) => {
-            if (item.displayBudget > 0) {
-                return (item.displaySpend / item.displayBudget) * 100;
+            const budgetValue = item.displayBudget || 0;
+            const forecastValue = showProjections ? (item.projections || 0) : 0;
+            if (budgetValue > 0) {
+                return ((item.displaySpend + forecastValue) / budgetValue) * 100;
+            }
+            if ((item.displaySpend || 0) + forecastValue > 0) {
+                return 150;
             }
             return 0;
         };
@@ -791,6 +733,7 @@ export default function BudgetPage() {
                     return item.overdue || 0;
                 case 'forecast':
                     return item.projections || 0;
+                case 'progress':
                 case 'utilization':
                     return getUtilization(item);
                 default:
@@ -821,17 +764,24 @@ export default function BudgetPage() {
         advancedFilter,
         contractProjections,
         sortConfig,
-        sectorMap
+        sectorMap,
+        showProjections
     ]);
 
     const supplierBarPalette = useMemo(
-        () => ['#10B981', '#059669', '#047857', '#14B8A6', '#22D3EE', '#2DD4BF'],
-        []
-    );
+    () => ['#10B981', '#059669', '#047857', '#14B8A6', '#22D3EE', '#2DD4BF'],
+    []
+);
 
-    const supplierBarData = useMemo(() => {
-        return displayData
+const supplierBarData = useMemo(() => {
+        const computeValue = (item) =>
+            (item.displaySpend || 0) + (showProjections ? (item.overdue || 0) : 0);
+
+        const prioritized = [...displayData]
             .filter(item => (item.displaySpend || 0) > 0 || (showProjections && ((item.overdue || 0) > 0)))
+            .sort((a, b) => computeValue(b) - computeValue(a));
+
+        return prioritized
             .slice(0, 6)
             .map((item, index) => ({
                 id: item.supplierId || item.id || index,
@@ -842,6 +792,48 @@ export default function BudgetPage() {
                 color: supplierBarPalette[index % supplierBarPalette.length]
             }));
     }, [displayData, showProjections, supplierBarPalette]);
+
+    const supplierInsights = useMemo(() => {
+        if (supplierBarData.length === 0) {
+            return {
+                topShare: 0,
+                overBudgetValue: 0,
+                overBudgetCount: 0,
+                extraBudgetValue: 0
+            };
+        }
+
+        const topEntry = supplierBarData[0];
+        const topTotal = (topEntry.spend || 0) + (showProjections ? (topEntry.overdue || 0) : 0);
+        const grandTotal = supplierBarData.reduce(
+            (sum, entry) => sum + (entry.spend || 0) + (showProjections ? (entry.overdue || 0) : 0),
+            0
+        );
+        const overBudgetSuppliers = supplierBarData.filter(
+            (entry) =>
+                (entry.budget || 0) > 0 &&
+                (entry.spend || 0) + (showProjections ? (entry.overdue || 0) : 0) > (entry.budget || 0)
+        );
+        const overBudgetValue = overBudgetSuppliers.reduce(
+            (sum, entry) =>
+                sum +
+                Math.max(
+                    0,
+                    (entry.spend || 0) + (showProjections ? (entry.overdue || 0) : 0) - (entry.budget || 0)
+                ),
+            0
+        );
+        const extraBudgetValue = supplierBarData
+            .filter((entry) => (entry.budget || 0) <= 0)
+            .reduce((sum, entry) => sum + (entry.spend || 0) + (showProjections ? (entry.overdue || 0) : 0), 0);
+
+        return {
+            topShare: grandTotal > 0 ? (topTotal / grandTotal) * 100 : 0,
+            overBudgetValue,
+            overBudgetCount: overBudgetSuppliers.length,
+            extraBudgetValue
+        };
+    }, [supplierBarData, showProjections]);
 
     const sectorDistributionData = useMemo(() => {
         const totals = new Map();
@@ -890,20 +882,32 @@ export default function BudgetPage() {
         [sectorDistributionData]
     );
 
+    const sectorAreaData = useMemo(
+        () => sectorDistributionData.map(entry => ({
+            name: entry.name,
+            value: entry.value,
+            color: entry.color
+        })),
+        [sectorDistributionData]
+    );
+
     const renderSupplierTooltip = useCallback(({ active, payload }) => {
         if (!active || !payload || payload.length === 0) {
             return null;
         }
 
-        const spendEntry = payload.find(item => item.dataKey === 'spend');
-        const overdueEntry = payload.find(item => item.dataKey === 'overdue');
-        const budget = payload[0]?.payload?.budget || 0;
-        const total = (payload[0]?.payload?.spend || 0) + (payload[0]?.payload?.overdue || 0);
+        const data = payload[0]?.payload;
+        if (!data) return null;
+
+        const spendValue = data.spend || 0;
+        const forecastValue = showProjections ? (data.forecast || 0) : 0;
+        const budget = data.budget || 0;
+        const total = spendValue + forecastValue;
 
         return (
             <div className={getTooltipContainerClass('emerald')}>
                 <p className="text-sm font-bold text-slate-900">
-                    {payload[0]?.payload?.name}
+                    {data.name || 'Fornitore'}
                 </p>
                 <div className="mt-2 space-y-1 text-xs font-semibold text-slate-600">
                     <div className="flex items-center justify-between gap-6">
@@ -911,15 +915,15 @@ export default function BudgetPage() {
                             <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
                             Speso
                         </span>
-                        <span>{formatCurrency(spendEntry?.value || 0)}</span>
+                        <span>{formatCurrency(spendValue)}</span>
                     </div>
                     {showProjections && (
                         <div className="flex items-center justify-between gap-6">
                             <span className="flex items-center gap-2 text-amber-600">
                                 <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
-                                Scaduto
+                                Previsioni
                             </span>
-                            <span>{formatCurrency(overdueEntry?.value || 0)}</span>
+                            <span>{formatCurrency(forecastValue)}</span>
                         </div>
                     )}
                     <div className="flex items-center justify-between gap-6">
@@ -1165,7 +1169,6 @@ export default function BudgetPage() {
         setIsAdvancedPanelOpen(false);
         setPresetName('');
         setIsFiltersPresetPanelOpen(false);
-        setIsDatePanelOpen(false);
         toast.success("Filtri resettati!");
     };
 
@@ -1253,146 +1256,124 @@ export default function BudgetPage() {
                                 <div className="flex flex-wrap items-center gap-3" />
                             </div>
                             <div className="flex items-center justify-end">
-                                <div className="flex flex-col items-end gap-3">
-                                    <div className="inline-flex items-center gap-3 rounded-2xl border border-white/30 bg-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/85 shadow-lg shadow-emerald-900/20 backdrop-blur-sm">
-                                        <Calendar className="w-4 h-4" />
-                                        Anno
-                                        <select
-                                            value={year}
-                                            onChange={(e) => handleYearChange(parseInt(e.target.value, 10))}
-                                            className="bg-transparent text-[11px] font-bold uppercase tracking-[0.2em] text-white focus:outline-none"
-                                        >
-                                            {[0, -1, -2].map(offset => {
-                                                const y = new Date().getFullYear() + offset;
-                                                return (
-                                                    <option key={y} value={y}>
-                                                        {y}
-                                                    </option>
-                                                );
-                                            })}
-                                        </select>
-                                    </div>
-                                    <div className="relative">
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsNotificationsPanelOpen((prev) => !prev)}
-                                            className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] shadow-lg backdrop-blur-sm transition-all ${
-                                                notificationCount > 0
-                                                    ? 'bg-white/15 text-white hover:bg-white/25 shadow-emerald-900/30'
-                                                    : 'bg-white/10 text-white/60 hover:bg-white/15 shadow-emerald-900/10'
-                                            }`}
-                                        >
-                                            <Bell className="w-4 h-4" />
-                                            {notificationCount} Notifiche
-                                        </button>
-                                        {isNotificationsPanelOpen && (
-                                            <>
-                                                <div
-                                                    className="absolute inset-0 z-40"
-                                                    onClick={() => setIsNotificationsPanelOpen(false)}
-                                                />
-                                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-md rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-emerald-900/30 backdrop-blur sm:w-[24rem] space-y-4">
-                                                    {globalKpis.hasOverrunRisk && (
-                                                        <div className="space-y-3 rounded-2xl border border-rose-100 bg-rose-50/80 p-4">
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div>
-                                                                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
-                                                                        Rischio budget globale
-                                                                    </p>
-                                                                    <h3 className="text-sm font-black text-slate-900">
-                                                                        {formatCurrency(globalKpis.totalForecast)} previsti · Master {formatCurrency(globalKpis.totalMasterBudget)}
-                                                                    </h3>
-                                                                </div>
-                                                                <span className="inline-flex items-center gap-2 rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-600">
-                                                                    <AlertTriangle className="h-3.5 w-3.5" />
-                                                                    {formatCurrency(globalOverrunAmount)}
-                                                                </span>
-                                                            </div>
-                                                            <p className="text-xs font-medium text-slate-600">
-                                                                Con le proiezioni attuali potresti superare il budget master disponibile. Valuta una riallocazione o una revisione degli importi assegnati.
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                    {budgetAlerts.length > 0 && (
-                                                        <div className="space-y-3">
-                                                            <div className="flex items-center justify-between">
-                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-500">
-                                                                    Alert attivi
-                                                                </p>
-                                                                <span className="text-xs font-bold text-emerald-600">
-                                                                    Totale {formatCurrency(totalBudgetAlertsAmount)}
-                                                                </span>
-                                                            </div>
-                                                            <div className="max-h-56 space-y-3 overflow-y-auto pr-1">
-                                                                {budgetAlerts.map(alert => {
-                                                                    const isCritical = alert.type === 'critical';
-                                                                    const isWarning = alert.type === 'warning';
-                                                                    const accent = isCritical
-                                                                        ? 'text-rose-600'
-                                                                        : isWarning
-                                                                            ? 'text-amber-600'
-                                                                            : 'text-emerald-600';
-                                                                    const badgeBg = isCritical
-                                                                        ? 'bg-rose-50 border-rose-100'
-                                                                        : isWarning
-                                                                            ? 'bg-amber-50 border-amber-100'
-                                                                            : 'bg-emerald-50 border-emerald-100';
-                                                                    return (
-                                                                        <div
-                                                                            key={alert.key}
-                                                                            className="space-y-2 rounded-2xl border border-slate-100 bg-white/95 p-4 shadow-inner shadow-slate-100/60"
-                                                                        >
-                                                                            <div className="space-y-1">
-                                                                                <h4 className="text-sm font-black text-slate-900">{alert.title}</h4>
-                                                                                <p className="text-xs font-medium text-slate-600">
-                                                                                    {alert.description}
-                                                                                </p>
-                                                                            </div>
-                                                                            <div className={`rounded-xl px-3 py-2 text-right ${badgeBg}`}>
-                                                                                <p className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${accent}`}>
-                                                                                    {alert.totalLabel}
-                                                                                </p>
-                                                                                <p className={`text-base font-black ${accent}`}>
-                                                                                    {formatCurrency(alert.totalAmount)}
-                                                                                </p>
-                                                                            </div>
-                                                                            {alert.items?.length > 0 && (
-                                                                                <div className="grid grid-cols-1 gap-2">
-                                                                                    {alert.items.map(item => (
-                                                                                        <div
-                                                                                            key={item.id || item.name}
-                                                                                            className="flex items-center justify-between rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm"
-                                                                                        >
-                                                                                            <span className="truncate max-w-[160px]">{item.name}</span>
-                                                                                            <span className={`font-bold ${accent}`}>
-                                                                                                {formatCurrency(item.amount)}
-                                                                                            </span>
-                                                                                        </div>
-                                                                                    ))}
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    {notificationCount === 0 && (
-                                                        <p className="text-sm font-semibold text-slate-600">
-                                                            Nessuna notifica disponibile.
-                                                        </p>
-                                                    )}
-                                                    <button
-                                                        type="button"
+                                <div className="flex flex-col items-end gap-3 w-full sm:w-auto">
+                                    {notificationCount > 0 && (
+                                        <div className="relative w-full">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsNotificationsPanelOpen((prev) => !prev)}
+                                                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold shadow-lg shadow-emerald-900/30 backdrop-blur-sm transition-all bg-white/15 text-white hover:bg-white/25"
+                                            >
+                                                <Bell className="w-4 h-4" />
+                                                Notifiche
+                                                <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/90 px-2 text-xs font-bold text-emerald-600">
+                                                    {notificationCount}
+                                                </span>
+                                            </button>
+                                            {isNotificationsPanelOpen && (
+                                                <>
+                                                    <div
+                                                        className="absolute inset-0 z-40"
                                                         onClick={() => setIsNotificationsPanelOpen(false)}
-                                                        className="w-full rounded-xl border border-emerald-200 bg-emerald-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-600 transition hover:bg-emerald-100"
-                                                    >
-                                                        Chiudi notifiche
-                                                    </button>
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
+                                                    />
+                                                    <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-md rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-emerald-900/30 backdrop-blur sm:w-[24rem] space-y-4">
+                                                        {globalKpis.hasOverrunRisk && (
+                                                            <div className="space-y-3 rounded-2xl border border-rose-100 bg-rose-50/80 p-4">
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                    <div>
+                                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                                                                            Rischio budget globale
+                                                                        </p>
+                                                                        <h3 className="text-sm font-black text-slate-900">
+                                                                            {formatCurrency(globalKpis.totalForecast)} previsti · Master {formatCurrency(globalKpis.totalMasterBudget)}
+                                                                        </h3>
+                                                                    </div>
+                                                                    <span className="inline-flex items-center gap-2 rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-600">
+                                                                        <AlertTriangle className="h-3.5 w-3.5" />
+                                                                        {formatCurrency(globalOverrunAmount)}
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-xs font-medium text-slate-600">
+                                                                    Con le proiezioni attuali potresti superare il budget master disponibile. Valuta una riallocazione o una revisione degli importi assegnati.
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        {budgetAlerts.length > 0 && (
+                                                            <div className="space-y-3">
+                                                                <div className="flex items-center justify-between">
+                                                                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-500">
+                                                                        Alert attivi
+                                                                    </p>
+                                                                    <span className="text-xs font-bold text-emerald-600">
+                                                                        Totale {formatCurrency(totalBudgetAlertsAmount)}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="max-h-56 space-y-3 overflow-y-auto pr-1">
+                                                                    {budgetAlerts.map(alert => {
+                                                                        const isCritical = alert.type === 'critical';
+                                                                        const isWarning = alert.type === 'warning';
+                                                                        const accent = isCritical
+                                                                            ? 'text-rose-600'
+                                                                            : isWarning
+                                                                                ? 'text-amber-600'
+                                                                                : 'text-emerald-600';
+                                                                        const badgeBg = isCritical
+                                                                            ? 'bg-rose-50 border-rose-100'
+                                                                            : isWarning
+                                                                                ? 'bg-amber-50 border-amber-100'
+                                                                                : 'bg-emerald-50 border-emerald-100';
+                                                                        return (
+                                                                            <div
+                                                                                key={alert.key}
+                                                                                className="space-y-2 rounded-2xl border border-slate-100 bg-white/95 p-4 shadow-inner shadow-slate-100/60"
+                                                                            >
+                                                                                <div className="space-y-1">
+                                                                                    <h4 className="text-sm font-black text-slate-900">{alert.title}</h4>
+                                                                                    <p className="text-xs font-medium text-slate-600">
+                                                                                        {alert.description}
+                                                                                    </p>
+                                                                                </div>
+                                                                                <div className="flex items-center justify-between">
+                                                                                    <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${badgeBg} ${accent}`}>
+                                                                                        {alert.typeLabel}
+                                                                                    </span>
+                                                                                    <p className={`text-base font-black ${accent}`}>
+                                                                                        {formatCurrency(alert.totalAmount)}
+                                                                                    </p>
+                                                                                </div>
+                                                                                {alert.items?.length > 0 && (
+                                                                                    <div className="grid grid-cols-1 gap-2">
+                                                                                        {alert.items.map(item => (
+                                                                                            <div
+                                                                                                key={item.id || item.name}
+                                                                                                className="flex items-center justify-between rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm"
+                                                                                            >
+                                                                                                <span className="truncate max-w-[160px]">{item.name}</span>
+                                                                                                <span className={`font-bold ${accent}`}>
+                                                                                                    {formatCurrency(item.amount)}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setIsNotificationsPanelOpen(false)}
+                                                            className="w-full rounded-xl border border-emerald-200 bg-emerald-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-600 transition hover:bg-emerald-100"
+                                                        >
+                                                            Chiudi notifiche
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1400,10 +1381,10 @@ export default function BudgetPage() {
                 </div>
 
                 {/* Sezione Filtri */}
-                <section className="relative z-20 rounded-3xl border border-white/70 bg-gradient-to-r from-slate-300/90 via-slate-200/85 to-slate-300/80 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
+                <section className="relative z-20 rounded-3xl border border-white/80 bg-gradient-to-r from-slate-300/95 via-slate-100/90 to-white/90 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
                     <div className="pointer-events-none absolute inset-0">
-                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-white/45 blur-3xl" />
-                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-400/40 blur-3xl" />
+                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-indigo-100/35 blur-3xl" />
+                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-200/55 blur-3xl" />
                     </div>
                     <div className="relative z-10 flex flex-wrap lg:flex-nowrap items-center justify-center gap-3 lg:gap-4 w-full max-w-6xl mx-auto">
                         <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
@@ -1416,25 +1397,23 @@ export default function BudgetPage() {
                                 className="w-full bg-transparent text-sm font-semibold text-slate-700 placeholder:text-slate-600 focus:outline-none"
                             />
                         </div>
-                        <BudgetDateRangeDropdown
-                            isOpen={isDatePanelOpen}
-                            setIsOpen={setIsDatePanelOpen}
-                            startDate={startDate}
-                            endDate={endDate}
-                            hasActiveRange={startDate !== defaultStartDate || endDate !== defaultEndDate}
-                            onChange={({ startDate: newStart, endDate: newEnd }) => {
-                                setStartDate(newStart);
-                                setEndDate(newEnd);
-                            }}
-                            onClear={() => {
-                                setStartDate(defaultStartDate);
-                                setEndDate(defaultEndDate);
-                            }}
-                            onToggle={() => {
-                                setIsFiltersPresetPanelOpen(false);
-                                setIsAdvancedPanelOpen(false);
-                            }}
-                        />
+                        <div className="flex min-w-[170px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <Calendar className="h-4 w-4 text-slate-600" />
+                            <select
+                                value={year}
+                                onChange={(e) => handleYearChange(parseInt(e.target.value, 10))}
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                            >
+                                {[0, -1, -2].map(offset => {
+                                    const y = new Date().getFullYear() + offset;
+                                    return (
+                                        <option key={y} value={y}>
+                                            {y}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                        </div>
                         <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
                             <Layers className="h-4 w-4 text-slate-600" />
                             <select
@@ -1474,8 +1453,7 @@ export default function BudgetPage() {
                                 onClick={() => {
                                     setIsAdvancedPanelOpen(prev => !prev);
                                     setIsFiltersPresetPanelOpen(false);
-                                    setIsDatePanelOpen(false);
-                                }}
+                                                            }}
                                 aria-expanded={isAdvancedPanelOpen}
                                 className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
                                     advancedFilter ? 'ring-2 ring-indigo-100' : ''
@@ -1552,8 +1530,7 @@ export default function BudgetPage() {
                                 onClick={() => {
                                     setIsFiltersPresetPanelOpen(prev => !prev);
                                     setIsAdvancedPanelOpen(false);
-                                    setIsDatePanelOpen(false);
-                                }}
+                                                            }}
                                 aria-expanded={isFiltersPresetPanelOpen}
                                 className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
                                     isFiltersPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
@@ -1692,11 +1669,11 @@ export default function BudgetPage() {
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
                         <div className="flex flex-col">
-                            <div className="rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-emerald-100/70 via-white/90 to-teal-100/50 px-6 py-5">
-                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-500">
+                            <div className="rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 px-6 py-5 text-white">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
                                     Analisi fornitori
                                 </p>
-                                <h2 className="text-lg font-black text-slate-900">
+                                <h2 className="text-lg font-black text-white">
                                     Principali canali · Spesa vs scostamenti
                                 </h2>
                             </div>
@@ -1704,72 +1681,69 @@ export default function BudgetPage() {
                                 <div className="flex-1">
                                     {supplierBarData.length > 0 ? (
                                         <ResponsiveContainer width="100%" height={320}>
-                                            <BarChart
+                                            <AreaChart
                                                 data={supplierBarData}
-                                                layout="vertical"
-                                                margin={{ top: 12, right: 16, left: 0, bottom: 12 }}
-                                                barGap={0}
-                                                barCategoryGap={20}
+                                                stackOffset="none"
+                                                margin={{ top: 12, right: 8, left: -12, bottom: 0 }}
                                             >
                                                 <defs>
-                                                    {supplierBarData.map((entry) => (
-                                                        <linearGradient
-                                                            key={`supplier-gradient-${entry.id}`}
-                                                            id={`supplier-gradient-${entry.id}`}
-                                                            x1="0"
-                                                            y1="1"
-                                                            x2="1"
-                                                            y2="1"
-                                                        >
-                                                            <stop offset="0%" stopColor={entry.color} stopOpacity={0.7} />
-                                                            <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
-                                                        </linearGradient>
-                                                    ))}
-                                                    <linearGradient id="supplier-overdue-gradient" x1="0" y1="1" x2="1" y2="1">
-                                                        <stop offset="0%" stopColor="#fbbf24" stopOpacity={0.7} />
-                                                        <stop offset="100%" stopColor="#f97316" stopOpacity={1} />
+                                                    <linearGradient id="supplier-spend-gradient" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="0%" stopColor="#10B981" stopOpacity={0.95} />
+                                                        <stop offset="100%" stopColor="#34D399" stopOpacity={0.35} />
+                                                    </linearGradient>
+                                                    <linearGradient id="supplier-forecast-gradient" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="0%" stopColor="#F97316" stopOpacity={0.9} />
+                                                        <stop offset="100%" stopColor="#FDBA74" stopOpacity={0.35} />
                                                     </linearGradient>
                                                 </defs>
-                                                <CartesianGrid stroke="rgba(15,23,42,0.05)" vertical={false} />
+                                                <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
                                                 <XAxis
-                                                    type="number"
-                                                    tickFormatter={value => formatCurrency(value)}
-                                                    stroke="#0f172a"
-                                                    fontSize={12}
-                                                    tickLine={false}
+                                                    dataKey="name"
                                                     axisLine={false}
+                                                    tickLine={false}
+                                                    tick={{ fill: '#475569', fontSize: 12, fontWeight: 600 }}
                                                 />
                                                 <YAxis
-                                                    type="category"
-                                                    dataKey="name"
-                                                    width={140}
-                                                    tickLine={false}
                                                     axisLine={false}
-                                                    tick={{ fill: '#0f172a', fontWeight: 600, fontSize: 12 }}
+                                                    tickLine={false}
+                                                    tick={{ fill: '#475569', fontSize: 12, fontWeight: 600 }}
+                                                    tickFormatter={(value) => {
+                                                        if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+                                                        if (value >= 1000) return `${Math.round(value / 1000)}k`;
+                                                        return value.toFixed(0);
+                                                    }}
                                                 />
-                                                <RechartsTooltip content={renderSupplierTooltip} cursor={{ fill: 'rgba(15,118,110,0.08)' }} />
-                                                <Bar
+                                                <RechartsTooltip
+                                                    cursor={{ stroke: '#10B981', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                                    content={renderSupplierTooltip}
+                                                />
+                                                <Area
+                                                    type="monotone"
                                                     dataKey="spend"
-                                                    stackId="a"
-                                                    barSize={26}
-                                                >
-                                                    {supplierBarData.map((entry) => (
-                                                        <Cell
-                                                            key={`spend-${entry.id}`}
-                                                            fill={`url(#supplier-gradient-${entry.id})`}
-                                                            stroke="none"
-                                                            radius={showProjections && entry.overdue > 0 ? [0, 0, 0, 0] : [0, 12, 12, 0]}
-                                                        />
-                                                    ))}
-                                                </Bar>
+                                                    name="Speso"
+                                                    stackId="supplier"
+                                                    stroke="#059669"
+                                                    strokeWidth={2}
+                                                    fill="url(#supplier-spend-gradient)"
+                                                    fillOpacity={1}
+                                                    activeDot={{ r: 4, strokeWidth: 0 }}
+                                                    isAnimationActive={false}
+                                                />
                                                 {showProjections && (
-                                                    <Bar dataKey="overdue" stackId="a" radius={[0, 12, 12, 0]} barSize={26}>
-                                                        {supplierBarData.map((entry) => (
-                                                            <Cell key={`overdue-${entry.id}`} fill="url(#supplier-overdue-gradient)" stroke="none" />
-                                                        ))}
-                                                    </Bar>
+                                                    <Area
+                                                        type="monotone"
+                                                        dataKey="overdue"
+                                                        name="Previsioni"
+                                                        stackId="supplier"
+                                                        stroke="#EA580C"
+                                                        strokeWidth={2}
+                                                        fill="url(#supplier-forecast-gradient)"
+                                                        fillOpacity={1}
+                                                        activeDot={{ r: 4, strokeWidth: 0 }}
+                                                        isAnimationActive={false}
+                                                    />
                                                 )}
-                                            </BarChart>
+                                            </AreaChart>
                                         </ResponsiveContainer>
                                     ) : (
                                         <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-emerald-200/60 bg-white/60 p-10 text-center text-sm font-semibold text-emerald-600">
@@ -1778,29 +1752,46 @@ export default function BudgetPage() {
                                     )}
                                 </div>
                                 {supplierBarData.length > 0 && (
-                                    <div className="mt-6">
-                                        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                                            {supplierBarData.slice(0, 6).map((entry) => {
-                                                const total = entry.spend + entry.overdue;
-                                                return (
-                                                    <li
-                                                        key={`supplier-summary-${entry.id}`}
-                                                        className="flex items-center justify-between rounded-2xl border border-emerald-100/70 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-emerald-100/40"
-                                                    >
-                                                        <span className="flex items-center gap-3">
-                                                            <span
-                                                                className="inline-flex h-2.5 w-2.5 rounded-full"
-                                                                style={{ backgroundColor: entry.color }}
-                                                            />
-                                                            {entry.name}
-                                                        </span>
-                                                        <span className="text-slate-900">
-                                                            {formatCurrency(total)}
-                                                        </span>
-                                                    </li>
-                                                );
-                                            })}
-                                        </ul>
+                                    <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        {[
+                                            {
+                                                label: 'Peso principale',
+                                                value: `${supplierInsights.topShare.toFixed(1)}%`,
+                                                tone: 'text-slate-900',
+                                                tooltip: 'Quota del primo fornitore sul totale speso (spesa effettiva + proiezioni).'
+                                            },
+                                            {
+                                                label: 'Sforamento atteso',
+                                                value: formatCurrency(supplierInsights.overBudgetValue),
+                                                tone: 'text-rose-600',
+                                                tooltip: `Differenza tra forecast e budget sui fornitori filtrati (${supplierInsights.overBudgetCount} fornitori).`
+                                            },
+                                            {
+                                                label: 'Extra budget',
+                                                value: formatCurrency(supplierInsights.extraBudgetValue),
+                                                tone: 'text-slate-900',
+                                                tooltip: 'Spesa associata ai fornitori privi di budget assegnato.'
+                                            },
+                                            {
+                                                label: 'Campione analizzato',
+                                                value: supplierBarData.length,
+                                                tone: 'text-slate-900',
+                                                tooltip: 'Numero di fornitori visualizzati nel grafico (ordinati per impatto).'
+                                            }
+                                        ].map((card) => (
+                                            <div
+                                                key={card.label}
+                                                className="flex h-9 items-center justify-between rounded-xl border border-emerald-100/70 bg-white/85 px-3 py-1.5 shadow-inner shadow-emerald-100/40"
+                                            >
+                                                <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                                    {card.label}
+                                                    <InfoTooltip message={card.tooltip} />
+                                                </div>
+                                                <p className={`text-sm font-semibold ${card.tone !== 'text-slate-900' ? card.tone : 'text-slate-800'}`}>
+                                                    {card.value}
+                                                </p>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
                             </div>
@@ -1809,71 +1800,90 @@ export default function BudgetPage() {
 
                     <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
                         <div className="flex flex-col">
-                            <div className="rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-teal-100/70 via-white/90 to-emerald-100/50 px-6 py-5">
-                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-500">
+                            <div className="rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 px-6 py-5 text-white">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
                                     Ripartizione settoriale
                                 </p>
-                                <h2 className="text-lg font-black text-slate-900">
+                                <h2 className="text-lg font-black text-white">
                                     Contributo sui costi filtrati
                                 </h2>
                             </div>
                             <div className="flex flex-1 flex-col px-6 py-6">
                                 <div className="flex-1">
-                                    {sectorDistributionData.length > 0 ? (
-                                        <ResponsiveContainer width="100%" height={320}>
-                                            <PieChart>
-                                                <Pie
-                                                    data={sectorDistributionData}
-                                                    dataKey="value"
-                                                    nameKey="name"
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    innerRadius="60%"
-                                                    outerRadius="80%"
-                                                    paddingAngle={4}
-                                                    strokeWidth={0}
+                                    {sectorAreaData.length > 0 ? (
+                                        <>
+                                            <ResponsiveContainer width="100%" height={320}>
+                                                <AreaChart
+                                                    data={sectorAreaData}
+                                                    margin={{ top: 12, right: 8, left: -12, bottom: 0 }}
                                                 >
-                                                    {sectorDistributionData.map((entry) => (
-                                                        <Cell key={`sector-${entry.id}`} fill={entry.color} />
-                                                    ))}
-                                                </Pie>
-                                                <RechartsTooltip content={renderSectorTooltip} />
-                                            </PieChart>
-                                        </ResponsiveContainer>
+                                                    <defs>
+                                                        <linearGradient id="sector-area-gradient" x1="0" y1="0" x2="0" y2="1">
+                                                            <stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.95} />
+                                                            <stop offset="100%" stopColor="#38BDF8" stopOpacity={0.3} />
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
+                                                    <XAxis
+                                                        dataKey="name"
+                                                        axisLine={false}
+                                                        tickLine={false}
+                                                        tick={{ fill: '#475569', fontSize: 12, fontWeight: 600 }}
+                                                    />
+                                                    <YAxis
+                                                        axisLine={false}
+                                                        tickLine={false}
+                                                        tick={{ fill: '#475569', fontSize: 12, fontWeight: 600 }}
+                                                        tickFormatter={(value) => {
+                                                            if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+                                                            if (value >= 1000) return `${Math.round(value / 1000)}k`;
+                                                            return value.toFixed(0);
+                                                        }}
+                                                    />
+                                                    <RechartsTooltip
+                                                        cursor={{ stroke: '#0EA5E9', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                                        content={renderSectorTooltip}
+                                                    />
+                                                    <Area
+                                                        type="monotone"
+                                                        dataKey="value"
+                                                        stroke="#0EA5E9"
+                                                        strokeWidth={2}
+                                                        fill="url(#sector-area-gradient)"
+                                                        fillOpacity={1}
+                                                        activeDot={{ r: 4, strokeWidth: 0 }}
+                                                        isAnimationActive={false}
+                                                    />
+                                                </AreaChart>
+                                            </ResponsiveContainer>
+                                            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                {sectorDistributionData.slice(0, 4).map((entry) => {
+                                                    const percentage = sectorDistributionTotal > 0
+                                                        ? `${Math.round((entry.value / sectorDistributionTotal) * 100)}%`
+                                                        : '0%';
+                                                    return (
+                                                        <div
+                                                            key={`sector-stat-${entry.id}`}
+                                                            className="flex h-9 items-center justify-between rounded-xl border border-emerald-100/70 bg-white/80 px-3 py-1.5 shadow-inner shadow-emerald-100/40"
+                                                        >
+                                                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                                                {entry.name}
+                                                                <InfoTooltip message={`${entry.name}: ${formatCurrency(entry.value)} (${percentage}).`} />
+                                                            </div>
+                                                            <p className="text-sm font-semibold text-slate-800">
+                                                                {percentage}
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </>
                                     ) : (
                                         <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-emerald-200/60 bg-white/60 p-10 text-center text-sm font-semibold text-emerald-600">
                                             Nessun dato disponibile per generare la ripartizione settoriale.
                                         </div>
                                     )}
                                 </div>
-                                {sectorDistributionData.length > 0 && (
-                                    <div className="mt-6">
-                                        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                            {sectorDistributionData.slice(0, 4).map((entry) => {
-                                                const percentage = sectorDistributionTotal > 0
-                                                    ? `${Math.round((entry.value / sectorDistributionTotal) * 100)}%`
-                                                    : '0%';
-                                                return (
-                                                    <li
-                                                        key={`sector-summary-${entry.id}`}
-                                                        className="flex items-center justify-between rounded-2xl border border-emerald-100/70 bg-white px-3 py-2 shadow-sm shadow-emerald-100/40"
-                                                    >
-                                                        <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
-                                                            <span
-                                                                className="inline-flex h-2.5 w-2.5 rounded-full"
-                                                                style={{ backgroundColor: entry.color }}
-                                                            />
-                                                            {entry.name}
-                                                        </span>
-                                                        <span className="text-sm font-bold text-slate-900">
-                                                            {percentage}
-                                                        </span>
-                                                    </li>
-                                                );
-                                            })}
-                                        </ul>
-                                    </div>
-                                )}
                             </div>
                         </div>
                     </section>
@@ -1886,12 +1896,12 @@ export default function BudgetPage() {
                         <div className="absolute bottom-[-35%] left-1/4 h-72 w-72 rounded-full bg-teal-200/20 blur-2xl" />
                     </div>
                     <div className="relative z-10 flex flex-col">
-                        <div className="flex flex-col gap-3 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-emerald-100/70 via-white/90 to-teal-100/50 px-6 py-5 md:flex-row md:items-center md:justify-between">
+                        <div className="flex flex-col gap-3 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 px-6 py-5 text-white md:flex-row md:items-center md:justify-between">
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-500">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
                                     Fornitori & allocazioni
                                 </p>
-                                <h2 className="text-lg font-black text-slate-900">
+                                <h2 className="text-lg font-black text-white">
                                     Budget per canale e stato di utilizzo
                                 </h2>
                             </div>

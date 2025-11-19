@@ -1,0 +1,86 @@
+                {/* TOP FORNITORI */}
+                {metrics.topSuppliers.length > 0 && (
+                    <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-6 lg:p-8 space-y-6">
+                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg shadow-amber-500/20 ring-4 ring-amber-500/15">
+                                    <Award className="w-7 h-7" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-xl lg:text-2xl font-black text-gray-900">Top {TOP_SUPPLIERS_LIMIT} Fornitori</h2>
+                                        <InfoTooltip message="Classifica basata sull'impegno complessivo (spesa effettiva + proiezioni attive) dei fornitori nel periodo filtrato." />
+                                    </div>
+                                    <p className="mt-2 text-sm text-gray-600 font-medium">
+                                        Monitoraggio dei partner con maggiore esposizione economica.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-xs font-bold tracking-[0.16em] text-slate-600 ring-1 ring-inset ring-slate-200">
+                                Aggiornato al {formatDate(endDate)}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
+                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
+                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
+                                    Impegno Top {TOP_SUPPLIERS_LIMIT}
+                                    <InfoTooltip message={showProjections ? `Somma di spesa effettiva e proiezioni per i primi ${TOP_SUPPLIERS_LIMIT} fornitori.` : `Somma della sola spesa effettiva per i primi ${TOP_SUPPLIERS_LIMIT} fornitori.`} />
+                                </div>
+                                <p className="mt-auto pt-2 text-lg font-black text-slate-900">
+                                    {formatCurrency(showProjections ? metrics.totalSuppliersSpent : metrics.topSuppliersSpentOnly)}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
+                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
+                                    Spesa effettiva
+                                    <InfoTooltip message={`Totale della spesa già registrata per i fornitori Top ${TOP_SUPPLIERS_LIMIT}.`} />
+                                </div>
+                                <p className="mt-auto pt-2 text-lg font-black text-slate-900">
+                                    {formatCurrency(metrics.topSuppliersSpentOnly)}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex h-full flex-col">
+                                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
+                                    Proiezioni attive
+                                    <InfoTooltip message={`Quote contrattuali future o scadute ancora da coprire per i fornitori Top ${TOP_SUPPLIERS_LIMIT}.`} />
+                                </div>
+                                <p className={`mt-auto pt-2 text-lg font-black ${showProjections ? 'text-slate-900' : 'text-slate-300'}`}>
+                                    {showProjections ? formatCurrency(topSuppliersProjections) : '—'}
+                                </p>
+                            </div>
+                        </div>
+
+                        {hasSupplierMatches ? (
+                            <>
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                                {highlightedSuppliers.map((supplier, index) => (
+                                    <SupplierRankItem
+                                        key={supplier.id}
+                                        supplier={supplier}
+                                        rank={index}
+                                        baselineCommitted={suppliersBaselineTotal}
+                                        includeProjections={showProjections}
+                                    />
+                                ))}
+                            </div>
+                            {hasMoreSuppliers && (
+                                <div className="mt-4 flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate && navigate('contracts')}
+                                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:text-indigo-600"
+                                    >
+                                        Mostra tutti i fornitori
+                                    </button>
+                                </div>
+                            )}
+                            </>
+                        ) : (
+                            <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-6 py-8 text-center text-sm font-semibold text-slate-500">
+                                {suppliersEmptyMessage}
+                            </div>
+                        )}
+                    </div>
+                )}
+                
