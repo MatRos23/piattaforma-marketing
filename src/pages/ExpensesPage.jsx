@@ -272,7 +272,8 @@ const ExpensesDateRangeDropdown = ({
     onChange,
     hasActiveRange,
     onClear,
-    onToggle
+    onToggle,
+    variant = 'card'
 }) => {
     const formatDateLabel = (value) => {
         if (!value) return '—';
@@ -288,6 +289,18 @@ const ExpensesDateRangeDropdown = ({
     const label = hasActiveRange
         ? `${formatDateLabel(startDate)} → ${formatDateLabel(endDate)}`
         : 'Seleziona periodo';
+
+    const isHeroVariant = variant === 'hero';
+    const baseButtonClasses = isHeroVariant
+        ? 'inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 shadow-lg shadow-orange-900/30 backdrop-blur-sm transition hover:border-white/60 hover:bg-white/20'
+        : 'inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600';
+    const ringClass = hasActiveRange
+        ? isHeroVariant
+            ? 'ring-2 ring-white/60'
+            : 'ring-2 ring-indigo-100'
+        : '';
+    const calendarIconClass = isHeroVariant ? 'h-4 w-4 text-white/80' : 'h-4 w-4 text-slate-500';
+    const arrowIconClass = isHeroVariant ? 'h-4 w-4 text-white/60' : 'h-4 w-4 text-slate-400';
 
     return (
         <div className="relative">
@@ -306,21 +319,19 @@ const ExpensesDateRangeDropdown = ({
                     setIsOpen(prev => !prev);
                 }}
                 aria-expanded={isOpen}
-                className={`inline-flex items-center gap-2 rounded-2xl border border-orange-200 bg-white/95 px-4 py-2 text-sm font-semibold text-orange-700 shadow-sm shadow-orange-100/40 transition hover:border-orange-300 hover:text-orange-600 ${
-                    hasActiveRange ? 'ring-2 ring-orange-200' : ''
-                }`}
+                className={`${baseButtonClasses} ${ringClass}`}
             >
-                <Calendar className="h-4 w-4 text-orange-400" />
-                <span>{label}</span>
+                <Calendar className={calendarIconClass} />
+                <span className="whitespace-nowrap">{label}</span>
                 <ArrowUpDown
-                    className={`h-4 w-4 text-orange-300 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                    className={`${arrowIconClass} transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
                 />
             </button>
             {isOpen && (
-                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/60 bg-white/95 p-4 shadow-2xl shadow-orange-900/25 backdrop-blur">
+                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur">
                     <div className="space-y-4">
                         <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-500">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                                 Intervallo temporale
                             </p>
                             <p className="text-xs font-medium text-slate-500">
@@ -339,7 +350,7 @@ const ExpensesDateRangeDropdown = ({
                                             endDate
                                         })
                                     }
-                                    className="rounded-xl border border-orange-200 bg-white px-2 py-2 text-xs font-semibold text-orange-700 shadow-inner focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-300/40"
+                                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
                                 />
                             </label>
                             <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
@@ -353,7 +364,7 @@ const ExpensesDateRangeDropdown = ({
                                             endDate: event.target.value
                                         })
                                     }
-                                    className="rounded-xl border border-orange-200 bg-white px-2 py-2 text-xs font-semibold text-orange-700 shadow-inner focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-300/40"
+                                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
                                 />
                             </label>
                         </div>
@@ -361,14 +372,14 @@ const ExpensesDateRangeDropdown = ({
                             <button
                                 type="button"
                                 onClick={onClear}
-                                className="text-xs font-semibold text-orange-500 transition hover:text-rose-500"
+                                className="text-xs font-semibold text-indigo-500 transition hover:text-rose-500"
                             >
                                 Pulisci
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setIsOpen(false)}
-                                className="inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-600 transition hover:border-orange-300 hover:bg-orange-100"
+                                className="inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-100"
                             >
                                 <Check className="h-3.5 w-3.5" />
                                 Chiudi
@@ -389,9 +400,21 @@ const ExpensesAdvancedFiltersDropdown = ({
     contractFilter,
     setContractFilter,
     onClear,
-    onToggle
+    onToggle,
+    variant = 'card'
 }) => {
     const hasAdvancedFilters = invoiceFilter !== '' || contractFilter !== '';
+    const isHeroVariant = variant === 'hero';
+    const buttonClasses = isHeroVariant
+        ? 'inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 shadow-lg shadow-orange-900/30 backdrop-blur-sm transition hover:border-white/60 hover:bg-white/20'
+        : 'inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600';
+    const ringClass = hasAdvancedFilters
+        ? isHeroVariant
+            ? 'ring-2 ring-white/60'
+            : 'ring-2 ring-indigo-100'
+        : '';
+    const iconClass = isHeroVariant ? 'h-4 w-4 text-white/80' : 'h-4 w-4 text-slate-500';
+    const arrowClass = isHeroVariant ? 'h-4 w-4 text-white/60' : 'h-4 w-4 text-slate-400';
 
     return (
         <div className="relative">
@@ -410,21 +433,19 @@ const ExpensesAdvancedFiltersDropdown = ({
                     setIsOpen(prev => !prev);
                 }}
                 aria-expanded={isOpen}
-                className={`inline-flex items-center gap-2 rounded-2xl border border-orange-200 bg-white px-3 py-2 text-sm font-semibold text-orange-700 shadow-sm shadow-orange-100/40 transition hover:border-orange-300 hover:text-orange-600 ${
-                    hasAdvancedFilters ? 'ring-2 ring-orange-200' : ''
-                }`}
+                className={`${buttonClasses} ${ringClass}`}
             >
-                <Filter className="h-4 w-4 text-orange-400" />
-                Filtri Avanzati
+                <Filter className={iconClass} />
+                <span className="whitespace-nowrap">Filtri Avanzati</span>
                 <ArrowUpDown
-                    className={`h-4 w-4 text-orange-300 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                    className={`${arrowClass} transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
                 />
             </button>
             {isOpen && (
-                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/60 bg-white/95 p-4 shadow-2xl shadow-orange-900/25 backdrop-blur">
+                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur">
                     <div className="space-y-4">
                         <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-500">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                                 Stato documentale
                             </p>
                             <p className="text-xs font-medium text-slate-500">
@@ -449,8 +470,8 @@ const ExpensesAdvancedFiltersDropdown = ({
                                             onClick={() => setInvoiceFilter(option.key)}
                                             className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
                                                 active
-                                                    ? 'bg-gradient-to-r from-orange-600 to-orange-600 text-white shadow-lg shadow-orange-500/30'
-                                                    : 'border border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
+                                                    ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                    : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
                                             }`}
                                         >
                                             {option.label}
@@ -477,8 +498,8 @@ const ExpensesAdvancedFiltersDropdown = ({
                                             onClick={() => setContractFilter(option.key)}
                                             className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
                                                 active
-                                                    ? 'bg-gradient-to-r from-orange-600 to-orange-600 text-white shadow-lg shadow-orange-500/30'
-                                                    : 'border border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
+                                                    ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                    : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
                                             }`}
                                         >
                                             {option.label}
@@ -491,14 +512,14 @@ const ExpensesAdvancedFiltersDropdown = ({
                             <button
                                 type="button"
                                 onClick={onClear}
-                                className="text-xs font-semibold text-orange-500 transition hover:text-rose-500"
+                                className="text-xs font-semibold text-indigo-500 transition hover:text-rose-500"
                             >
                                 Pulisci filtri
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setIsOpen(false)}
-                                className="inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-600 transition hover:border-orange-300 hover:bg-orange-100"
+                                className="inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-100"
                             >
                                 <Check className="h-3.5 w-3.5" />
                                 Chiudi
@@ -2150,13 +2171,13 @@ if (supplierFilter.length > 0) {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-orange-100 relative">
-            <div className="relative p-4 lg:p-8 space-y-6">
-                {/* HERO & FILTERS */}
+            <div className="relative p-4 lg:p-8">
                 <div className="space-y-6">
+                {/* HERO & FILTERS */}
                     <div className="relative rounded-3xl bg-gradient-to-br from-orange-600 via-orange-600 to-orange-600 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.35),transparent_60%)]" />
-                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="space-y-4 max-w-3xl">
+                        <div className="relative flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="space-y-4 lg:max-w-3xl">
                                 <div className="flex items-center gap-4">
                                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-orange-900/30 ring-4 ring-white/20">
                                         <Wallet className="w-7 h-7 lg:w-8 lg:h-8" />
@@ -2171,7 +2192,7 @@ if (supplierFilter.length > 0) {
                                 <p className="text-sm lg:text-base text-white/85">
                                     {heroDescription}
                                 </p>
-                                <div className="flex flex-wrap items-center gap-3">
+                                <div className="mt-6 flex flex-wrap items-center gap-3">
                                     <button
                                         type="button"
                                         onClick={handleOpenAddModal}
@@ -2185,90 +2206,296 @@ if (supplierFilter.length > 0) {
                                     </span>
                                 </div>
                             </div>
-                            <div className="flex flex-col items-end gap-3">
-                                <div className="relative">
-                                    {isNotificationsPanelOpen && (
-                                        <div
-                                            className="fixed inset-0 z-40"
-                                            onClick={() => setIsNotificationsPanelOpen(false)}
-                                        />
-                                    )}
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsNotificationsPanelOpen(prev => !prev)}
-                                        className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] shadow-lg backdrop-blur-sm transition-all ${
-                                            notificationCount > 0
-                                                ? 'bg-white/15 text-white hover:bg-white/25 shadow-orange-900/30'
-                                                : 'bg-white/10 text-white/60 hover:bg-white/15 shadow-orange-900/10'
-                                        }`}
-                                    >
-                                        <Bell className="w-4 h-4" />
-                                        {notificationCount} Notifiche
-                                    </button>
-                                    {isNotificationsPanelOpen && (
-                                        <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-orange-900/30 backdrop-blur space-y-3">
-                                            {notificationCount > 0 ? (
-                                                <>
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <div>
-                                                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-500">
-                                                                Notifiche attive
-                                                            </p>
-                                                            <h3 className="text-sm font-black text-slate-900">
-                                                                {notificationCount} alert
-                                                            </h3>
-                                                        </div>
-                                                        <span className="inline-flex items-center gap-2 rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-600">
-                                                            {formatCurrency(totalNotificationsAmount)}
-                                                        </span>
-                                                    </div>
-                                                    <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
-                                                        {expenseAlerts.map((alert) => (
-                                                            <div
-                                                                key={alert.key}
-                                                                className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
-                                                            >
-                                                                <p className="text-xs font-bold text-slate-900">{alert.title}</p>
-                                                                <p className="text-[11px] text-slate-500">{alert.description}</p>
-                                                                <p className="mt-1 text-[11px] font-semibold text-slate-600">
-                                                                    {alert.totalLabel}: {formatCurrency(alert.totalAmount)}
-                                                                </p>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <p className="text-sm font-semibold text-slate-600">
-                                                    Nessuna notifica disponibile.
-                                                </p>
-                                            )}
-                                            <button
-                                                type="button"
+                            <div className="flex w-full flex-col gap-4 lg:w-auto">
+                                <div className="flex flex-wrap items-center justify-end gap-3">
+                                    <div className="relative">
+                                        {isNotificationsPanelOpen && (
+                                            <div
+                                                className="fixed inset-0 z-40"
                                                 onClick={() => setIsNotificationsPanelOpen(false)}
-                                                className="w-full rounded-xl border border-orange-200 bg-orange-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-600 transition hover:bg-orange-100"
-                                            >
-                                                Chiudi notifiche
-                                            </button>
-                                        </div>
-                                    )}
+                                            />
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsNotificationsPanelOpen(prev => !prev)}
+                                            className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] shadow-lg backdrop-blur-sm transition-all ${
+                                                notificationCount > 0
+                                                    ? 'bg-white/15 text-white hover:bg-white/25 shadow-orange-900/30'
+                                                    : 'bg-white/10 text-white/60 hover:bg-white/15 shadow-orange-900/10'
+                                            }`}
+                                        >
+                                            <Bell className="w-4 h-4" />
+                                            {notificationCount} Notifiche
+                                        </button>
+                                        {isNotificationsPanelOpen && (
+                                            <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-orange-900/30 backdrop-blur space-y-3">
+                                                {notificationCount > 0 ? (
+                                                    <>
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-500">
+                                                                    Notifiche attive
+                                                                </p>
+                                                                <h3 className="text-sm font-black text-slate-900">
+                                                                    {notificationCount} alert
+                                                                </h3>
+                                                            </div>
+                                                            <span className="inline-flex items-center gap-2 rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-600">
+                                                                {formatCurrency(totalNotificationsAmount)}
+                                                            </span>
+                                                        </div>
+                                                        <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                                                            {expenseAlerts.map((alert) => (
+                                                                <div
+                                                                    key={alert.key}
+                                                                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
+                                                                >
+                                                                    <p className="text-xs font-bold text-slate-900">{alert.title}</p>
+                                                                    <p className="text-[11px] text-slate-500">{alert.description}</p>
+                                                                    <p className="mt-1 text-[11px] font-semibold text-slate-600">
+                                                                        {alert.totalLabel}: {formatCurrency(alert.totalAmount)}
+                                                                    </p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <p className="text-sm font-semibold text-slate-600">
+                                                        Nessuna notifica disponibile.
+                                                    </p>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsNotificationsPanelOpen(false)}
+                                                    className="w-full rounded-xl border border-orange-200 bg-orange-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-600 transition hover:bg-orange-100"
+                                                >
+                                                    Chiudi notifiche
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                </div>
-        {/* KPI Cards migliorate */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 xl:gap-6">
-            <KpiCard 
-                title="Spese Totali" 
-                value={kpiData.totalExpenses.toString()}
+                {/* Sezione Filtri */}
+                <section className="relative z-20 rounded-3xl border border-white/70 bg-gradient-to-r from-slate-300/90 via-slate-200/85 to-slate-300/80 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
+                    <div className="pointer-events-none absolute inset-0">
+                        <div className="absolute -top-16 left-14 h-32 w-32 rounded-full bg-white/45 blur-3xl" />
+                        <div className="absolute -bottom-20 right-12 h-36 w-36 rounded-full bg-slate-400/40 blur-3xl" />
+                    </div>
+                    <div className="relative z-10 flex flex-wrap lg:flex-nowrap items-center justify-center gap-3 lg:gap-4 w-full max-w-6xl mx-auto">
+                        <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <Search className="h-4 w-4 text-slate-700" />
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(event) => setSearchTerm(event.target.value)}
+                                placeholder="Ricerca libera"
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 placeholder:text-slate-600 focus:outline-none"
+                            />
+                        </div>
+                        <ExpensesDateRangeDropdown
+                            isOpen={isDateDropdownOpen}
+                            setIsOpen={setIsDateDropdownOpen}
+                            startDate={dateFilter.startDate}
+                            endDate={dateFilter.endDate}
+                            hasActiveRange={hasCustomDateRange}
+                            onChange={({ startDate, endDate }) =>
+                                setDateFilter(prev => ({ ...prev, startDate, endDate }))
+                            }
+                            onClear={() => setDateFilter({ startDate: defaultStartDate, endDate: defaultEndDate })}
+                            onToggle={() => {
+                                setIsPresetPanelOpen(false);
+                                setIsAdvancedPanelOpen(false);
+                            }}
+                        />
+                        <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <Layers className="h-4 w-4 text-slate-600" />
+                            <select
+                                value={selectedSector}
+                                onChange={(event) => setSelectedSector(event.target.value)}
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                            >
+                                <option value="all">Tutti i settori</option>
+                                {orderedSectors.map(sector => (
+                                    <option key={sector.id} value={sector.id}>
+                                        {sector.name || 'N/D'}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <MapPin className="h-4 w-4 text-slate-600" />
+                            <select
+                                value={selectedBranch}
+                                onChange={(event) => setSelectedBranch(event.target.value)}
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                            >
+                                <option value="all">Tutte le filiali</option>
+                                {orderedBranches.map(branch => (
+                                    <option key={branch.id} value={branch.id}>
+                                        {branch.name || 'N/D'}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <ExpensesAdvancedFiltersDropdown
+                            isOpen={isAdvancedPanelOpen}
+                            setIsOpen={setIsAdvancedPanelOpen}
+                            invoiceFilter={invoiceFilter}
+                            setInvoiceFilter={setInvoiceFilter}
+                            contractFilter={contractFilter}
+                            setContractFilter={setContractFilter}
+                            onClear={() => {
+                                setInvoiceFilter('');
+                                setContractFilter('');
+                            }}
+                            onToggle={() => {
+                                setIsPresetPanelOpen(false);
+                                setIsDateDropdownOpen(false);
+                            }}
+                        />
+                        <div className="relative flex items-center gap-3 flex-wrap">
+                            {isPresetPanelOpen && (
+                                <div className="fixed inset-0 z-[210]" onClick={() => setIsPresetPanelOpen(false)} />
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsPresetPanelOpen(prev => !prev);
+                                    setIsAdvancedPanelOpen(false);
+                                    setIsDateDropdownOpen(false);
+                                }}
+                                aria-expanded={isPresetPanelOpen}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
+                                    isPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
+                                }`}
+                            >
+                                <SlidersHorizontal className="h-4 w-4 text-slate-500" />
+                                Preset
+                            </button>
+                            {hasActiveFilters && (
+                                <button
+                                    onClick={resetFilters}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm shadow-rose-100/60 transition hover:border-rose-300 whitespace-nowrap"
+                                >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    Resetta filtri
+                                </button>
+                            )}
+                            {isPresetPanelOpen && (
+                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-[20rem] rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur">
+                                    <div className="space-y-3">
+                                        <div>
+                                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                                Preset salvati
+                                            </p>
+                                            <p className="text-xs font-medium text-slate-500">
+                                                Salva e riutilizza combinazioni di filtri condivise.
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-col gap-2 sm:flex-row">
+                                            <input
+                                                type="text"
+                                                value={presetName}
+                                                onChange={(event) => setPresetName(event.target.value)}
+                                                placeholder="Nome preset (es. Q1 Board)"
+                                                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    savePreset();
+                                                    setIsPresetPanelOpen(false);
+                                                }}
+                                                disabled={!presetName.trim()}
+                                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-500 px-3 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                <Check className="h-3.5 w-3.5" />
+                                                Salva
+                                            </button>
+                                        </div>
+                                        {filterPresets.length > 0 ? (
+                                            <div className="space-y-2">
+                                                {filterPresets.map(preset => (
+                                                    <div
+                                                        key={preset.id}
+                                                        className="inline-flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-100/60"
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                applyPreset(preset);
+                                                                setIsPresetPanelOpen(false);
+                                                            }}
+                                                            className="flex-1 text-left transition-colors hover:text-indigo-600"
+                                                        >
+                                                            {preset.name}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => deletePreset(preset.id)}
+                                                            className="text-slate-300 transition-colors hover:text-rose-500"
+                                                        >
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs font-medium text-slate-400">
+                                                Non hai ancora salvato preset.
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {filterPresets.length > 0 && (
+                        <div className="relative z-10 mt-2 flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/70 bg-slate-50/85 px-4 py-3 shadow-inner shadow-slate-200/60 backdrop-blur">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Preset rapidi
+                            </span>
+                            {filterPresets.map(preset => (
+                                <div
+                                    key={preset.id}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100/60"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => applyPreset(preset)}
+                                        className="flex-1 text-left transition-colors hover:text-indigo-600"
+                                    >
+                                        {preset.name}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => deletePreset(preset.id)}
+                                        className="text-slate-300 transition-colors hover:text-rose-500"
+                                    >
+                                        <XCircle className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+
+                {/* KPI Cards */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:gap-6">
+                    <KpiCard
+                        title="Spese Totali"
+                        value={kpiData.totalExpenses.toString()}
                         subtitle={isOperationsDomain ? 'Voci registrate per le sedi' : `${processedExpenses.length} spese filtrate`}
                         icon={<FileText className="w-6 h-6" />}
                         gradient="from-orange-500 to-amber-600"
                     />
-            <KpiCard 
-                title="Importo Totale" 
-                value={formatCurrency(kpiData.totalSpend)}
+                    <KpiCard
+                        title="Importo Totale"
+                        value={formatCurrency(kpiData.totalSpend)}
                         subtitle={isOperationsDomain ? 'Ripartite automaticamente per filiale' : `Budget: ${formatCurrency(kpiData.totalBudget)}`}
                         icon={<DollarSign className="w-6 h-6" />}
                         gradient="from-orange-600 to-amber-700"
@@ -2292,23 +2519,23 @@ if (supplierFilter.length > 0) {
                         </>
                     ) : (
                         <>
-                            <KpiCard 
-                                title="Con Fattura" 
+                            <KpiCard
+                                title="Con Fattura"
                                 value={`${kpiData.withInvoicePercentage}%`}
                                 subtitle="Documenti fiscali"
                                 icon={<CheckCircle2 className="w-6 h-6" />}
                                 gradient="from-amber-400 to-yellow-500"
                             />
-                            <KpiCard 
-                                title="Complete" 
+                            <KpiCard
+                                title="Complete"
                                 value={`${kpiData.completePercentage}%`}
                                 subtitle="Tutti i documenti"
                                 icon={<Activity className="w-6 h-6" />}
-                        gradient="from-orange-400 to-amber-500"
-                    />
-                </>
-            )}
-        </div>
+                                gradient="from-orange-400 to-amber-500"
+                            />
+                        </>
+                    )}
+                </div>
 
         {!isOperationsDomain && (
             <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
@@ -2767,180 +2994,15 @@ if (supplierFilter.length > 0) {
                 </div>
                 <div className="relative z-10 flex flex-col">
                     <div className="flex flex-col gap-4 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-orange-100/80 via-white/95 to-orange-100/50 px-6 py-5">
-                        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                            <div className="space-y-1">
-                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-500">
-                                    Elenco spese
-                                </p>
-                                <h2 className="text-lg font-black text-slate-900">
-                                    Dettaglio fornitori e documentazione
-                                </h2>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-3 justify-start xl:justify-end">
-                                <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-orange-200 bg-white px-3 py-2 text-orange-700 shadow-sm shadow-orange-100/40">
-                                    <Search className="h-4 w-4 text-orange-400" />
-                                    <input
-                                        type="text"
-                                        value={searchTerm}
-                                        onChange={(event) => setSearchTerm(event.target.value)}
-                                        placeholder="Ricerca libera"
-                                        className="w-full appearance-none bg-transparent text-sm font-semibold text-orange-700 placeholder:text-orange-700 focus:outline-none"
-                                    />
-                                </div>
-                                <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-orange-200 bg-white px-3 py-2 text-orange-700 shadow-sm shadow-orange-100/40">
-                                    <Layers className="h-4 w-4 text-orange-400" />
-                                    <select
-                                        value={selectedSector}
-                                        onChange={(event) => setSelectedSector(event.target.value)}
-                                        className="w-full bg-transparent text-sm font-semibold text-orange-700 focus:outline-none"
-                                    >
-                                        <option value="all">Tutti i settori</option>
-                                        {orderedSectors.map(sector => (
-                                            <option key={sector.id} value={sector.id}>
-                                                {sector.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-orange-200 bg-white px-3 py-2 text-orange-700 shadow-sm shadow-orange-100/40">
-                                    <MapPin className="h-4 w-4 text-orange-400" />
-                                    <select
-                                        value={selectedBranch}
-                                        onChange={(event) => setSelectedBranch(event.target.value)}
-                                        className="w-full bg-transparent text-sm font-semibold text-orange-700 focus:outline-none"
-                                    >
-                                        <option value="all">Tutte le filiali</option>
-                                        {orderedBranches.map(branch => (
-                                            <option key={branch.id} value={branch.id}>
-                                                {branch.name || 'N/D'}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <ExpensesDateRangeDropdown
-                                    isOpen={isDateDropdownOpen}
-                                    setIsOpen={setIsDateDropdownOpen}
-                                    startDate={dateFilter.startDate}
-                                    endDate={dateFilter.endDate}
-                                    hasActiveRange={hasCustomDateRange}
-                                    onChange={({ startDate, endDate }) =>
-                                        setDateFilter(prev => ({ ...prev, startDate, endDate }))
-                                    }
-                                    onClear={() => setDateFilter({ startDate: defaultStartDate, endDate: defaultEndDate })}
-                                    onToggle={() => {
-                                        setIsPresetPanelOpen(false);
-                                        setIsAdvancedPanelOpen(false);
-                                    }}
-                                />
-                                <ExpensesAdvancedFiltersDropdown
-                                    isOpen={isAdvancedPanelOpen}
-                                    setIsOpen={setIsAdvancedPanelOpen}
-                                    invoiceFilter={invoiceFilter}
-                                    setInvoiceFilter={setInvoiceFilter}
-                                    contractFilter={contractFilter}
-                                    setContractFilter={setContractFilter}
-                                    onClear={() => {
-                                        setInvoiceFilter('');
-                                        setContractFilter('');
-                                    }}
-                                    onToggle={() => {
-                                        setIsPresetPanelOpen(false);
-                                        setIsDateDropdownOpen(false);
-                                    }}
-                                />
-                                <div className="relative">
-                                    {isPresetPanelOpen && (
-                                        <div
-                                            className="fixed inset-0 z-40"
-                                            onClick={() => setIsPresetPanelOpen(false)}
-                                        />
-                                    )}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setIsPresetPanelOpen(prev => !prev);
-                                            setIsDateDropdownOpen(false);
-                                            setIsAdvancedPanelOpen(false);
-                                        }}
-                                        aria-expanded={isPresetPanelOpen}
-                                        className="inline-flex items-center gap-2 rounded-2xl border border-orange-200 bg-white px-3 py-2 text-sm font-semibold text-orange-700 shadow-sm shadow-orange-100/40 transition hover:border-orange-300 hover:text-orange-600"
-                                    >
-                                        <SlidersHorizontal className="h-4 w-4 text-orange-400" />
-                                    Preset
-                                    </button>
-                                    {isPresetPanelOpen && (
-                                        <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-80 max-w-[calc(100vw-3rem)] rounded-3xl border border-white/50 bg-white/95 p-4 shadow-2xl shadow-orange-900/30 backdrop-blur">
-                                            <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-500">
-                                                Preset salvati
-                                            </span>
-                                            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                                                <input
-                                                    type="text"
-                                                    value={presetName}
-                                                    onChange={(event) => setPresetName(event.target.value)}
-                                                    placeholder="Nome preset (es. Q1 Board)"
-                                                    className="w-full sm:flex-1 rounded-2xl border border-orange-200 bg-white px-4 py-2.5 text-sm font-semibold text-orange-700 shadow-inner focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-300/40"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        savePreset();
-                                                        setIsPresetPanelOpen(false);
-                                                    }}
-                                                    disabled={!presetName.trim()}
-                                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-600 to-orange-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-orange-500/30 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
-                                                >
-                                                    <Check className="w-4 h-4" />
-                                                    Salva
-                                                </button>
-                                            </div>
-                                            {filterPresets.length > 0 ? (
-                                                <div className="mt-3 flex flex-col gap-2">
-                                                    {filterPresets.map(preset => (
-                                                        <div
-                                                            key={preset.id}
-                                                            className="inline-flex items-center gap-2 rounded-2xl border border-orange-200 bg-white/95 px-3 py-1.5 text-sm font-semibold text-orange-700 shadow-sm shadow-orange-100/40"
-                                                        >
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    applyPreset(preset);
-                                                                    setIsPresetPanelOpen(false);
-                                                                }}
-                                                                className="flex-1 text-left transition-colors hover:text-orange-600"
-                                                            >
-                                                                {preset.name}
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => deletePreset(preset.id)}
-                                                                className="text-orange-300 transition-colors hover:text-rose-500"
-                                                            >
-                                                                <X className="w-3 h-3" />
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <p className="mt-2 text-xs font-medium text-slate-400">
-                                                    Salva le combinazioni di filtri per riutilizzarle rapidamente nelle altre pagine.
-                                                </p>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                                {hasActiveFilters && (
-                                    <button
-                                        type="button"
-                                        onClick={resetFilters}
-                                        className="inline-flex items-center gap-2 rounded-2xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm shadow-rose-100/40 transition hover:border-rose-400"
-                                    >
-                                        <XCircle className="w-4 h-4" />
-                                        Resetta filtri
-                                    </button>
-                                )}
-                            </div>
-                        </div>
+                    <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-500">
+                            Elenco spese
+                        </p>
+                        <h2 className="text-lg font-black text-slate-900">
+                            Dettaglio fornitori e documentazione
+                        </h2>
+                    </div>
+                    
                         {filterPresets.length > 0 && (
                             <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-orange-100/70 bg-white/85 px-4 py-3 shadow-inner shadow-orange-100/40">
                                 <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-500">
@@ -3022,28 +3084,27 @@ if (supplierFilter.length > 0) {
                 </p>
             </div>
         )}
+                </div>
             </div>
-            
-            {/* Modali */}
-            {isModalOpen && (
-                <ExpenseFormModal 
-                    isOpen={isModalOpen} 
-                    onClose={handleCloseModal} 
-                    onSave={handleSaveExpense} 
-                    initialData={editingExpense} 
-                    sectors={sectors} 
-                    branches={branches} 
-                    suppliers={suppliers} 
-                    marketingChannels={marketingChannels} 
-                    contracts={contracts} 
-                    geographicAreas={geographicAreas} 
-                    domainConfigs={domainConfigs}
-                    defaultCostDomain={resolvedCostDomain}
-                    domainOptions={domainOptions}
-                    allowDomainSwitch={canChangeDomain}
-                />
-            )}
-            
-        </div>
-    );
+        {/* Modali */}
+        {isModalOpen && (
+            <ExpenseFormModal
+                isOpen={isModalOpen} 
+                onClose={handleCloseModal} 
+                onSave={handleSaveExpense} 
+                initialData={editingExpense} 
+                sectors={sectors} 
+                branches={branches} 
+                suppliers={suppliers} 
+                marketingChannels={marketingChannels} 
+                contracts={contracts} 
+                geographicAreas={geographicAreas} 
+                domainConfigs={domainConfigs}
+                defaultCostDomain={resolvedCostDomain}
+                domainOptions={domainOptions}
+                allowDomainSwitch={canChangeDomain}
+            />
+        )}
+    </div>
+);
 }

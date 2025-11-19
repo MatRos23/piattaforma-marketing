@@ -5,7 +5,7 @@ import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, serv
 import { 
     PlusCircle, Pencil, Trash2, Search, Layers, XCircle, FileSignature, Check,
     Paperclip, DollarSign, Calendar, Target, AlertTriangle, CheckCircle,
-    ArrowUpDown, MapPin, SlidersHorizontal, Bell
+    ArrowUpDown, MapPin, SlidersHorizontal, Bell, Filter
 } from 'lucide-react';
 import ContractFormModal from '../components/ContractFormModal';
 import toast from 'react-hot-toast';
@@ -29,6 +29,12 @@ import { getTooltipContainerClass } from '../utils/chartTooltipStyles';
 const storage = getStorage();
 
 const MONTH_NAMES_IT = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+const CONTRACT_ADVANCED_FILTERS = [
+    { key: '', label: 'Tutti' },
+    { key: 'active', label: 'Attivi' },
+    { key: 'completed', label: 'Completati' },
+    { key: 'overrun', label: 'Sforati' }
+];
 
 // ===== UTILITY FUNCTIONS =====
 const formatCurrency = (number) => {
@@ -339,7 +345,9 @@ const DateRangeFilter = ({
     dateFilter,
     setDateFilter,
     hasDateRange,
-    setIsPresetPanelOpen
+    setIsPresetPanelOpen = () => {},
+    setIsAdvancedPanelOpen = () => {},
+    variant = 'card'
 }) => {
     const formatDateLabel = (value) => {
         if (!value) return '—';
@@ -356,11 +364,23 @@ const DateRangeFilter = ({
         ? `${formatDateLabel(dateFilter.startDate)} → ${formatDateLabel(dateFilter.endDate)}`
         : 'Seleziona periodo';
 
+    const isHeroStyle = variant === 'hero';
+    const buttonBaseClasses = isHeroStyle
+        ? 'inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 shadow-lg shadow-blue-900/30 backdrop-blur-sm transition hover:border-white/60 hover:bg-white/20'
+        : 'inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600';
+    const ringClass = hasDateRange
+        ? isHeroStyle
+            ? 'ring-2 ring-white/60'
+            : 'ring-2 ring-indigo-100'
+        : '';
+    const calendarIconClass = isHeroStyle ? 'h-4 w-4 text-white/80' : 'h-4 w-4 text-slate-500';
+    const arrowIconClass = isHeroStyle ? 'h-4 w-4 text-white/60' : 'h-4 w-4 text-slate-400';
+
     return (
         <div className="relative">
             {isOpen && (
                 <div
-                    className="fixed inset-0 z-40"
+                    className="fixed inset-0 z-[210]"
                     onClick={() => setIsOpen(false)}
                 />
             )}
@@ -369,26 +389,25 @@ const DateRangeFilter = ({
                 onClick={() => {
                     setIsOpen((prev) => !prev);
                     setIsPresetPanelOpen(false);
+                    setIsAdvancedPanelOpen(false);
                 }}
                 aria-expanded={isOpen}
-                className={`inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm shadow-blue-100/40 transition hover:border-blue-300 hover:text-indigo-600 ${
-                    hasDateRange ? 'ring-2 ring-blue-200' : ''
-                }`}
+                className={`${buttonBaseClasses} ${ringClass}`}
             >
-                <Calendar className="h-4 w-4 text-blue-400" />
-                <span>
+                <Calendar className={calendarIconClass} />
+                <span className="whitespace-nowrap">
                     {dateRangeLabel}
                 </span>
                 <ArrowUpDown
-                    className={`h-4 w-4 text-blue-300 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                    className={`${arrowIconClass} transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
                 />
             </button>
             {isOpen && (
-                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-[18rem] rounded-3xl border border-white/60 bg-white/95 p-4 shadow-2xl shadow-blue-900/25 backdrop-blur">
+                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-[18rem] rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur">
                     <div className="space-y-4">
                         <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-500">
-                                intervallo date
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                Intervallo date
                             </p>
                             <p className="text-xs font-medium text-slate-500">
                                 Imposta il periodo di firma da includere nella tabella.
@@ -406,7 +425,7 @@ const DateRangeFilter = ({
                                             startDate: event.target.value
                                         }))
                                     }
-                                    className="rounded-xl border border-blue-200 bg-white px-2 py-2 text-xs font-semibold text-blue-700 shadow-inner focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-300/40"
+                                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
                                 />
                             </label>
                             <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
@@ -420,7 +439,7 @@ const DateRangeFilter = ({
                                             endDate: event.target.value
                                         }))
                                     }
-                                    className="rounded-xl border border-blue-200 bg-white px-2 py-2 text-xs font-semibold text-blue-700 shadow-inner focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-300/40"
+                                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
                                 />
                             </label>
                         </div>
@@ -428,14 +447,14 @@ const DateRangeFilter = ({
                             <button
                                 type="button"
                                 onClick={() => setDateFilter({ startDate: '', endDate: '' })}
-                                className="text-xs font-semibold text-blue-400 transition hover:text-rose-500"
+                                className="text-xs font-semibold text-indigo-500 transition hover:text-rose-500"
                             >
                                 Pulisci
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setIsOpen(false)}
-                                className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-600 transition hover:border-blue-300 hover:bg-blue-100"
+                                className="inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-100"
                             >
                                 <Check className="h-3.5 w-3.5" />
                                 Chiudi
@@ -448,18 +467,9 @@ const DateRangeFilter = ({
     );
 };
 
+
 const ContractsTableSection = ({
-    searchTerm,
-    setSearchTerm,
-    orderedBranches,
-    selectedBranch,
-    setSelectedBranch,
-    selectedSector,
-    setSelectedSector,
-    presetName,
-    setPresetName,
     filterPresets,
-    savePreset,
     applyPreset,
     deletePreset,
     hasActiveFilters,
@@ -472,12 +482,7 @@ const ContractsTableSection = ({
     handleOpenAddModal,
     sortConfig,
     onSortChange,
-    dateFilter,
-    setDateFilter,
 }) => {
-    const [isPresetPanelOpen, setIsPresetPanelOpen] = useState(false);
-    const [isDatePanelOpen, setIsDatePanelOpen] = useState(false);
-
     return (
         <section className="relative overflow-hidden rounded-3xl border border-white/60 bg-white/70 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
             <div className="pointer-events-none absolute inset-0">
@@ -491,162 +496,8 @@ const ContractsTableSection = ({
                             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-500">Elenco contratti</p>
                             <h2 className="text-lg font-black text-slate-900">Dettaglio budget &amp; stato</h2>
                         </div>
-                        <div className="flex flex-wrap items-center justify-end gap-3">
-                            <div className="flex items-center gap-2 rounded-2xl border border-blue-200 bg-white px-3 py-2 text-blue-700 shadow-sm shadow-blue-100/40">
-                                <Search className="h-4 w-4 text-blue-400" />
-                                <input
-                                    type="text"
-                                    value={searchTerm}
-                                    onChange={(event) => setSearchTerm(event.target.value)}
-                                    placeholder="Ricerca libera"
-                                    className="appearance-none bg-transparent text-sm font-semibold text-blue-700 placeholder:text-blue-700 focus:outline-none"
-                                />
-                            </div>
-                            <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-blue-200 bg-white px-3 py-2 text-blue-700 shadow-sm shadow-blue-100/40">
-                                <Layers className="h-4 w-4 text-blue-400" />
-                                <select
-                                    value={selectedSector}
-                                    onChange={(event) => setSelectedSector(event.target.value)}
-                                    className="w-full bg-transparent text-sm font-semibold text-blue-700 focus:outline-none"
-                                >
-                                    <option value="all">Tutti i settori</option>
-                                    {Array.from(sectorMap.entries()).map(([id, name]) => (
-                                        <option key={id} value={id}>
-                                            {name || 'N/D'}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-blue-200 bg-white px-3 py-2 text-blue-700 shadow-sm shadow-blue-100/40">
-                                <MapPin className="h-4 w-4 text-blue-400" />
-                                <select
-                                    value={selectedBranch}
-                                    onChange={(event) => setSelectedBranch(event.target.value)}
-                                    className="w-full bg-transparent text-sm font-semibold text-blue-700 focus:outline-none"
-                                >
-                                    <option value="all">Tutte le filiali</option>
-                                    {orderedBranches.map((branch) => (
-                                        <option key={branch.id} value={branch.id}>
-                                            {branch.name || 'N/D'}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <DateRangeFilter
-                                isOpen={isDatePanelOpen}
-                                setIsOpen={setIsDatePanelOpen}
-                                dateFilter={dateFilter}
-                                setDateFilter={setDateFilter}
-                                hasDateRange={Boolean(dateFilter.startDate || dateFilter.endDate)}
-                                setIsPresetPanelOpen={setIsPresetPanelOpen}
-                            />
-                            <div className="flex items-center gap-3">
-                                <div className="relative">
-                                    {isPresetPanelOpen && (
-                                        <>
-                                            <div
-                                                className="fixed inset-0 z-40"
-                                                onClick={() => setIsPresetPanelOpen(false)}
-                                            />
-                                            <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-80 max-w-[calc(100vw-3rem)] rounded-3xl border border-white/50 bg-white/95 p-4 shadow-2xl shadow-blue-900/30 backdrop-blur">
-                                                <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-500">
-                                                    Preset salvati
-                                                </span>
-                                                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                                                    <input
-                                                        type="text"
-                                                        value={presetName}
-                                                        onChange={(event) => setPresetName(event.target.value)}
-                                                        placeholder="Nome preset (es. Direzione Q1)"
-                                                        className="w-full sm:flex-1 rounded-2xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            savePreset();
-                                                            setIsPresetPanelOpen(false);
-                                                        }}
-                                                        disabled={!presetName.trim()}
-                                                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-blue-500/30 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
-                                                    >
-                                                        <Check className="w-4 h-4" />
-                                                        Salva
-                                                    </button>
-                                                </div>
-                                                {filterPresets.length > 0 ? (
-                                                    <div className="mt-2 flex flex-col gap-2">
-                                                        {filterPresets.map((preset) => (
-                                                            <div
-                                                                key={preset.id}
-                                                                className="inline-flex items-center justify-between gap-2 rounded-2xl border border-blue-200 bg-white/95 px-3 py-1.5 text-sm font-semibold text-blue-700 shadow-sm shadow-blue-100/40"
-                                                            >
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        applyPreset(preset);
-                                                                        setIsPresetPanelOpen(false);
-                                                                    }}
-                                                                    className="flex-1 text-left transition-colors hover:text-indigo-600"
-                                                                >
-                                                                    {preset.name}
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => deletePreset(preset.id)}
-                                                                    className="text-blue-300 transition-colors hover:text-rose-500"
-                                                                >
-                                                                    <XCircle className="h-3.5 w-3.5" />
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <p className="mt-2 text-xs font-medium text-blue-400">
-                                                        Nessun preset salvato. Crea il primo per accelerare le viste.
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </>
-                                    )}
-                                    <button
-                                    type="button"
-                                    onClick={() => setIsPresetPanelOpen((prev) => !prev)}
-                                    aria-expanded={isPresetPanelOpen}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-white/95 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-blue-700 shadow-sm shadow-blue-100/50 transition hover:border-blue-300 hover:text-indigo-600"
-                                    >
-                                        <SlidersHorizontal className="h-4 w-4 text-blue-400" />
-                                        Preset
-                                    </button>
-                                </div>
-                                {hasActiveFilters && (
-                                    <button
-                                        type="button"
-                                        onClick={resetFilters}
-                                        className="inline-flex items-center gap-2 rounded-2xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm shadow-rose-100/40 transition-transform hover:-translate-y-[1px] hover:border-rose-400"
-                                    >
-                                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-rose-500 to-rose-600 text-white text-[11px] font-bold">
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                viewBox="0 0 20 20"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="2"
-                                                className="h-3.5 w-3.5"
-                                            >
-                                                <path d="M4 4v5h5" />
-                                                <path d="M16 16v-5h-5" />
-                                                <path d="M5 9a6 6 0 0 1 9-3.7L16 8" />
-                                                <path d="M15 11a6 6 0 0 1-9 3.7L4 12" />
-                                            </svg>
-                                        </span>
-                                        Resetta filtri
-                                    </button>
-                                )}
-                            </div>
-                        </div>
                     </div>
                 </div>
-
                 <div className="relative z-10 px-6 pb-6 space-y-6">
                     {filterPresets.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-blue-100/70 bg-white/85 px-4 py-3 shadow-inner shadow-blue-100/40">
@@ -742,7 +593,11 @@ export default function ContractsPage({ user }) {
     const [editingContract, setEditingContract] = useState(null);
     const [selectedBranch, setSelectedBranch] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [isFiltersPresetPanelOpen, setIsFiltersPresetPanelOpen] = useState(false);
+    const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
     const [selectedSector, setSelectedSector] = useState('all');
+    const [contractAdvancedFilter, setContractAdvancedFilter] = useState('');
+    const [isAdvancedPanelOpen, setIsAdvancedPanelOpen] = useState(false);
     const [dateFilter, setDateFilter] = useState({ startDate: '', endDate: '' }); // intervallo firma
     const otherPresetsRef = useRef([]);
     const [filterPresets, setFilterPresets] = useState(() => {
@@ -763,6 +618,7 @@ export default function ContractsPage({ user }) {
     const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
     const presetsMountedRef = useRef(false);
     const [sortConfig, setSortConfig] = useState({ key: 'supplier', direction: 'asc' });
+    const hasCustomDateRange = Boolean(dateFilter.startDate || dateFilter.endDate);
     
     const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers]);
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
@@ -1027,6 +883,21 @@ export default function ContractsPage({ user }) {
             });
         }
 
+        if (contractAdvancedFilter) {
+            filtered = filtered.filter(contract => {
+                switch (contractAdvancedFilter) {
+                    case 'active':
+                        return contract.actualProgress > 0 && contract.actualProgress < 100;
+                    case 'completed':
+                        return contract.actualProgress >= 100;
+                    case 'overrun':
+                        return (contract.progress || 0) > 100 || (contract.budgetOverrun || 0) > 0;
+                    default:
+                        return true;
+                }
+            });
+        }
+
         const directionMultiplier = sortConfig.direction === 'asc' ? 1 : -1;
         const getSortValue = (contract, key) => {
             switch (key) {
@@ -1089,6 +960,7 @@ export default function ContractsPage({ user }) {
         selectedSector,
         dateFilter.startDate,
         dateFilter.endDate,
+        contractAdvancedFilter,
         sortConfig,
         sectorMap
     ]);
@@ -1107,7 +979,8 @@ export default function ContractsPage({ user }) {
             startDate: dateFilter.startDate,
             endDate: dateFilter.endDate,
             selectedBranch,
-            selectedSector
+            selectedSector,
+            advancedFilter: contractAdvancedFilter
         };
         setFilterPresets(prev => {
             const withoutDuplicates = prev.filter(p => p.name.toLowerCase() !== name.toLowerCase());
@@ -1115,7 +988,7 @@ export default function ContractsPage({ user }) {
         });
         setPresetName('');
         toast.success('Preset salvato');
-    }, [presetName, searchTerm, dateFilter.startDate, dateFilter.endDate, selectedBranch, selectedSector]);
+    }, [presetName, searchTerm, dateFilter.startDate, dateFilter.endDate, selectedBranch, selectedSector, contractAdvancedFilter]);
 
     const applyPreset = useCallback((preset) => {
         setSearchTerm(preset.searchTerm || '');
@@ -1123,9 +996,10 @@ export default function ContractsPage({ user }) {
             startDate: preset.startDate ?? '',
             endDate: preset.endDate ?? ''
         });
-                setSelectedBranch(preset.selectedBranch || 'all');
-                setSelectedSector(preset.selectedSector || 'all');
-                toast.success(`Preset "${preset.name}" applicato`);
+        setSelectedBranch(preset.selectedBranch || 'all');
+        setSelectedSector(preset.selectedSector || 'all');
+        setContractAdvancedFilter(preset.advancedFilter || '');
+        toast.success(`Preset "${preset.name}" applicato`);
     }, []);
 
     const deletePreset = useCallback((id) => {
@@ -1394,6 +1268,10 @@ export default function ContractsPage({ user }) {
         setSelectedBranch('all');
         setSelectedSector('all');
         setDateFilter({ startDate: '', endDate: '' });
+        setContractAdvancedFilter('');
+        setIsAdvancedPanelOpen(false);
+        setIsFiltersPresetPanelOpen(false);
+        setIsDateDropdownOpen(false);
         setPresetName('');
         toast.success("Filtri resettati!");
     };
@@ -1404,7 +1282,8 @@ export default function ContractsPage({ user }) {
         selectedBranch !== 'all' ||
         selectedSector !== 'all' ||
         dateFilter.startDate ||
-        dateFilter.endDate
+        dateFilter.endDate ||
+        contractAdvancedFilter
     );
     const overrunContracts = processedContracts
         .filter(c => c.progress > 100)
@@ -1438,8 +1317,8 @@ export default function ContractsPage({ user }) {
                 <div className="space-y-6">
                     <div className="relative rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-sky-600 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.3),transparent_55%)]" />
-                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="space-y-4">
+                        <div className="relative flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="space-y-4 lg:max-w-3xl">
                                 <div className="flex items-center gap-4">
                                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-blue-900/30 ring-4 ring-white/20">
                                         <FileSignature className="w-7 h-7" />
@@ -1452,7 +1331,7 @@ export default function ContractsPage({ user }) {
                                 <p className="text-sm lg:text-base text-white/85 max-w-3xl">
                                     Monitora accordi e impegni con i fornitori mantenendo un'esperienza coerente con dashboard, spese e budget.
                                 </p>
-                                <div className="flex flex-wrap items-center gap-3">
+                                <div className="mt-6 flex flex-wrap items-center gap-3">
                                     <button
                                         type="button"
                                         onClick={handleOpenAddModal}
@@ -1463,14 +1342,14 @@ export default function ContractsPage({ user }) {
                                     </button>
                                 </div>
                             </div>
-                            <div className="flex items-center justify-end">
-                                <div className="flex flex-col items-end gap-3">
+                            <div className="flex w-full flex-col gap-4 lg:ml-auto lg:w-auto lg:max-w-4xl">
+                                <div className="flex flex-wrap items-center justify-end gap-3">
                                     <div className="relative">
                                         <button
                                             type="button"
-                                            onClick={() => setIsNotificationsPanelOpen(prev => !prev)}
+                                            onClick={() => setIsNotificationsPanelOpen((prev) => !prev)}
                                             className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] shadow-lg backdrop-blur-sm transition-all ${
-                                                overrunContracts.length > 0
+                                                notificationCount > 0
                                                     ? 'bg-white/15 text-white hover:bg-white/25 shadow-blue-900/30'
                                                     : 'bg-white/10 text-white/60 hover:bg-white/15 shadow-blue-900/10'
                                             }`}
@@ -1481,7 +1360,7 @@ export default function ContractsPage({ user }) {
                                         {isNotificationsPanelOpen && (
                                             <>
                                                 <div
-                                                    className="absolute inset-0 z-40"
+                                                    className="fixed inset-0 z-40"
                                                     onClick={() => setIsNotificationsPanelOpen(false)}
                                                 />
                                                 <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-blue-900/30 backdrop-blur sm:w-80 space-y-3">
@@ -1543,9 +1422,266 @@ export default function ContractsPage({ user }) {
                         </div>
                     </div>
                 </div>
+                {/* Sezione Filtri */}
+                <section className="relative z-20 rounded-3xl border border-white/70 bg-gradient-to-r from-slate-300/90 via-slate-200/85 to-slate-300/80 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
+                    <div className="pointer-events-none absolute inset-0">
+                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-white/45 blur-3xl" />
+                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-400/40 blur-3xl" />
+                    </div>
+                    <div className="relative z-10 flex flex-wrap lg:flex-nowrap items-center justify-center gap-3 lg:gap-4 w-full max-w-6xl mx-auto">
+                        <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <Search className="h-4 w-4 text-slate-700" />
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(event) => setSearchTerm(event.target.value)}
+                                placeholder="Ricerca libera"
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 placeholder:text-slate-600 focus:outline-none"
+                            />
+                        </div>
+                        <DateRangeFilter
+                            isOpen={isDateDropdownOpen}
+                            setIsOpen={setIsDateDropdownOpen}
+                            dateFilter={dateFilter}
+                            setDateFilter={setDateFilter}
+                            hasDateRange={hasCustomDateRange}
+                            setIsPresetPanelOpen={setIsFiltersPresetPanelOpen}
+                            setIsAdvancedPanelOpen={setIsAdvancedPanelOpen}
+                        />
+                        <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <Layers className="h-4 w-4 text-slate-600" />
+                            <select
+                                value={selectedSector}
+                                onChange={(event) => setSelectedSector(event.target.value)}
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                            >
+                                <option value="all">Tutti i settori</option>
+                                {Array.from(sectorMap.entries()).map(([id, name]) => (
+                                    <option key={id} value={id}>
+                                        {name || 'N/D'}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <MapPin className="h-4 w-4 text-slate-600" />
+                            <select
+                                value={selectedBranch}
+                                onChange={(event) => setSelectedBranch(event.target.value)}
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                            >
+                                <option value="all">Tutte le filiali</option>
+                                {orderedBranches.map((branch) => (
+                                    <option key={branch.id} value={branch.id}>
+                                        {branch.name || 'N/D'}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="relative">
+                            {isAdvancedPanelOpen && (
+                                <div className="fixed inset-0 z-[210]" onClick={() => setIsAdvancedPanelOpen(false)} />
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsAdvancedPanelOpen(prev => !prev);
+                                    setIsFiltersPresetPanelOpen(false);
+                                    setIsDateDropdownOpen(false);
+                                }}
+                                aria-expanded={isAdvancedPanelOpen}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
+                                    contractAdvancedFilter ? 'ring-2 ring-indigo-100' : ''
+                                }`}
+                            >
+                                <Filter className="h-4 w-4 text-slate-500" />
+                                <span className="whitespace-nowrap">Filtri avanzati</span>
+                                <ArrowUpDown
+                                    className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${isAdvancedPanelOpen ? 'rotate-180' : ''}`}
+                                />
+                            </button>
+                            {isAdvancedPanelOpen && (
+                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/70 bg-white/95 p-5 shadow-2xl shadow-slate-900/15 backdrop-blur space-y-3">
+                                    <div>
+                                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                            Stato documentale
+                                        </p>
+                                        <p className="text-xs font-medium text-slate-500">
+                                            Limita l'elenco in base allo stato dei contratti.
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {CONTRACT_ADVANCED_FILTERS.map(option => {
+                                            const active = contractAdvancedFilter === option.key;
+                                            return (
+                                                <button
+                                                    key={option.key || 'all'}
+                                                    type="button"
+                                                    onClick={() => setContractAdvancedFilter(option.key)}
+                                                    className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                                                        active
+                                                            ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                            : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                    }`}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <button
+                                            type="button"
+                                            onClick={() => setContractAdvancedFilter('')}
+                                            className="text-xs font-semibold text-indigo-500 transition hover:text-rose-500"
+                                        >
+                                            Pulisci
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsAdvancedPanelOpen(false)}
+                                            className="inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-100"
+                                        >
+                                            <Check className="h-3.5 w-3.5" />
+                                            Chiudi
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="relative flex flex-wrap items-center gap-3">
+                            {isFiltersPresetPanelOpen && (
+                                <div
+                                    className="fixed inset-0 z-[210]"
+                                    onClick={() => setIsFiltersPresetPanelOpen(false)}
+                                />
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsFiltersPresetPanelOpen(prev => !prev);
+                                    setIsAdvancedPanelOpen(false);
+                                    setIsDateDropdownOpen(false);
+                                }}
+                                aria-expanded={isFiltersPresetPanelOpen}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
+                                    isFiltersPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
+                                }`}
+                            >
+                                <SlidersHorizontal className="h-4 w-4 text-slate-500" />
+                                Preset
+                            </button>
+                            {hasActiveFilters && (
+                                <button
+                                    type="button"
+                                    onClick={resetFilters}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm shadow-rose-100/60 transition hover:border-rose-300 whitespace-nowrap"
+                                >
+                                    <X className="w-3.5 h-3.5 text-rose-500" />
+                                    Resetta filtri
+                                </button>
+                            )}
+                            {isFiltersPresetPanelOpen && (
+                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/70 bg-white/95 p-5 shadow-2xl shadow-slate-900/15 backdrop-blur sm:w-80 space-y-3">
+                                    <div>
+                                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                            Preset salvati
+                                        </p>
+                                        <p className="text-xs font-medium text-slate-500">
+                                            Salva e riutilizza combinazioni di filtri condivise.
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-col gap-2 sm:flex-row">
+                                        <input
+                                            type="text"
+                                            value={presetName}
+                                            onChange={(event) => setPresetName(event.target.value)}
+                                            placeholder="Nome preset (es. Trimestrale HQ)"
+                                            className="w-full flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (!presetName.trim()) return;
+                                                savePreset();
+                                                setIsFiltersPresetPanelOpen(false);
+                                            }}
+                                            disabled={!presetName.trim()}
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-500 px-3 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            <Check className="h-3.5 w-3.5" />
+                                            Salva
+                                        </button>
+                                    </div>
+                                    {filterPresets.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {filterPresets.map(preset => (
+                                                <div
+                                                    key={preset.id}
+                                                    className="inline-flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-100/40"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            applyPreset(preset);
+                                                            setIsFiltersPresetPanelOpen(false);
+                                                        }}
+                                                        className="flex-1 text-left transition-colors hover:text-indigo-600"
+                                                    >
+                                                        {preset.name}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => deletePreset(preset.id)}
+                                                        className="text-slate-300 transition-colors hover:text-rose-500"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs font-medium text-slate-400">
+                                            Nessun preset salvato.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {filterPresets.length > 0 && (
+                        <div className="relative z-10 mt-2 flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/70 bg-slate-50/85 px-4 py-3 shadow-inner shadow-slate-200/60 backdrop-blur">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Preset rapidi
+                            </span>
+                            {filterPresets.map(preset => (
+                                <div
+                                    key={preset.id}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100/60"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => applyPreset(preset)}
+                                        className="transition-colors hover:text-indigo-600"
+                                    >
+                                        {preset.name}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => deletePreset(preset.id)}
+                                        className="text-slate-300 transition-colors hover:text-rose-500"
+                                    >
+                                        <XCircle className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
-                    {kpiCards.map(({ key, ...card }) => (
-                        <KpiCard key={key} {...card} />
+                    {kpiCards.map(card => (
+                        <KpiCard key={card.key} {...card} />
                     ))}
                 </div>
 
@@ -1717,17 +1853,7 @@ export default function ContractsPage({ user }) {
                 </div>
 
                 <ContractsTableSection
-                    searchTerm={searchTerm}
-                    setSearchTerm={setSearchTerm}
-                    orderedBranches={orderedBranches}
-                    selectedBranch={selectedBranch}
-                    setSelectedBranch={setSelectedBranch}
-                    selectedSector={selectedSector}
-                    setSelectedSector={setSelectedSector}
-                    presetName={presetName}
-                    setPresetName={setPresetName}
                     filterPresets={filterPresets}
-                    savePreset={savePreset}
                     applyPreset={applyPreset}
                     deletePreset={deletePreset}
                     hasActiveFilters={hasActiveFilters}
@@ -1740,8 +1866,6 @@ export default function ContractsPage({ user }) {
                     handleOpenAddModal={handleOpenAddModal}
                     sortConfig={sortConfig}
                     onSortChange={handleSortChange}
-                    dateFilter={dateFilter}
-                    setDateFilter={setDateFilter}
                 />
 
             {/* Modal */}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
     collection,
     query,
@@ -24,6 +24,12 @@ import {
     Layers,
     Calendar,
     Bell,
+    MapPin,
+    SlidersHorizontal,
+    X,
+    XCircle,
+    Check,
+    ArrowUpDown,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { db } from '../firebase/config';
@@ -32,6 +38,7 @@ import EmployeeFormModal from '../components/EmployeeFormModal';
 import EmptyState from '../components/EmptyState';
 import { KpiCard } from '../components/SharedComponents';
 import { getSectorColor } from '../constants/sectorColors';
+import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
 import {
     PieChart,
     Pie,
@@ -216,6 +223,37 @@ export default function EmployeesPage() {
     const [selectedYear, setSelectedYear] = useState(String(CURRENT_YEAR));
     const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
     const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
+    const otherPresetsRef = useRef([]);
+    const [filterPresets, setFilterPresets] = useState(() => {
+        const stored = loadFilterPresets() || [];
+        const scoped = [];
+        const others = [];
+        stored.forEach((preset) => {
+            if (!preset.scope || preset.scope === 'employees') {
+                scoped.push(preset);
+            } else {
+                others.push(preset);
+            }
+        });
+        otherPresetsRef.current = others;
+        return scoped;
+    });
+    const [presetName, setPresetName] = useState('');
+    const [isPresetPanelOpen, setIsPresetPanelOpen] = useState(false);
+    const [isAdvancedPanelOpen, setIsAdvancedPanelOpen] = useState(false);
+    const presetsMountedRef = useRef(false);
+
+    useEffect(() => {
+        if (presetsMountedRef.current) {
+            const scopedPresets = filterPresets.map((preset) => ({
+                ...preset,
+                scope: 'employees',
+            }));
+            persistFilterPresets([...otherPresetsRef.current, ...scopedPresets]);
+        } else {
+            presetsMountedRef.current = true;
+        }
+    }, [filterPresets]);
 
     useEffect(() => {
         setIsLoading(true);
@@ -679,7 +717,57 @@ const monthlySectorData = useMemo(() => {
         setSelectedSectorId('all');
         setStatusFilter('active');
         setSelectedDepartment('all');
+        setSelectedYear(String(CURRENT_YEAR));
     };
+
+    const handleSavePreset = useCallback(() => {
+        const name = presetName.trim();
+        if (!name) {
+            toast.error('Inserisci un nome per il preset');
+            return;
+        }
+        const preset = {
+            id: Date.now(),
+            scope: 'employees',
+            name,
+            searchTerm,
+            selectedBranchId,
+            selectedSectorId,
+            statusFilter,
+            selectedDepartment,
+            selectedYear,
+        };
+        setFilterPresets((prev) => {
+            const withoutDuplicates = prev.filter((item) => item.name.toLowerCase() !== name.toLowerCase());
+            return [...withoutDuplicates, preset];
+        });
+        setPresetName('');
+        toast.success('Preset salvato');
+    }, [presetName, searchTerm, selectedBranchId, selectedSectorId, statusFilter, selectedDepartment, selectedYear]);
+
+    const applyPreset = useCallback((preset) => {
+        setSearchTerm(preset.searchTerm || '');
+        setSelectedBranchId(preset.selectedBranchId || 'all');
+        setSelectedSectorId(preset.selectedSectorId || 'all');
+        setStatusFilter(preset.statusFilter || 'active');
+        setSelectedDepartment(preset.selectedDepartment || 'all');
+        setSelectedYear(preset.selectedYear || String(CURRENT_YEAR));
+        toast.success(`Preset "${preset.name}" applicato`);
+    }, []);
+
+    const handleDeletePreset = useCallback((id) => {
+        setFilterPresets((prev) => prev.filter((preset) => preset.id !== id));
+        toast.success('Preset eliminato');
+    }, []);
+
+    const hasEmployeeFilters = Boolean(
+        searchTerm ||
+        selectedBranchId !== 'all' ||
+        selectedSectorId !== 'all' ||
+        statusFilter !== 'active' ||
+        selectedDepartment !== 'all' ||
+        selectedYear !== String(CURRENT_YEAR)
+    );
 
     const handleSort = (key) => {
         setSortConfig((prev) => {
@@ -696,11 +784,10 @@ const monthlySectorData = useMemo(() => {
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-rose-50 to-pink-100 relative">
             <div className="relative p-4 lg:p-8 space-y-8">
-                <div className="space-y-6">
-                    <div className="relative rounded-3xl bg-gradient-to-br from-fuchsia-600 via-rose-600 to-pink-500 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
+                <div className="relative rounded-3xl bg-gradient-to-br from-fuchsia-600 via-rose-600 to-pink-500 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.35),transparent_60%)]" />
-                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="space-y-4">
+                        <div className="relative flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="space-y-4 lg:max-w-3xl">
                                 <div className="flex items-center gap-4">
                                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-rose-900/30 ring-4 ring-white/20">
                                         <Users className="w-7 h-7" />
@@ -715,10 +802,9 @@ const monthlySectorData = useMemo(() => {
                                     </div>
                                 </div>
                                 <p className="text-sm lg:text-base text-white/85 max-w-3xl">
-                                    Controlla l’organico aziendale e monitora l’impatto dei costi del personale sui
-                                    centri di costo, mantenendo coerenza con il resto della piattaforma.
+                                    Controlla l’organico aziendale e monitora l’impatto dei costi del personale sui centri di costo, mantenendo coerenza con il resto della piattaforma.
                                 </p>
-                                <div className="flex flex-wrap items-center gap-3">
+                                <div className="mt-6 flex flex-wrap items-center gap-3">
                                     <button
                                         type="button"
                                         onClick={openCreateModal}
@@ -729,10 +815,10 @@ const monthlySectorData = useMemo(() => {
                                     </button>
                                 </div>
                             </div>
-                            <div className="flex items-center justify-end">
-                                <div className="flex flex-col items-end gap-3">
+                            <div className="flex w-full flex-col gap-4 lg:ml-auto lg:w-auto lg:max-w-5xl">
+                                <div className="flex flex-wrap items-center justify-end gap-3">
                                     <div className="inline-flex items-center gap-3 rounded-2xl border border-white/30 bg-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/85 shadow-lg shadow-rose-900/20 backdrop-blur-sm">
-                                        <Calendar className="w-3.5 h-3.5" />
+                                        <Calendar className="w-4 h-4" />
                                         Anno
                                         <select
                                             value={selectedYear}
@@ -791,12 +877,299 @@ const monthlySectorData = useMemo(() => {
                                 </div>
                             </div>
                         </div>
-                    </div>
                 </div>
+                {/* Sezione Filtri */}
+                <section className="relative z-20 rounded-3xl border border-white/70 bg-gradient-to-r from-slate-300/90 via-slate-200/85 to-slate-300/80 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
+                    <div className="pointer-events-none absolute inset-0">
+                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-white/45 blur-3xl" />
+                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-400/40 blur-3xl" />
+                    </div>
+                    <div className="relative z-10 flex flex-wrap lg:flex-nowrap items-center justify-center gap-3 lg:gap-4 w-full max-w-6xl mx-auto">
+                        <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <Search className="h-4 w-4 text-slate-700" />
+                            <input
+                                type="search"
+                                value={searchTerm}
+                                onChange={(event) => setSearchTerm(event.target.value)}
+                                placeholder="Ricerca libera"
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 placeholder:text-slate-600 focus:outline-none"
+                            />
+                        </div>
+                        <div className="flex min-w-[170px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <Calendar className="h-4 w-4 text-slate-600" />
+                            <select
+                                value={selectedYear}
+                                onChange={(event) => setSelectedYear(event.target.value)}
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                            >
+                                {availableYears.map((yearOption) => (
+                                    <option key={yearOption} value={yearOption}>
+                                        {yearOption}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <Layers className="h-4 w-4 text-slate-600" />
+                            <select
+                                value={selectedSectorId}
+                                onChange={(event) => setSelectedSectorId(event.target.value)}
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                            >
+                                <option value="all">Tutti i settori</option>
+                                {sectors.map((sector) => (
+                                    <option key={sector.id} value={sector.id}>
+                                        {sector.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <MapPin className="h-4 w-4 text-slate-600" />
+                            <select
+                                value={selectedBranchId}
+                                onChange={(event) => setSelectedBranchId(event.target.value)}
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                            >
+                                <option value="all">Tutte le filiali</option>
+                                {branches.map((branch) => (
+                                    <option key={branch.id} value={branch.id}>
+                                        {branch.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="relative">
+                            {isAdvancedPanelOpen && (
+                                <div className="fixed inset-0 z-[210]" onClick={() => setIsAdvancedPanelOpen(false)} />
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsAdvancedPanelOpen(prev => !prev);
+                                    setIsPresetPanelOpen(false);
+                                }}
+                                aria-expanded={isAdvancedPanelOpen}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
+                                    (selectedDepartment !== 'all' || statusFilter !== 'active') ? 'ring-2 ring-indigo-100' : ''
+                                }`}
+                            >
+                                <Filter className="h-4 w-4 text-slate-500" />
+                                <span className="whitespace-nowrap">Filtri avanzati</span>
+                                <ArrowUpDown
+                                    className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${isAdvancedPanelOpen ? 'rotate-180' : ''}`}
+                                />
+                            </button>
+                            {isAdvancedPanelOpen && (
+                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur space-y-4">
+                                    <div>
+                                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                            Filtri aggiuntivi
+                                        </p>
+                                        <p className="text-xs font-medium text-slate-500">
+                                            Personalizza la vista dell’anagrafica dipendenti.
+                                        </p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                            Reparto
+                                        </span>
+                                        <div className="flex flex-wrap gap-2">
+                                            {departmentOptions.map((departmentName) => {
+                                                const active = selectedDepartment === departmentName;
+                                                return (
+                                                    <button
+                                                        key={departmentName}
+                                                        type="button"
+                                                        onClick={() => setSelectedDepartment(departmentName)}
+                                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                                                            active
+                                                                ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                                : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                        }`}
+                                                    >
+                                                        {departmentName}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                            Stato
+                                        </span>
+                                        <div className="flex flex-wrap gap-2">
+                                            {STATUS_FILTER_OPTIONS.map((option) => {
+                                                const active = statusFilter === option.value;
+                                                return (
+                                                    <button
+                                                        key={option.value}
+                                                        type="button"
+                                                        onClick={() => setStatusFilter(option.value)}
+                                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                                                            active
+                                                                ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                                : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                        }`}
+                                                    >
+                                                        {option.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedDepartment('all');
+                                                setStatusFilter('active');
+                                            }}
+                                            className="text-xs font-semibold text-indigo-500 transition hover:text-rose-500"
+                                        >
+                                            Pulisci
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsAdvancedPanelOpen(false)}
+                                            className="inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-100"
+                                        >
+                                            <Check className="h-3.5 w-3.5" />
+                                            Chiudi
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="relative flex flex-wrap items-center gap-3">
+                            {isPresetPanelOpen && (
+                                <div className="fixed inset-0 z-[210]" onClick={() => setIsPresetPanelOpen(false)} />
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsPresetPanelOpen(prev => !prev);
+                                    setIsAdvancedPanelOpen(false);
+                                }}
+                                aria-expanded={isPresetPanelOpen}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
+                                    isPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
+                                }`}
+                            >
+                                <SlidersHorizontal className="h-4 w-4 text-slate-500" />
+                                <span className="whitespace-nowrap">Preset</span>
+                            </button>
+                            {hasEmployeeFilters && (
+                                <button
+                                    type="button"
+                                    onClick={handleResetFilters}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm shadow-rose-100/60 transition hover:border-rose-300 whitespace-nowrap"
+                                >
+                                    <XCircle className="h-3.5 w-3.5" />
+                                    Resetta filtri
+                                </button>
+                            )}
+                            {isPresetPanelOpen && (
+                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur space-y-3">
+                                    <div>
+                                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                            Preset salvati
+                                        </p>
+                                        <p className="text-xs font-medium text-slate-500">
+                                            Salva e riutilizza combinazioni di filtri.
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+                                        <input
+                                            type="text"
+                                            value={presetName}
+                                            onChange={(event) => setPresetName(event.target.value)}
+                                            placeholder="Nome preset (es. HR Italia)"
+                                            className="w-full flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
+                                        />
+                                        <button
+                                            type="button"
+                                            disabled={!presetName.trim()}
+                                            onClick={() => {
+                                                if (!presetName.trim()) return;
+                                                handleSavePreset();
+                                                setIsPresetPanelOpen(false);
+                                            }}
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            <Check className="h-3.5 w-3.5" />
+                                            Salva
+                                        </button>
+                                    </div>
+                                    {filterPresets.length > 0 ? (
+                                        <div className="flex flex-col gap-2">
+                                            {filterPresets.map((preset) => (
+                                                <div
+                                                    key={preset.id}
+                                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-100/60"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            applyPreset(preset);
+                                                            setIsPresetPanelOpen(false);
+                                                        }}
+                                                        className="flex-1 text-left transition-colors hover:text-indigo-600"
+                                                    >
+                                                        {preset.name}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeletePreset(preset.id)}
+                                                        className="text-slate-300 transition-colors hover:text-rose-500"
+                                                    >
+                                                        <X className="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs font-medium text-slate-400">
+                                            Nessun preset salvato al momento.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {filterPresets.length > 0 && (
+                        <div className="relative z-10 mt-2 flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/70 bg-slate-50/85 px-4 py-3 shadow-inner shadow-slate-200/60 backdrop-blur">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Preset rapidi
+                            </span>
+                            {filterPresets.map((preset) => (
+                                <div
+                                    key={`quick-preset-${preset.id}`}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100/60"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => applyPreset(preset)}
+                                        className="transition-colors hover:text-indigo-600"
+                                    >
+                                        {preset.name}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleDeletePreset(preset.id)}
+                                        className="text-slate-300 transition-colors hover:text-rose-500"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    {kpiCards.map((card) => (
-                        <KpiCard key={card.key} {...card} />
+                    {kpiCards.map(({ key, ...card }) => (
+                        <KpiCard key={key} {...card} />
                     ))}
                 </div>
 
@@ -1004,122 +1377,12 @@ const monthlySectorData = useMemo(() => {
                     </div>
                     <div className="relative z-10 flex flex-col">
                         <div className="flex flex-col gap-4 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-rose-100/70 via-white/90 to-rose-100/40 px-6 py-5 lg:flex-row lg:items-end lg:justify-between">
-                        <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-500">
-                                Anagrafica dipendenti
-                            </p>
-                            <h2 className="text-lg font-black text-slate-900">Organico e costi ricorrenti</h2>
-                        </div>
-
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                            <div className="flex flex-wrap items-center gap-3">
-                                <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-3 py-2 text-rose-700 shadow-sm shadow-rose-100/40">
-                                    <Search className="h-4 w-4 text-rose-400" />
-                                    <input
-                                        type="search"
-                                        value={searchTerm}
-                                        onChange={(event) => setSearchTerm(event.target.value)}
-                                        className="bg-transparent text-sm font-semibold text-rose-700 placeholder:text-rose-700 focus:outline-none"
-                                        placeholder="Cerca per nome, mansione o centro di costo..."
-                                    />
-                                </div>
-
-                                <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-3 py-2 shadow-sm shadow-rose-100/40">
-                                    <Layers className="h-4 w-4 text-rose-400" />
-                                    <select
-                                        value={selectedSectorId}
-                                        onChange={(event) => setSelectedSectorId(event.target.value)}
-                                        className="bg-transparent text-sm font-semibold text-rose-700 focus:outline-none"
-                                    >
-                                        <option value="all">Tutti i settori</option>
-                                        {sectors.map((sector) => (
-                                            <option key={sector.id} value={sector.id}>
-                                                {sector.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-3 py-2 shadow-sm shadow-rose-100/40">
-                                    <Filter className="h-4 w-4 text-rose-400" />
-                                    <select
-                                        value={selectedBranchId}
-                                        onChange={(event) => setSelectedBranchId(event.target.value)}
-                                        className="bg-transparent text-sm font-semibold text-rose-700 focus:outline-none"
-                                    >
-                                        <option value="all">Tutte le filiali</option>
-                                        {branches.map((branch) => (
-                                            <option key={branch.id} value={branch.id}>
-                                                {branch.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-3 py-2 shadow-sm shadow-rose-100/40">
-                                    <Users className="h-4 w-4 text-rose-400" />
-                                    <select
-                                        value={selectedDepartment}
-                                        onChange={(event) => setSelectedDepartment(event.target.value)}
-                                        className="bg-transparent text-sm font-semibold text-rose-700 focus:outline-none"
-                                    >
-                                        <option value="all">Tutti i reparti</option>
-                                        {departmentOptions.map((department) => (
-                                            <option key={department} value={department}>
-                                                {department}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-3 py-2 shadow-sm shadow-rose-100/40">
-                                    <PieChartIcon className="h-4 w-4 text-rose-400" />
-                                    <select
-                                        value={statusFilter}
-                                        onChange={(event) => setStatusFilter(event.target.value)}
-                                        className="bg-transparent text-sm font-semibold text-rose-700 focus:outline-none"
-                                    >
-                                        {STATUS_FILTER_OPTIONS.map((option) => (
-                                            <option key={option.id} value={option.id}>
-                                                {option.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-500">
+                                    Anagrafica dipendenti
+                                </p>
+                                <h2 className="text-lg font-black text-slate-900">Organico e costi ricorrenti</h2>
                             </div>
-                            {(
-                                searchTerm ||
-                                selectedBranchId !== 'all' ||
-                                selectedSectorId !== 'all' ||
-                                statusFilter !== 'active' ||
-                                selectedDepartment !== 'all'
-                            ) && (
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={handleResetFilters}
-                                        className="inline-flex items-center gap-2 rounded-2xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm shadow-rose-100/40 transition-transform hover:-translate-y-[1px] hover:border-rose-400"
-                                    >
-                                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-rose-500 to-rose-600 text-white text-[11px] font-bold">
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                viewBox="0 0 20 20"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="2"
-                                                className="h-3.5 w-3.5"
-                                            >
-                                                <path d="M4 4v5h5" />
-                                                <path d="M16 16v-5h-5" />
-                                                <path d="M5 9a6 6 0 0 1 9-3.7L16 8" />
-                                                <path d="M15 11a6 6 0 0 1-9 3.7L4 12" />
-                                            </svg>
-                                        </span>
-                                        Reset filtri
-                                    </button>
-                                </div>
-                            )}
-                        </div>
                         </div>
                         <div className="relative z-10 px-6 pb-6 pt-6">
                             <div className="overflow-hidden rounded-3xl border border-rose-100 shadow-inner shadow-rose-100/70">

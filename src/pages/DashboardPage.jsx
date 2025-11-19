@@ -1,13 +1,28 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, onSnapshot, where, orderBy } from 'firebase/firestore';
 import {
     BarChart3, TrendingUp, DollarSign, Target, AlertTriangle,
     CheckCircle, Layers, Car, Sailboat, Caravan, Building2,
-    ChevronRight, ChevronDown, Activity, Award, XCircle, ArrowUpDown, MapPin, Calendar, X, HelpCircle, PieChart, FileSignature, Check, SlidersHorizontal
+    ChevronRight, ChevronDown, Activity, Award, XCircle, ArrowUpDown, MapPin, Calendar, X, HelpCircle, PieChart, FileSignature, Check, SlidersHorizontal, Search, Filter
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { KpiCard } from '../components/SharedComponents';
+import { getTooltipContainerClass } from '../utils/chartTooltipStyles';
+import {
+    ResponsiveContainer,
+    PieChart as RechartsPieChart,
+    Pie,
+    Cell,
+    Tooltip as RechartsTooltip,
+    BarChart as RechartsBarChart,
+    Bar,
+    CartesianGrid,
+    XAxis,
+    YAxis,
+    ReferenceLine,
+} from 'recharts';
+import { getSectorColor } from '../constants/sectorColors';
 import { loadFilterPresets, persistFilterPresets } from '../utils/filterPresets';
 import { deriveBranchesForLineItem } from '../utils/branchAssignments';
 import { DEFAULT_COST_DOMAIN } from '../constants/costDomains';
@@ -492,6 +507,7 @@ export default function DashboardPage({ navigate, user }) {
     const [sectors, setSectors] = useState([]);
     const [branches, setBranches] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
     const [selectedSector, setSelectedSector] = useState('all');
     const [showProjections, setShowProjections] = useState(true);
     const [selectedBranch, setSelectedBranch] = useState('all');
@@ -502,15 +518,30 @@ export default function DashboardPage({ navigate, user }) {
             ),
         [allExpenses]
     );
-    const [filterPresets, setFilterPresets] = useState(() =>
-        loadFilterPresets().map(preset => {
-            const { showProjections: _ignored, ...rest } = preset;
-            return rest;
-        })
-    );
+    const otherPresetsRef = useRef([]);
+    const [filterPresets, setFilterPresets] = useState(() => {
+        const stored = loadFilterPresets() || [];
+        const scoped = [];
+        const others = [];
+        stored.forEach((preset) => {
+            const { scope, showProjections: presetShowProjections = true, ...rest } = preset;
+            if (!scope || scope === 'dashboard') {
+                scoped.push({
+                    ...rest,
+                    showProjections: presetShowProjections,
+                    searchTerm: rest.searchTerm || '',
+                });
+            } else {
+                others.push(preset);
+            }
+        });
+        otherPresetsRef.current = others;
+        return scoped;
+    });
     const [presetName, setPresetName] = useState('');
     const [isPresetPanelOpen, setIsPresetPanelOpen] = useState(false);
     const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
+    const [isAdvancedPanelOpen, setIsAdvancedPanelOpen] = useState(false);
     const [isOverdueExpanded, setIsOverdueExpanded] = useState(false);
     
     const [startDate, setStartDate] = useState(() => {
@@ -540,9 +571,14 @@ export default function DashboardPage({ navigate, user }) {
         [startDate, endDate, defaultStartDate, defaultEndDate]
     );
 
+    const trimmedSearchTerm = searchTerm.trim();
     const hasActiveFilters = useMemo(() => {
-        return hasCustomDateRange || selectedSector !== 'all' || selectedBranch !== 'all' || !showProjections;
-    }, [hasCustomDateRange, selectedSector, selectedBranch, showProjections]);
+        return Boolean(trimmedSearchTerm) ||
+            hasCustomDateRange ||
+            selectedSector !== 'all' ||
+            selectedBranch !== 'all' ||
+            !showProjections;
+    }, [trimmedSearchTerm, hasCustomDateRange, selectedSector, selectedBranch, showProjections]);
 
     useEffect(() => {
         const endYear = new Date(endDate).getFullYear();
@@ -553,11 +589,18 @@ export default function DashboardPage({ navigate, user }) {
 
     const filtersLoaded = useRef(false);
     useEffect(() => {
-        if (filtersLoaded.current) {
-            persistFilterPresets(filterPresets);
-        } else {
+        if (!filtersLoaded.current) {
             filtersLoaded.current = true;
+            return;
         }
+        const scopedPresets = filterPresets.map(preset => ({
+            ...preset,
+            scope: 'dashboard'
+        }));
+        persistFilterPresets([
+            ...otherPresetsRef.current,
+            ...scopedPresets
+        ]);
     }, [filterPresets]);
 
     const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers]);
@@ -1178,48 +1221,213 @@ export default function DashboardPage({ navigate, user }) {
         [metrics.allBranches]
     );
     const branchesBaselineCommitted = showProjections ? metrics.totalBranchesSpent : branchesSpentOnly;
+    const monthlyTrendStats = useMemo(() => {
+        const chartData = metrics.monthlyData.map((month = {}, index) => {
+            const real = Number(month.real) || 0;
+            const projected = showProjections ? Number(month.projected) || 0 : 0;
+            return {
+                ...month,
+                mese: month.mese || month.month || `M${index + 1}`,
+                real,
+                projected,
+                total: real + projected,
+            };
+        });
+
+        const monthlyAvgBudget = metrics.currentSectorBudget / 12;
+        const totalForecastYear = chartData.reduce((sum, item) => sum + item.total, 0);
+        const maxEntry = chartData.reduce(
+            (prev, curr) => (curr.total > prev.total ? curr : prev),
+            chartData[0] || { total: 0, mese: 'N/D' }
+        );
+
+        const currentCalendar = new Date();
+        const sameYear = new Date(endDate).getFullYear() === currentCalendar.getFullYear();
+        const currentMonthIndex = sameYear ? currentCalendar.getMonth() : null;
+        const currentMonthData =
+            currentMonthIndex !== null ? chartData[currentMonthIndex] : null;
+
+        const summaryCards = [
+            { label: 'Totale anno', value: formatCurrency(totalForecastYear) },
+            { label: 'Budget medio', value: formatCurrency(monthlyAvgBudget) },
+            {
+                label: `Picco · ${maxEntry?.mese || 'N/D'}`,
+                value: formatCurrency(maxEntry?.total || 0),
+            },
+            {
+                label: currentMonthData
+                    ? `Mese corrente · ${currentMonthData.mese}`
+                    : 'Mese corrente',
+                value: currentMonthData ? formatCurrency(currentMonthData.total) : '—',
+            },
+        ];
+
+        const hasData = chartData.some(item => item.total > 0);
+
+        return {
+            chartData,
+            monthlyAvgBudget,
+            summaryCards,
+            hasData,
+        };
+    }, [metrics.monthlyData, metrics.currentSectorBudget, showProjections, endDate]);
+
+    const renderMonthlyBudgetLabel = useCallback(({ viewBox }) => {
+        if (!viewBox) return null;
+        const { x = 0, width = 0, y = 0 } = viewBox;
+        const chipWidth = 120;
+        const chipHeight = 24;
+        const cornerRadius = 14;
+        const labelX = x + width - chipWidth - 16;
+        const labelY = y - chipHeight - 10;
+
+        return (
+            <g pointerEvents="none">
+                <defs>
+                    <linearGradient id="budget-label-bg" x1="0" y1="1" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+                        <stop offset="100%" stopColor="#FDF2F8" stopOpacity="0.92" />
+                    </linearGradient>
+                </defs>
+                <rect
+                    x={labelX}
+                    y={labelY}
+                    width={chipWidth}
+                    height={chipHeight}
+                    rx={cornerRadius}
+                    fill="url(#budget-label-bg)"
+                    stroke="rgba(244,63,94,0.4)"
+                    strokeWidth={1}
+                />
+                <text
+                    x={labelX + chipWidth / 2}
+                    y={labelY + chipHeight / 2 + 4}
+                    textAnchor="middle"
+                    fill="#F43F5E"
+                    fontSize={11}
+                    fontWeight={700}
+                >
+                    Budget medio
+                </text>
+            </g>
+        );
+    }, []);
+
     const categoryDistribution = useMemo(() => {
-        const palette = ['#6366f1', '#8b5cf6', '#22c55e', '#f97316', '#0ea5e9', '#ec4899', '#facc15', '#14b8a6'];
         const usableSectors = metrics.sectorData.filter(sector => (sector.name || '').toLowerCase() !== 'sconosciuto' && (sector.spent || 0) > 0);
         const total = usableSectors.reduce((sum, sector) => sum + (sector.spent || 0), 0);
         if (total <= 0) {
-            return { total: 0, segments: [], gradient: '' };
+            return { total: 0, segments: [] };
         }
-        let cumulative = 0;
         const segments = usableSectors.map((sector, idx) => {
             const amount = sector.spent || 0;
             const percent = amount / total;
-            const start = cumulative;
-            cumulative += percent;
             return {
                 id: sector.id,
                 name: sector.name,
                 amount,
                 percent,
-                color: palette[idx % palette.length],
-                start,
-                end: cumulative
+                color: getSectorColor(sector.name, idx)
             };
         });
-        const gradient = segments
-            .map(segment => `${segment.color} ${(segment.start * 100).toFixed(2)}% ${(segment.end * 100).toFixed(2)}%`)
-            .join(', ');
-        return { total, segments, gradient };
+        return { total, segments };
     }, [metrics.sectorData]);
+    const renderMonthlyTrendTooltip = useCallback(
+        ({ active, payload }) => {
+            if (!active || !payload || payload.length === 0) return null;
+            const monthLabel = payload[0]?.payload?.mese || '';
+            const rows = [
+                {
+                    id: 'total',
+                    label: 'Totale',
+                    value: payload.reduce((sum, item) => sum + (Number(item.value) || 0), 0),
+                    color: '#6366F1',
+                },
+            ];
 
-    const categoryProjectionsTotal = useMemo(() => {
-        if (!showProjections) return 0;
-        return metrics.sectorData.reduce((sum, sector) => {
-            return sum + (sector.futureProjections || 0) + (sector.overdueProjections || 0);
-        }, 0);
-    }, [metrics.sectorData, showProjections]);
-    
+            const realEntry = payload.find(item => item.dataKey === 'real');
+            if (realEntry) {
+                rows.push({
+                    id: 'real',
+                    label: 'Spesa effettiva',
+                    value: Number(realEntry.value) || 0,
+                    color: '#F97316',
+                });
+            }
+
+            if (showProjections) {
+                const projEntry = payload.find(item => item.dataKey === 'projected');
+                if (projEntry && Number(projEntry.value) > 0) {
+                    rows.push({
+                        id: 'projected',
+                        label: 'Proiezioni',
+                        value: Number(projEntry.value) || 0,
+                        color: '#8B5CF6',
+                    });
+                }
+            }
+
+            rows.push({
+                id: 'budget',
+                label: 'Budget medio',
+                value: monthlyTrendStats.monthlyAvgBudget || 0,
+                color: '#F43F5E',
+            });
+
+            return (
+                <div className={getTooltipContainerClass('indigo')}>
+                    <p className="text-sm font-bold text-slate-900">{monthLabel}</p>
+                    <div className="mt-2 space-y-1 text-xs font-semibold text-slate-600">
+                        {rows.map(row => (
+                            <div key={`${monthLabel}-${row.id}`} className="flex items-center justify-between gap-6">
+                                <span className="flex items-center gap-2 text-slate-600">
+                                    <span
+                                        className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: row.color }}
+                                    />
+                                    {row.label}
+                                </span>
+                                <span>{formatCurrency(row.value)}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        },
+        [monthlyTrendStats.monthlyAvgBudget, showProjections]
+    );
+    const renderCategoryTooltip = useCallback(
+        ({ active, payload }) => {
+            if (!active || !payload || payload.length === 0) return null;
+            const entry = payload[0]?.payload;
+            if (!entry) return null;
+            const percentage = categoryDistribution.total > 0
+                ? ((entry.amount / categoryDistribution.total) * 100).toFixed(1)
+                : '0.0';
+
+            return (
+                <div className={getTooltipContainerClass('orange')}>
+                    <p className="text-sm font-bold text-slate-900">{entry.name}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-600">
+                        {formatCurrency(entry.amount)} · {percentage}%
+                    </p>
+                </div>
+            );
+        },
+        [categoryDistribution.total]
+    );
+
     const resetFilters = () => {
         const currentYear = new Date().getFullYear();
         setStartDate(formatDateInput(currentYear, 0, 1));
         setEndDate(formatDateInput(currentYear, 11, 31));
         setSelectedSector('all');
         setSelectedBranch('all');
+        setSearchTerm('');
+        setShowProjections(true);
+        setIsPresetPanelOpen(false);
+        setIsAdvancedPanelOpen(false);
+        setIsDateDropdownOpen(false);
         toast.success("Filtri resettati!");
     };
 
@@ -1232,10 +1440,12 @@ export default function DashboardPage({ navigate, user }) {
         const preset = {
             id: Date.now(),
             name,
+            searchTerm: trimmedSearchTerm,
             startDate,
             endDate,
             selectedSector,
-            selectedBranch
+            selectedBranch,
+            showProjections
         };
         setFilterPresets(prev => {
             const withoutDuplicates = prev.filter(p => p.name.toLowerCase() !== name.toLowerCase());
@@ -1250,7 +1460,8 @@ export default function DashboardPage({ navigate, user }) {
         setEndDate(preset.endDate || defaultEndDate);
         setSelectedSector(preset.selectedSector || 'all');
         setSelectedBranch(preset.selectedBranch || 'all');
-        setShowProjections(true);
+        setShowProjections(preset.showProjections === undefined ? true : preset.showProjections);
+        setSearchTerm(preset.searchTerm || '');
         toast.success(`Preset "${preset.name}" applicato`);
     };
 
@@ -1258,6 +1469,21 @@ export default function DashboardPage({ navigate, user }) {
         setFilterPresets(prev => prev.filter(p => p.id !== id));
         toast.success('Preset eliminato');
     };
+
+    const dateLabel = hasCustomDateRange
+        ? `${formatDate(startDate)} → ${formatDate(endDate)}`
+        : 'Seleziona periodo';
+    const normalizedSearchTerm = trimmedSearchTerm.toLowerCase();
+    const suppliersToDisplay = useMemo(() => {
+        if (!normalizedSearchTerm) return metrics.topSuppliers;
+        return metrics.topSuppliers.filter(supplier =>
+            (supplier.name || 'N/D').toLowerCase().includes(normalizedSearchTerm)
+        );
+    }, [metrics.topSuppliers, normalizedSearchTerm]);
+    const hasSupplierMatches = suppliersToDisplay.length > 0;
+    const suppliersEmptyMessage = normalizedSearchTerm
+        ? 'Nessun fornitore corrisponde ai filtri attivi.'
+        : 'Non ci sono dati per il periodo selezionato.';
 
     if (isLoading) {
         return (
@@ -1269,10 +1495,6 @@ export default function DashboardPage({ navigate, user }) {
             </div>
         );
     }
-
-    const dateLabel = hasCustomDateRange
-        ? `${formatDate(startDate)} → ${formatDate(endDate)}`
-        : 'Seleziona periodo';
 
 
     return (
@@ -1315,462 +1537,545 @@ export default function DashboardPage({ navigate, user }) {
                                     <FileSignature className="w-4 h-4" />
                                     Contratti attivi
                                 </button>
-                                <div className="flex flex-wrap items-center gap-3 lg:ml-auto">
-                                    <div className="relative">
-                                        {isDateDropdownOpen && (
-                                            <div
-                                                className="fixed inset-0 z-40"
-                                                onClick={() => setIsDateDropdownOpen(false)}
-                                            />
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setIsDateDropdownOpen((prev) => !prev);
-                                                setIsPresetPanelOpen(false);
-                                            }}
-                                            aria-expanded={isDateDropdownOpen}
-                                            className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 shadow-lg shadow-indigo-900/30 backdrop-blur-sm transition hover:border-white/60 hover:bg-white/20 ${
-                                                hasCustomDateRange ? 'ring-2 ring-white/60' : ''
-                                            }`}
-                                        >
-                                            <Calendar className="h-4 w-4 text-white/80" />
-                                            <span>{dateLabel}</span>
-                                            <ArrowUpDown
-                                                className={`h-4 w-4 text-white/60 transition-transform duration-200 ${
-                                                    isDateDropdownOpen ? 'rotate-180' : ''
-                                                }`}
-                                            />
-                                        </button>
-                                        {isDateDropdownOpen && (
-                                            <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[105] w-[calc(100vw-3rem)] max-w-[18rem] rounded-3xl border border-white/60 bg-white/95 p-4 shadow-2xl shadow-orange-900/20 backdrop-blur">
-                                                <div className="space-y-4">
-                                                    <div>
-                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-500">
-                                                            Intervallo date
-                                                        </p>
-                                                        <p className="text-xs font-medium text-slate-500">
-                                                            Imposta il periodo di analisi condiviso.
-                                                        </p>
-                                                    </div>
-                                                    <div className="space-y-3">
-                                                        <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-                                                            Da
-                                                            <input
-                                                                type="date"
-                                                                value={startDate}
-                                                                onChange={(event) => setStartDate(event.target.value)}
-                                                                className="rounded-xl border border-orange-200 bg-white px-2 py-2 text-xs font-semibold text-orange-700 shadow-inner focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-300/40"
-                                                            />
-                                                        </label>
-                                                        <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-                                                            A
-                                                            <input
-                                                                type="date"
-                                                                value={endDate}
-                                                                onChange={(event) => setEndDate(event.target.value)}
-                                                                className="rounded-xl border border-orange-200 bg-white px-2 py-2 text-xs font-semibold text-orange-700 shadow-inner focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-300/40"
-                                                            />
-                                                        </label>
-                                                    </div>
-                                                    <div className="flex items-center justify-between">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setStartDate(defaultStartDate);
-                                                                setEndDate(defaultEndDate);
-                                                            }}
-                                                            className="text-xs font-semibold text-orange-500 transition hover:text-rose-500"
-                                                        >
-                                                            Pulisci
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setIsDateDropdownOpen(false)}
-                                                            className="inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-orange-600 transition hover:border-orange-300 hover:bg-orange-100"
-                                                        >
-                                                            <Check className="h-3.5 w-3.5" />
-                                                            Chiudi
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-3 py-2 text-white/80 shadow-lg shadow-indigo-900/25 backdrop-blur-sm">
-                                        <Layers className="h-4 w-4 text-white/70" />
-                                        <select
-                                            value={selectedSector}
-                                            onChange={(event) => setSelectedSector(event.target.value)}
-                                            className="w-full bg-transparent text-sm font-semibold text-white/90 focus:outline-none"
-                                        >
-                                            <option value="all">Tutti i settori</option>
-                                            {orderedSectors.map(sector => (
-                                                <option key={sector.id} value={sector.id}>
-                                                    {sector.name || 'N/D'}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-3 py-2 text-white/80 shadow-lg shadow-indigo-900/25 backdrop-blur-sm">
-                                        <MapPin className="h-4 w-4 text-white/70" />
-                                        <select
-                                            value={selectedBranch}
-                                            onChange={(event) => setSelectedBranch(event.target.value)}
-                                            className="w-full bg-transparent text-sm font-semibold text-white/90 focus:outline-none"
-                                        >
-                                            <option value="all">Tutte le filiali</option>
-                                            {orderedBranches.map(branch => (
-                                                <option key={branch.id} value={branch.id}>
-                                                    {branch.name || 'N/D'}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="relative">
-                                        {isPresetPanelOpen && (
-                                            <div
-                                                className="fixed inset-0 z-40"
-                                                onClick={() => setIsPresetPanelOpen(false)}
-                                            />
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setIsPresetPanelOpen((prev) => !prev);
-                                                setIsDateDropdownOpen(false);
-                                            }}
-                                            aria-expanded={isPresetPanelOpen}
-                                            className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-3 py-2 text-sm font-semibold text-white/90 shadow-lg shadow-indigo-900/30 backdrop-blur-sm transition hover:border-white/60 hover:bg-white/20 ${
-                                                isPresetPanelOpen ? 'ring-2 ring-white/60' : ''
-                                            }`}
-                                        >
-                                            <SlidersHorizontal className="h-4 w-4 text-white/80" />
-                                            Preset
-                                        </button>
-                                        {isPresetPanelOpen && (
-                                            <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[105] w-[calc(100vw-3rem)] max-w-[20rem] rounded-3xl border border-white/60 bg-white/95 p-4 shadow-2xl shadow-orange-900/20 backdrop-blur">
-                                                <div className="space-y-3">
-                                                    <div>
-                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-500">
-                                                            Preset salvati
-                                                        </p>
-                                                        <p className="text-xs font-medium text-slate-500">
-                                                            Salva e riutilizza combinazioni di filtri condivise.
-                                                        </p>
-                                                    </div>
-                                                    <div className="flex flex-col gap-2 sm:flex-row">
-                                                        <input
-                                                            type="text"
-                                                            value={presetName}
-                                                            onChange={(e) => setPresetName(e.target.value)}
-                                                            placeholder="Nome preset (es. Q1 Board)"
-                                                            className="flex-1 rounded-2xl border border-orange-200 bg-white/90 px-4 py-2 text-sm font-semibold text-orange-700 shadow-inner focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-400/40"
-                                                        />
-                                                        <button
-                                                            onClick={() => {
-                                                                savePreset();
-                                                                setIsPresetPanelOpen(false);
-                                                            }}
-                                                            disabled={!presetName.trim()}
-                                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-600 to-rose-500 px-3 py-2 text-xs font-bold text-white shadow-lg shadow-orange-500/30 transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
-                                                        >
-                                                            <Check className="h-3.5 w-3.5" />
-                                                            Salva
-                                                        </button>
-                                                    </div>
-                                                    {filterPresets.length > 0 ? (
-                                                        <div className="space-y-2">
-                                                            {filterPresets.map(preset => (
-                                                                <div
-                                                                    key={preset.id}
-                                                                    className="inline-flex w-full items-center justify-between rounded-2xl border border-orange-100 bg-white px-3 py-1.5 text-sm font-semibold text-orange-700 shadow-sm shadow-orange-100/40"
-                                                                >
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            applyPreset(preset);
-                                                                            setIsPresetPanelOpen(false);
-                                                                        }}
-                                                                        className="flex-1 text-left transition-colors hover:text-orange-500"
-                                                                    >
-                                                                        {preset.name}
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => deletePreset(preset.id)}
-                                                                        className="text-orange-300 transition-colors hover:text-rose-500"
-                                                                    >
-                                                                        <X className="w-3 h-3" />
-                                                                    </button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    ) : (
-                                                        <p className="text-xs font-medium text-slate-400">
-                                                            Non hai ancora salvato preset.
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                    {hasActiveFilters && (
-                                        <button
-                                            onClick={resetFilters}
-                                            className="inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 shadow-lg shadow-indigo-900/25 backdrop-blur-sm transition hover:border-white/60 hover:bg-white/20"
-                                        >
-                                            <X className="w-3.5 h-3.5 text-white/80" />
-                                            Reset filtri
-                                        </button>
-                                    )}
-                                </div>
                             </div>
                         </div>
                     </div>
 
                 </div>
 
+                <section className="relative z-20 rounded-3xl border border-white/70 bg-gradient-to-r from-slate-300/90 via-slate-200/85 to-slate-300/80 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
+                    <div className="pointer-events-none absolute inset-0">
+                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-white/45 blur-3xl" />
+                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-400/40 blur-3xl" />
+                    </div>
+                    <div className="relative z-10 flex flex-wrap lg:flex-nowrap items-center justify-center gap-3 lg:gap-4 w-full max-w-6xl mx-auto">
+                        <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                            <Search className="h-4 w-4 text-slate-700" />
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(event) => setSearchTerm(event.target.value)}
+                                placeholder="Ricerca libera"
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 placeholder:text-slate-600 focus:outline-none"
+                            />
+                        </div>
+                        <div className="relative">
+                            {isDateDropdownOpen && (
+                                <div className="fixed inset-0 z-[120]" onClick={() => setIsDateDropdownOpen(false)} />
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsDateDropdownOpen(prev => !prev);
+                                    setIsPresetPanelOpen(false);
+                                    setIsAdvancedPanelOpen(false);
+                                }}
+                                aria-expanded={isDateDropdownOpen}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
+                                    hasCustomDateRange ? 'ring-2 ring-indigo-100' : ''
+                                }`}
+                            >
+                                <Calendar className="h-4 w-4 text-slate-500" />
+                                <span className="whitespace-nowrap">{dateLabel}</span>
+                                <ArrowUpDown
+                                    className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${
+                                        isDateDropdownOpen ? 'rotate-180' : ''
+                                    }`}
+                                />
+                            </button>
+                            {isDateDropdownOpen && (
+                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                                Intervallo temporale
+                                            </p>
+                                            <p className="text-xs font-medium text-slate-500">
+                                                Imposta il periodo condiviso con le altre pagine.
+                                            </p>
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+                                                Da
+                                                <input
+                                                    type="date"
+                                                    value={startDate}
+                                                    onChange={(event) => setStartDate(event.target.value)}
+                                                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
+                                                />
+                                            </label>
+                                            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+                                                A
+                                                <input
+                                                    type="date"
+                                                    value={endDate}
+                                                    onChange={(event) => setEndDate(event.target.value)}
+                                                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
+                                                />
+                                            </label>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setStartDate(defaultStartDate);
+                                                    setEndDate(defaultEndDate);
+                                                }}
+                                                className="text-xs font-semibold text-indigo-500 transition hover:text-rose-500"
+                                            >
+                                                Pulisci
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsDateDropdownOpen(false)}
+                                                className="inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-100"
+                                            >
+                                                <Check className="h-3.5 w-3.5" />
+                                                Chiudi
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur">
+                            <Layers className="h-4 w-4 text-slate-500" />
+                            <select
+                                value={selectedSector}
+                                onChange={(event) => setSelectedSector(event.target.value)}
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                            >
+                                <option value="all">Tutti i settori</option>
+                                {orderedSectors.map(sector => (
+                                    <option key={sector.id} value={sector.id}>
+                                        {sector.name || 'N/D'}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur">
+                            <MapPin className="h-4 w-4 text-slate-500" />
+                            <select
+                                value={selectedBranch}
+                                onChange={(event) => setSelectedBranch(event.target.value)}
+                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                            >
+                                <option value="all">Tutte le filiali</option>
+                                {orderedBranches.map(branch => (
+                                    <option key={branch.id} value={branch.id}>
+                                        {branch.name || 'N/D'}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="relative">
+                            {isAdvancedPanelOpen && (
+                                <div className="fixed inset-0 z-[120]" onClick={() => setIsAdvancedPanelOpen(false)} />
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsAdvancedPanelOpen(prev => !prev);
+                                    setIsPresetPanelOpen(false);
+                                    setIsDateDropdownOpen(false);
+                                }}
+                                aria-expanded={isAdvancedPanelOpen}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
+                                    !showProjections ? 'ring-2 ring-indigo-100' : ''
+                                }`}
+                            >
+                                <Filter className="h-4 w-4 text-slate-500" />
+                                <span className="whitespace-nowrap">Filtri avanzati</span>
+                                <ArrowUpDown
+                                    className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${
+                                        isAdvancedPanelOpen ? 'rotate-180' : ''
+                                    }`}
+                                />
+                            </button>
+                            {isAdvancedPanelOpen && (
+                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                                Visualizzazione dati
+                                            </p>
+                                            <p className="text-xs font-medium text-slate-500">
+                                                Includi o escludi le proiezioni contrattuali.
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {[
+                                                { key: true, label: 'Con proiezioni' },
+                                                { key: false, label: 'Solo spesa registrata' }
+                                            ].map(option => {
+                                                const active = showProjections === option.key;
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        key={`projection-${option.label}`}
+                                                        onClick={() => setShowProjections(option.key)}
+                                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                                                            active
+                                                                ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                                : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                        }`}
+                                                    >
+                                                        {option.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowProjections(true)}
+                                                className="text-xs font-semibold text-indigo-500 transition hover:text-rose-500"
+                                            >
+                                                Pulisci
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsAdvancedPanelOpen(false)}
+                                                className="inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-100"
+                                            >
+                                                <Check className="h-3.5 w-3.5" />
+                                                Chiudi
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="relative">
+                            {isPresetPanelOpen && (
+                                <div className="fixed inset-0 z-[120]" onClick={() => setIsPresetPanelOpen(false)} />
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsPresetPanelOpen(prev => !prev);
+                                    setIsAdvancedPanelOpen(false);
+                                    setIsDateDropdownOpen(false);
+                                }}
+                                aria-expanded={isPresetPanelOpen}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
+                                    isPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
+                                }`}
+                            >
+                                <SlidersHorizontal className="h-4 w-4 text-slate-500" />
+                                Preset
+                            </button>
+                            {isPresetPanelOpen && (
+                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur sm:w-80 space-y-3">
+                                    <div>
+                                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                            Preset salvati
+                                        </p>
+                                        <p className="text-xs font-medium text-slate-500">
+                                            Salva e applica rapidamente le combinazioni preferite.
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-col gap-2 sm:flex-row">
+                                        <input
+                                            type="text"
+                                            value={presetName}
+                                            onChange={(event) => setPresetName(event.target.value)}
+                                            placeholder="Nome preset (es. Board Q1)"
+                                            className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                savePreset();
+                                                setIsPresetPanelOpen(false);
+                                            }}
+                                            disabled={!presetName.trim()}
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-500 px-3 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            <Check className="h-3.5 w-3.5" />
+                                            Salva
+                                        </button>
+                                    </div>
+                                    {filterPresets.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {filterPresets.map(preset => (
+                                                <div
+                                                    key={preset.id}
+                                                    className="inline-flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-100/60"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            applyPreset(preset);
+                                                            setIsPresetPanelOpen(false);
+                                                        }}
+                                                        className="flex-1 text-left transition-colors hover:text-indigo-600"
+                                                    >
+                                                        {preset.name}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => deletePreset(preset.id)}
+                                                        className="text-slate-300 transition-colors hover:text-rose-500"
+                                                    >
+                                                        <X className="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs font-medium text-slate-400">
+                                            Nessun preset salvato.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        {hasActiveFilters && (
+                            <button
+                                type="button"
+                                onClick={resetFilters}
+                                className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm shadow-rose-100/60 transition hover:border-rose-300 whitespace-nowrap"
+                            >
+                                <XCircle className="h-3.5 w-3.5" />
+                                Resetta filtri
+                            </button>
+                        )}
+                    </div>
+                    {filterPresets.length > 0 && (
+                        <div className="relative z-10 mt-2 flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/70 bg-slate-50/85 px-4 py-3 shadow-inner shadow-slate-200/60 backdrop-blur">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Preset rapidi
+                            </span>
+                            {filterPresets.map(preset => (
+                                <div
+                                    key={`quick-${preset.id}`}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100/60"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => applyPreset(preset)}
+                                        className="transition-colors hover:text-indigo-600"
+                                    >
+                                        {preset.name}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => deletePreset(preset.id)}
+                                        className="text-slate-300 transition-colors hover:text-rose-500"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
                 {selectedBranch === 'all' && (
-                    <section className="rounded-3xl border border-white/60 bg-white/85 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] p-4 lg:p-6">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-                            <KpiCard
-                                title={metrics.isFullYear ? "Budget totale anno" : "Budget del periodo"}
-                                value={formatCurrency(metrics.budgetTotale)}
-                                subtitle={`${metrics.sectorData.length} settori attivi`}
-                                icon={<Target />}
-                                gradient="from-emerald-500 to-green-600"
-                            />
-                            <KpiCard
-                                title="Spesa effettiva"
-                                value={formatCurrency(metrics.spesaSostenuta)}
-                                subtitle="Importo registrato"
-                                icon={<DollarSign />}
-                                gradient="from-orange-500 to-amber-600"
-                            />
-                            <KpiCard
-                                title="Proiezioni contratti"
-                                value={formatCurrency(showProjections ? metrics.spesaPrevistaTotale : 0)}
-                                subtitle={showProjections ? "Quote future incluse" : "Proiezioni disattivate"}
-                                icon={<TrendingUp />}
-                                gradient="from-teal-500 to-cyan-500"
-                            />
-                            <KpiCard
-                                title={isOverBudgetRisk ? "Sforamento previsto" : "Budget residuo"}
-                                value={formatCurrency(Math.abs(remainingBudget))}
-                                subtitle={isOverBudgetRisk ? "Attenzione richiesta" : "Disponibile"}
-                                icon={isOverBudgetRisk ? <AlertTriangle /> : <CheckCircle />}
-                                gradient={isOverBudgetRisk ? "from-rose-500 to-red-600" : "from-slate-600 to-slate-800"}
-                            />
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        <KpiCard
+                            title={metrics.isFullYear ? "Budget totale anno" : "Budget del periodo"}
+                            value={formatCurrency(metrics.budgetTotale)}
+                            subtitle={`${metrics.sectorData.length} settori attivi`}
+                            icon={<Target />}
+                            gradient="from-emerald-500 to-green-600"
+                        />
+                        <KpiCard
+                            title="Spesa effettiva"
+                            value={formatCurrency(metrics.spesaSostenuta)}
+                            subtitle="Importo registrato"
+                            icon={<DollarSign />}
+                            gradient="from-orange-500 to-amber-600"
+                        />
+                        <KpiCard
+                            title="Proiezioni contratti"
+                            value={formatCurrency(showProjections ? metrics.spesaPrevistaTotale : 0)}
+                            subtitle={showProjections ? "Quote future incluse" : "Proiezioni disattivate"}
+                            icon={<TrendingUp />}
+                            gradient="from-teal-500 to-cyan-500"
+                        />
+                        <KpiCard
+                            title={isOverBudgetRisk ? "Sforamento previsto" : "Budget residuo"}
+                            value={formatCurrency(Math.abs(remainingBudget))}
+                            subtitle={isOverBudgetRisk ? "Attenzione richiesta" : "Disponibile"}
+                            icon={isOverBudgetRisk ? <AlertTriangle /> : <CheckCircle />}
+                            gradient={isOverBudgetRisk ? "from-rose-500 to-red-600" : "from-slate-600 to-slate-800"}
+                        />
+                    </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
+                    <div className="pointer-events-none absolute inset-0">
+                        <div className="absolute -top-40 right-0 h-80 w-80 rounded-full bg-indigo-200/35 blur-3xl" />
+                        <div className="absolute bottom-[-35%] left-1/4 h-72 w-72 rounded-full bg-blue-200/25 blur-3xl" />
+                    </div>
+                    <div className="relative z-10 flex flex-col">
+                        <div className="flex flex-col gap-4 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-indigo-100/75 via-white/90 to-purple-100/60 px-6 py-5">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="flex items-start gap-4">
+                                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-600 text-white shadow-lg shadow-indigo-500/20 ring-4 ring-indigo-500/15">
+                                        <Activity className="w-6 h-6 lg:w-7 lg:h-7" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-500">
+                                            Trend mensile
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-lg font-black text-slate-900">Andamento spesa mensile</h2>
+                                            <InfoTooltip message="Confronto mensile tra spesa realizzata, proiezioni e budget medio assegnato." />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="relative z-10 flex flex-col px-6 pb-6 pt-6 bg-white">
+                            {monthlyTrendStats.hasData ? (
+                                <>
+                                    <div className="h-72">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <RechartsBarChart
+                                                data={monthlyTrendStats.chartData}
+                                                margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                                            >
+                                                <defs>
+                                                    <linearGradient id="monthly-real-gradient" x1="0" y1="1" x2="0" y2="0">
+                                                        <stop offset="0%" stopColor="#F97316" stopOpacity={0.9} />
+                                                        <stop offset="100%" stopColor="#FDBA74" stopOpacity={0.95} />
+                                                    </linearGradient>
+                                                    <linearGradient id="monthly-projected-gradient" x1="0" y1="1" x2="0" y2="0">
+                                                        <stop offset="0%" stopColor="#818CF8" stopOpacity={0.6} />
+                                                        <stop offset="100%" stopColor="#A855F7" stopOpacity={0.85} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
+                                                <XAxis
+                                                    dataKey="mese"
+                                                    tickLine={false}
+                                                    axisLine={false}
+                                                    tick={{ fill: '#475569', fontSize: 12, fontWeight: 600 }}
+                                                />
+                                                <YAxis hide />
+                                                <RechartsTooltip
+                                                    content={renderMonthlyTrendTooltip}
+                                                    cursor={{ fill: 'rgba(99,102,241,0.08)' }}
+                                                />
+                                                {monthlyTrendStats.monthlyAvgBudget > 0 && (
+                                                    <ReferenceLine
+                                                        y={monthlyTrendStats.monthlyAvgBudget}
+                                                        stroke="#F43F5E"
+                                                        strokeDasharray="6 4"
+                                                        strokeWidth={2}
+                                                        label={renderMonthlyBudgetLabel}
+                                                    />
+                                                )}
+                                                <Bar
+                                                    dataKey="real"
+                                                    stackId="spend"
+                                                    fill="url(#monthly-real-gradient)"
+                                                    radius={showProjections ? [0, 0, 0, 0] : [8, 8, 0, 0]}
+                                                    maxBarSize={32}
+                                                />
+                                                {showProjections && (
+                                                    <Bar
+                                                        dataKey="projected"
+                                                        stackId="spend"
+                                                        fill="url(#monthly-projected-gradient)"
+                                                        radius={[8, 8, 0, 0]}
+                                                        maxBarSize={32}
+                                                    />
+                                                )}
+                                            </RechartsBarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                    <div className="mt-6">
+                                        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                            {monthlyTrendStats.summaryCards.map(card => (
+                                                <li
+                                                    key={card.label}
+                                                    className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-indigo-100/50"
+                                                >
+                                                    <span className="text-sm font-semibold text-slate-700">{card.label}</span>
+                                                    <span className="text-sm font-bold text-slate-900">
+                                                        {card.value}
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex h-72 items-center justify-center text-sm font-semibold text-slate-500">
+                                    Nessun dato disponibile per il periodo selezionato.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </section>
+
+                {categoryDistribution.segments.length > 0 && selectedSector === 'all' && (
+                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                        <div className="pointer-events-none absolute inset-0">
+                            <div className="absolute -top-32 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-indigo-200/35 blur-3xl" />
+                            <div className="absolute bottom-[-35%] right-1/4 h-56 w-56 rounded-full bg-purple-200/25 blur-3xl" />
+                        </div>
+                        <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/60 bg-gradient-to-r from-indigo-100/75 via-white/90 to-purple-100/60 px-6 py-5 z-10">
+                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-500">
+                                Composizione settori
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-lg font-black text-slate-900">Distribuzione per settore</h2>
+                                <InfoTooltip message="Ripartizione dell'impegno economico per settore, con proiezioni incluse se abilitate." />
+                            </div>
+                        </div>
+                        <div className="relative z-10 flex flex-col px-6 pb-6 pt-6 bg-white">
+                            <div className="h-72">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <RechartsPieChart>
+                                        <RechartsTooltip content={renderCategoryTooltip} />
+                                        <Pie
+                                            data={categoryDistribution.segments}
+                                            dataKey="amount"
+                                            nameKey="name"
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius="55%"
+                                            outerRadius="80%"
+                                            paddingAngle={4}
+                                            strokeWidth={0}
+                                        >
+                                            {categoryDistribution.segments.map(segment => (
+                                                <Cell key={`category-segment-${segment.id}`} fill={segment.color} />
+                                            ))}
+                                        </Pie>
+                                    </RechartsPieChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="mt-6">
+                                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    {categoryDistribution.segments.map(segment => (
+                                        <li
+                                            key={`category-summary-${segment.id}`}
+                                            className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-white px-3 py-2 shadow-sm shadow-indigo-100/50"
+                                        >
+                                            <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                                <span
+                                                    className="inline-flex h-2.5 w-2.5 rounded-full"
+                                                    style={{ backgroundColor: segment.color }}
+                                                />
+                                                {segment.name}
+                                            </span>
+                                            <span className="text-sm font-semibold text-slate-900">
+                                                {formatCurrency(segment.amount)}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
                         </div>
                     </section>
                 )}
-
-                {/* ✅ GRAFICO MENSILE CORRETTO */}
-                <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-6 lg:p-8 space-y-6">
-                    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-                        <div className="flex items-start gap-4">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-600 text-white shadow-lg shadow-indigo-500/20 ring-4 ring-indigo-500/15">
-                                <Activity className="w-6 h-6 lg:w-7 lg:h-7" />
-                            </div>
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <h2 className="text-xl lg:text-2xl font-black text-gray-900">Andamento Spesa Mensile</h2>
-                                    <InfoTooltip message="Confronto mensile tra spesa realizzata, proiezioni e budget medio assegnato." />
-                                </div>
-                                <p className="mt-2 text-sm lg:text-base text-gray-600 font-medium">
-                                    Valori aggregati per mese con linea di riferimento del budget medio.
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold tracking-[0.08em] text-slate-600">
-                            <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 ring-1 ring-inset ring-slate-200">
-                                <span className="inline-block h-2.5 w-8 rounded-full bg-gradient-to-r from-amber-500 to-orange-600" />
-                                Spesa effettiva
-                            </span>
-                            {showProjections && (
-                                <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 ring-1 ring-inset ring-slate-200">
-                                    <span className="inline-block h-2.5 w-8 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600" />
-                                    Proiezioni
-                                </span>
-                            )}
-                            <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 ring-1 ring-inset ring-slate-200">
-                                <span className="inline-block h-2.5 w-8 rounded-full bg-red-400" />
-                                Budget medio
-                            </span>
-                        </div>
-                    </div>
-                    
-                    {(() => {
-                        const monthlyDataWithTotal = metrics.monthlyData.map(m => ({
-                            ...m,
-                            total: m.real + (showProjections ? m.projected : 0)
-                        }));
-                        
-                        const monthlyAvgBudget = metrics.currentSectorBudget / 12;
-                        const totalForecastYear = monthlyDataWithTotal.reduce((sum, m) => sum + m.total, 0);
-                        const maxMonthValue = Math.max(...monthlyDataWithTotal.map(m => m.total), 0);
-                        const maxMonth = monthlyDataWithTotal.find(m => m.total === maxMonthValue) || monthlyDataWithTotal[0] || { mese: 'N/D', total: 0 };
-                        const currentCalendar = new Date();
-                        const sameYear = new Date(endDate).getFullYear() === currentCalendar.getFullYear();
-                        const displayMax = Math.max(maxMonthValue, monthlyAvgBudget);
-                        const budgetPercentage = displayMax > 0 ? (monthlyAvgBudget / displayMax) * 100 : 0;
-
-                        return (
-                            <>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-                                            Totale anno
-                                        </div>
-                                        <p className="mt-2 text-lg font-black text-slate-900">
-                                            {formatCurrency(totalForecastYear)}
-                                        </p>
-                                        <p className="text-[11px] font-semibold tracking-[0.08em] text-slate-400">
-                                            Spesa + proiezioni
-                                        </p>
-                                    </div>
-                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-                                            Budget medio mensile
-                                        </div>
-                                        <p className="mt-2 text-lg font-black text-slate-900">
-                                            {formatCurrency(monthlyAvgBudget)}
-                                        </p>
-                                        <p className="text-[11px] font-semibold tracking-[0.08em] text-slate-400">
-                                            {metrics.sectorData.length} settori attivi
-                                        </p>
-                                    </div>
-                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-                                            Picco mensile
-                                        </div>
-                                        <p className="mt-2 text-lg font-black text-slate-900">
-                                            {formatCurrency(maxMonthValue)}
-                                        </p>
-                                        <p className="text-[11px] font-semibold tracking-[0.08em] text-slate-400">
-                                            {maxMonth?.mese || 'N/D'}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="relative pt-4 border-t border-slate-200/70">
-                                    <div className="h-64 relative">
-                                        <div className="h-[89%] relative flex items-end justify-between gap-2">
-                                            {monthlyAvgBudget > 0 && (
-                                                <div
-                                                    className="absolute left-0 right-0 border-t-2 border-dashed border-red-400/70 z-10"
-                                                    style={{ bottom: `${budgetPercentage}%` }}
-                                                >
-                                                    <span className="absolute -top-2 right-0 text-[10px] font-semibold text-red-500 bg-white/70 backdrop-blur-sm px-2 py-0.5 rounded-full">
-                                                        Budget medio
-                                                    </span>
-                                                </div>
-                                            )}
-                                            
-                                            {monthlyDataWithTotal.map((month, i) => {
-                                                const barHeight = displayMax > 0 ? (month.total / displayMax) * 100 : 0;
-                                                const realHeight = month.total > 0 ? (month.real / month.total) * 100 : 0;
-                                                const isCurrentMonth = sameYear && i === currentCalendar.getMonth();
-                                                
-                                                return (
-                                                    <div key={month.mese} className="h-full flex-1 flex flex-col items-center justify-end group relative">
-                                                        <div className="absolute bottom-full mb-2 w-max max-w-[220px] rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30">
-                                                            <p className="font-black text-sm">{month.mese}</p>
-                                                            <p className="mt-1 text-emerald-300">Totale: {formatCurrency(month.total)}</p>
-                                                            <p className="text-white/80">Effettiva: {formatCurrency(month.real)}</p>
-                                                            {showProjections && <p className="text-white/80">Proiezioni: {formatCurrency(month.projected)}</p>}
-                                                            <p className="text-white/60">Budget medio: {formatCurrency(monthlyAvgBudget)}</p>
-                                                        </div>
-                                                        
-                                                        <div
-                                                            className={`w-[70%] rounded-t-xl transition-all duration-300 ${isCurrentMonth ? 'ring-4 ring-indigo-200' : ''}`}
-                                                            style={{ height: `${barHeight}%` }}
-                                                        >
-                                                            <div className="relative h-full w-full overflow-hidden rounded-t-xl bg-gradient-to-t from-indigo-500 to-purple-600">
-                                                                <div
-                                                                    className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-amber-500 to-orange-600"
-                                                                    style={{ height: `${realHeight}%` }}
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                        
-                                        <div className="h-[11%] flex items-start justify-between gap-2 pt-2">
-                                            {monthlyDataWithTotal.map((month, i) => {
-                                                const isCurrentMonth = sameYear && i === currentCalendar.getMonth();
-                                                return (
-                                                    <div key={`label-${month.mese}`} className="flex-1 text-center">
-                                                        <span className={`text-xs font-bold ${isCurrentMonth ? 'text-indigo-600' : 'text-gray-600'}`}>
-                                                            {month.mese}
-                                                        </span>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                </div>
-                            </>
-                        );
-                    })()}
                 </div>
-
-                {categoryDistribution.segments.length > 0 && selectedSector === 'all' && (
-                    <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl border border-white/30 p-6 lg:p-8 space-y-6">
-                        <div className="flex items-start gap-4">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-500 to-blue-500 text-white shadow-lg shadow-indigo-500/20 ring-4 ring-indigo-500/15">
-                                <PieChart className="w-6 h-6 lg:w-7 lg:h-7" />
-                            </div>
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <h2 className="text-xl lg:text-2xl font-black text-gray-900">Distribuzione per settore</h2>
-                                    <InfoTooltip message="Ripartizione dell'impegno economico per settore, con proiezioni incluse se abilitate." />
-                                </div>
-                                <p className="mt-2 text-sm text-gray-600 font-medium">
-                                    Peso percentuale della spesa effettiva per ciascun settore; le eventuali proiezioni attive sono riportate al centro.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col lg:flex-row items-stretch gap-6">
-                            <div className="flex items-center justify-center">
-                                <div className="relative h-48 w-48">
-                                    <div
-                                        className="absolute inset-0 rounded-full shadow-inner"
-                                        style={{ background: `conic-gradient(${categoryDistribution.gradient})` }}
-                                    />
-                                    <div className="absolute inset-[22%] rounded-full bg-white/95 shadow flex flex-col items-center justify-center text-center px-4">
-                                        <span className="text-[10px] font-semibold tracking-[0.18em] text-slate-400 uppercase">Spesa effettiva</span>
-                                        <span className="text-lg font-black text-slate-900">{formatCurrency(categoryDistribution.total)}</span>
-                                        {showProjections && categoryProjectionsTotal > 0 && (
-                                            <span className="text-[10px] font-semibold text-slate-400">
-                                                +{formatCurrency(categoryProjectionsTotal)} proiezioni
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex-1 grid sm:grid-cols-2 gap-3">
-                                {categoryDistribution.segments.map(segment => (
-                                    <div key={segment.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <span className="h-3.5 w-3.5 rounded-full" style={{ backgroundColor: segment.color }} />
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-black text-slate-700 truncate">{segment.name}</p>
-                                                <p className="text-[11px] font-semibold text-slate-400">
-                                                    {(segment.percent * 100).toFixed(1)}% · {formatCurrency(segment.amount)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 {/* PERFORMANCE SETTORI */}
                 {selectedSector === 'all' && selectedBranch === 'all' && (
@@ -1898,17 +2203,23 @@ export default function DashboardPage({ navigate, user }) {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                            {metrics.topSuppliers.map((supplier, index) => (
-                                <SupplierRankItem
-                                    key={supplier.id}
-                                    supplier={supplier}
-                                    rank={index}
-                                    baselineCommitted={suppliersBaselineTotal}
-                                    includeProjections={showProjections}
-                                />
-                            ))}
-                        </div>
+                        {hasSupplierMatches ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                                {suppliersToDisplay.map((supplier, index) => (
+                                    <SupplierRankItem
+                                        key={supplier.id}
+                                        supplier={supplier}
+                                        rank={index}
+                                        baselineCommitted={suppliersBaselineTotal}
+                                        includeProjections={showProjections}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-6 py-8 text-center text-sm font-semibold text-slate-500">
+                                {suppliersEmptyMessage}
+                            </div>
+                        )}
                     </div>
                 )}
                 
