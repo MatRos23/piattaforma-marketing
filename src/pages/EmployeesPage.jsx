@@ -455,24 +455,24 @@ export default function EmployeesPage() {
         return Array.from(map.values()).sort((a, b) => b.totalCost - a.totalCost);
     }, [filteredEmployees, sectorMap, selectedYearKey]);
 
-const sectorKeys = useMemo(
-    () => costBySectorAnnual.slice(0, 4),
-    [costBySectorAnnual]
-);
+    const sectorKeys = useMemo(
+        () => costBySectorAnnual.slice(0, 4),
+        [costBySectorAnnual]
+    );
 
-const sectorNameById = useMemo(() => {
-    const map = new Map();
-    sectorKeys.forEach((sector) => {
-        map.set(sector.id, sector.name);
-    });
-    return map;
-}, [sectorKeys]);
+    const sectorNameById = useMemo(() => {
+        const map = new Map();
+        sectorKeys.forEach((sector) => {
+            map.set(sector.id, sector.name);
+        });
+        return map;
+    }, [sectorKeys]);
 
-const monthlySectorData = useMemo(() => {
-    if (sectorKeys.length === 0) return [];
+    const monthlySectorData = useMemo(() => {
+        if (sectorKeys.length === 0) return [];
 
-    const base = MONTHS.map((month) => {
-        const entry = {
+        const base = MONTHS.map((month) => {
+            const entry = {
                 monthId: month.id,
                 monthLabel: month.label.slice(0, 3),
             };
@@ -786,86 +786,86 @@ const monthlySectorData = useMemo(() => {
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-rose-50 to-pink-100 relative">
             <div className="relative p-4 lg:p-8 space-y-8">
                 <div className="relative rounded-3xl bg-gradient-to-br from-fuchsia-600 via-rose-600 to-pink-500 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.35),transparent_60%)]" />
-                        <div className="relative flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="space-y-4 lg:max-w-3xl">
-                                <div className="flex items-center gap-4">
-                                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-rose-900/30 ring-4 ring-white/20">
-                                        <Users className="w-7 h-7" />
-                                    </div>
-                                    <div>
-                                        <p className="text-xs uppercase tracking-[0.4em] text-white/70 font-semibold">
-                                            Risorse Umane
-                                        </p>
-                                        <h1 className="text-3xl lg:text-4xl xl:text-5xl font-black leading-tight">
-                                            Dipendenti & Costi HR
-                                        </h1>
-                                    </div>
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.35),transparent_60%)]" />
+                    <div className="relative flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="space-y-4 lg:max-w-3xl">
+                            <div className="flex items-center gap-4">
+                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-lg shadow-rose-900/30 ring-4 ring-white/20">
+                                    <Users className="w-7 h-7" />
                                 </div>
-                                <p className="text-sm lg:text-base text-white/85 max-w-3xl">
-                                    Controlla l’organico aziendale e monitora l’impatto dei costi del personale sui centri di costo, mantenendo coerenza con il resto della piattaforma.
-                                </p>
+                                <div>
+                                    <p className="text-xs uppercase tracking-[0.4em] text-white/70 font-semibold">
+                                        Risorse Umane
+                                    </p>
+                                    <h1 className="text-3xl lg:text-4xl xl:text-5xl font-black leading-tight">
+                                        Dipendenti & Costi HR
+                                    </h1>
+                                </div>
                             </div>
-                            <div className="flex w-full flex-col gap-4 lg:ml-auto lg:w-auto lg:max-w-5xl">
-                                <div className="flex flex-col items-end gap-3">
-                                    <div className="inline-flex w-full flex-col gap-3 sm:w-auto">
-                                        {notificationCount > 0 && (
-                                            <div className="relative w-full sm:w-auto">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsNotificationsPanelOpen(prev => !prev)}
-                                                    className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold shadow-lg shadow-rose-900/30 backdrop-blur-sm transition-all bg-white/15 text-white hover:bg-white/25"
-                                                >
-                                                    <Bell className="w-4 h-4" />
-                                                    Notifiche
-                                                    <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/90 px-2 text-xs font-bold text-rose-600">
-                                                        {notificationCount}
-                                                    </span>
-                                                </button>
-                                                {isNotificationsPanelOpen && (
-                                                    <>
-                                                        <div
-                                                            className="fixed inset-0 z-40"
-                                                            onClick={() => setIsNotificationsPanelOpen(false)}
-                                                        />
-                                                        <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-rose-900/30 backdrop-blur sm:w-80 space-y-3">
-                                                            <div>
-                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
-                                                                    Centro notifiche
-                                                                </p>
-                                                                <p className="text-sm font-black text-slate-900 mt-1">
-                                                                    Nessun avviso disponibile
-                                                                </p>
-                                                                <p className="text-xs font-medium text-slate-500 mt-1">
-                                                                    Le comunicazioni relative al personale verranno mostrate qui quando disponibili.
-                                                                </p>
-                                                            </div>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setIsNotificationsPanelOpen(false)}
-                                                                className="w-full rounded-xl border border-rose-200 bg-rose-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-rose-600 transition hover:bg-rose-100"
-                                                            >
-                                                                Chiudi notifiche
-                                                            </button>
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </div>
-                                        )}
-                                        <div className="flex flex-wrap items-center justify-end gap-3">
+                            <p className="text-sm lg:text-base text-white/85 max-w-3xl">
+                                Controlla l’organico aziendale e monitora l’impatto dei costi del personale sui centri di costo, mantenendo coerenza con il resto della piattaforma.
+                            </p>
+                        </div>
+                        <div className="flex w-full flex-col gap-4 lg:ml-auto lg:w-auto lg:max-w-5xl">
+                            <div className="flex flex-col items-end gap-3">
+                                <div className="inline-flex w-full flex-col gap-3 sm:w-auto">
+                                    {notificationCount > 0 && (
+                                        <div className="relative w-full sm:w-auto">
                                             <button
                                                 type="button"
-                                                onClick={openCreateModal}
-                                                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-rose-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
+                                                onClick={() => setIsNotificationsPanelOpen(prev => !prev)}
+                                                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold shadow-lg shadow-rose-900/30 backdrop-blur-sm transition-all bg-white/15 text-white hover:bg-white/25"
                                             >
-                                                <PlusCircle className="w-4 h-4" />
-                                                Nuovo dipendente
+                                                <Bell className="w-4 h-4" />
+                                                Notifiche
+                                                <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/90 px-2 text-xs font-bold text-rose-600">
+                                                    {notificationCount}
+                                                </span>
                                             </button>
+                                            {isNotificationsPanelOpen && (
+                                                <>
+                                                    <div
+                                                        className="fixed inset-0 z-40"
+                                                        onClick={() => setIsNotificationsPanelOpen(false)}
+                                                    />
+                                                    <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[calc(100vw-3rem)] max-w-xs rounded-3xl border border-white/40 bg-white/95 p-5 shadow-2xl shadow-rose-900/30 backdrop-blur sm:w-80 space-y-3">
+                                                        <div>
+                                                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-500">
+                                                                Centro notifiche
+                                                            </p>
+                                                            <p className="text-sm font-black text-slate-900 mt-1">
+                                                                Nessun avviso disponibile
+                                                            </p>
+                                                            <p className="text-xs font-medium text-slate-500 mt-1">
+                                                                Le comunicazioni relative al personale verranno mostrate qui quando disponibili.
+                                                            </p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setIsNotificationsPanelOpen(false)}
+                                                            className="w-full rounded-xl border border-rose-200 bg-rose-50 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-rose-600 transition hover:bg-rose-100"
+                                                        >
+                                                            Chiudi notifiche
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
+                                    )}
+                                    <div className="flex flex-wrap items-center justify-end gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={openCreateModal}
+                                            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-rose-900/30 backdrop-blur-sm transition-all hover:bg-white/25"
+                                        >
+                                            <PlusCircle className="w-4 h-4" />
+                                            Nuovo dipendente
+                                        </button>
                                     </div>
                                 </div>
                             </div>
                         </div>
+                    </div>
                 </div>
                 {/* Sezione Filtri */}
                 <section className="relative z-20 rounded-3xl border border-white/80 bg-gradient-to-r from-slate-300/95 via-slate-100/90 to-white/90 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
@@ -939,9 +939,8 @@ const monthlySectorData = useMemo(() => {
                                     setIsPresetPanelOpen(false);
                                 }}
                                 aria-expanded={isAdvancedPanelOpen}
-                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
-                                    (selectedDepartment !== 'all' || statusFilter !== 'active') ? 'ring-2 ring-indigo-100' : ''
-                                }`}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${(selectedDepartment !== 'all' || statusFilter !== 'active') ? 'ring-2 ring-indigo-100' : ''
+                                    }`}
                             >
                                 <Filter className="h-4 w-4 text-slate-500" />
                                 <span className="whitespace-nowrap">Filtri avanzati</span>
@@ -971,11 +970,10 @@ const monthlySectorData = useMemo(() => {
                                                         key={departmentName}
                                                         type="button"
                                                         onClick={() => setSelectedDepartment(departmentName)}
-                                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                                                            active
-                                                                ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
-                                                                : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
-                                                        }`}
+                                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${active
+                                                            ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                            : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                            }`}
                                                     >
                                                         {departmentName}
                                                     </button>
@@ -995,11 +993,10 @@ const monthlySectorData = useMemo(() => {
                                                         key={option.value}
                                                         type="button"
                                                         onClick={() => setStatusFilter(option.value)}
-                                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                                                            active
-                                                                ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
-                                                                : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
-                                                        }`}
+                                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${active
+                                                            ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                            : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                            }`}
                                                     >
                                                         {option.label}
                                                     </button>
@@ -1030,7 +1027,7 @@ const monthlySectorData = useMemo(() => {
                                 </div>
                             )}
                         </div>
-                        <div className="relative flex flex-wrap items-center gap-3">
+                        <div className="relative flex flex-row items-center gap-3">
                             {isPresetPanelOpen && (
                                 <div className="fixed inset-0 z-[210]" onClick={() => setIsPresetPanelOpen(false)} />
                             )}
@@ -1041,9 +1038,8 @@ const monthlySectorData = useMemo(() => {
                                     setIsAdvancedPanelOpen(false);
                                 }}
                                 aria-expanded={isPresetPanelOpen}
-                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
-                                    isPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
-                                }`}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${isPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
+                                    }`}
                             >
                                 <SlidersHorizontal className="h-4 w-4 text-slate-500" />
                                 <span className="whitespace-nowrap">Preset</span>
@@ -1187,16 +1183,16 @@ const monthlySectorData = useMemo(() => {
                                         />
                                     </div>
                                 ) : (
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <BarChart data={monthlySectorData}>
-                                                    <defs>
-                                                        {sectorKeys.map((sector, index) => {
-                                                            const color = getSectorColor(sector.name, index);
-                                                            return (
-                                                                <linearGradient
-                                                                    key={`gradient-${sector.id}`}
-                                                                    id={`branch-gradient-${sector.id}`}
-                                                                    x1="0"
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={monthlySectorData}>
+                                            <defs>
+                                                {sectorKeys.map((sector, index) => {
+                                                    const color = getSectorColor(sector.name, index);
+                                                    return (
+                                                        <linearGradient
+                                                            key={`gradient-${sector.id}`}
+                                                            id={`branch-gradient-${sector.id}`}
+                                                            x1="0"
                                                             y1="1"
                                                             x2="0"
                                                             y2="0"
@@ -1248,9 +1244,9 @@ const monthlySectorData = useMemo(() => {
                                         {costBySectorAnnual.slice(0, 4).map((entry, index) => (
                                             <li
                                                 key={entry.id || index}
-                                                className="flex items-center justify-between rounded-2xl border border-rose-100/60 bg-white/95 px-3 py-2 shadow-sm shadow-rose-100/40 backdrop-blur"
+                                                className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-slate-50/50 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm"
                                             >
-                                                <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                                                <span className="flex items-center gap-3 text-sm font-medium text-slate-600">
                                                     <span
                                                         className="inline-flex h-2.5 w-2.5 rounded-full"
                                                         style={{
@@ -1339,7 +1335,7 @@ const monthlySectorData = useMemo(() => {
                                         {departmentChartSummary.map((entry) => (
                                             <li
                                                 key={entry.id}
-                                                className="flex items-center justify-between rounded-2xl border border-rose-100/60 bg-white/95 px-3 py-2 shadow-sm shadow-rose-100/40 backdrop-blur"
+                                                className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-slate-50/50 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm"
                                             >
                                                 <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
                                                     <span
@@ -1375,140 +1371,138 @@ const monthlySectorData = useMemo(() => {
                         </div>
                         <div className="relative z-10 px-6 pb-6 pt-6">
                             <div className="overflow-hidden rounded-3xl border border-rose-100 shadow-inner shadow-rose-100/70">
-                        {isLoading ? (
-                            <div className="flex h-64 items-center justify-center bg-white/80">
-                                <Spinner />
-                            </div>
-                        ) : filteredEmployees.length === 0 ? (
-                            <div className="bg-white/80">
-                                <EmptyState
-                                    icon={Users}
-                                    title="Nessun dipendente trovato"
-                                    message="Aggiungi un nuovo dipendente oppure aggiorna i filtri di ricerca."
-                                />
-                            </div>
-                        ) : (
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-rose-100 bg-white/95 text-sm text-slate-700">
-                                    <thead className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-[11px] font-bold uppercase tracking-[0.16em] text-white">
-                                        <tr>
-                                            {[
-                                                { key: 'name', label: 'Dipendente', align: 'text-left' },
-                                                { key: 'jobTitle', label: 'Mansione', align: 'text-left' },
-                                                { key: 'branch', label: 'Centro di costo', align: 'text-left' },
-                                                { key: 'sector', label: 'Settore', align: 'text-left' },
-                                                { key: 'department', label: 'Reparto', align: 'text-left' },
-                                                { key: 'cost', label: `Costo ${selectedYearKey}`, align: 'text-right' },
-                                            ].map((column) => {
-                                                const isActive = sortConfig.key === column.key;
-                                                return (
-                                                    <th
-                                                        key={column.key}
-                                                        className={`px-5 py-3 ${column.align}`}
-                                                        aria-sort={
-                                                            isActive
-                                                                ? sortConfig.direction === 'asc'
-                                                                    ? 'ascending'
-                                                                    : 'descending'
-                                                                : 'none'
-                                                        }
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleSort(column.key)}
-                                                            className={`flex w-full items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/90 transition-colors hover:text-white ${
-                                                                column.align.includes('right') ? 'justify-end' : 'justify-start'
-                                                            }`}
-                                                        >
-                                                            <span>{column.label}</span>
-                                                            <SortIndicatorIcon
-                                                                active={isActive}
-                                                                direction={sortConfig.direction}
-                                                            />
-                                                        </button>
-                                                    </th>
-                                                );
-                                            })}
-                                            <th className="px-5 py-3 text-center">Stato</th>
-                                            <th className="px-5 py-3 text-center">Azioni</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-rose-50 bg-white">
-                                        {filteredEmployees.map((employee) => (
-                                            <tr key={employee.id} className="transition-colors hover:bg-rose-50/60">
-                                                <td className="px-5 py-4">
-                                                    <div className="font-semibold text-slate-900">{employee.name}</div>
-                                                    {employee.notes && (
-                                                        <p className="mt-1 text-xs font-medium text-rose-400">
-                                                            {employee.notes}
-                                                        </p>
-                                                    )}
-                                                </td>
-                                                <td className="px-5 py-4">
-                                                    <span className="text-sm font-medium text-slate-600">
-                                                        {employee.jobTitle || '—'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-5 py-4">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-sm font-semibold text-slate-700">
-                                                            {branchMap.get(employee.branchId) || 'Non assegnato'}
-                                                        </span>
-                                                        <span className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-300">
-                                                            {employee.employmentType.replace('_', ' ')}
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-5 py-4">
-                                                    <span className="text-sm font-medium text-slate-600">
-                                                        {sectorMap.get(employee.sectorId) || '—'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-5 py-4">
-                                                    <span className="text-sm font-medium text-slate-600">
-                                                        {(employee.department || '—').trim() || '—'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-5 py-4 text-right font-semibold text-slate-900">
-                                                    {formatCurrency(
-                                                        getAnnualCostForEmployee(employee, selectedYearKey)
-                                                    )}
-                                                </td>
-                                                <td className="px-5 py-4 text-center">
-                                                    <span
-                                                        className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.28em] ${
-                                                            employee.status === 'inactive'
-                                                                ? 'bg-rose-100 text-rose-600'
-                                                                : 'bg-emerald-100 text-emerald-600'
-                                                        }`}
-                                                    >
-                                                        {STATUS_LABELS[employee.status] || 'Attivo'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-5 py-4 text-center">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openEditModal(employee)}
-                                                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-500 transition-all hover:border-rose-400 hover:text-rose-600"
-                                                        >
-                                                            <Pencil className="h-4 w-4" />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDeleteEmployee(employee)}
-                                                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-500 transition-all hover:border-rose-500 hover:bg-rose-50 hover:text-rose-600"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
+                                {isLoading ? (
+                                    <div className="flex h-64 items-center justify-center bg-white/80">
+                                        <Spinner />
+                                    </div>
+                                ) : filteredEmployees.length === 0 ? (
+                                    <div className="bg-white/80">
+                                        <EmptyState
+                                            icon={Users}
+                                            title="Nessun dipendente trovato"
+                                            message="Aggiungi un nuovo dipendente oppure aggiorna i filtri di ricerca."
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-rose-100 bg-white/95 text-sm text-slate-700">
+                                            <thead className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-[11px] font-bold uppercase tracking-[0.16em] text-white">
+                                                <tr>
+                                                    {[
+                                                        { key: 'name', label: 'Dipendente', align: 'text-left' },
+                                                        { key: 'jobTitle', label: 'Mansione', align: 'text-left' },
+                                                        { key: 'branch', label: 'Centro di costo', align: 'text-left' },
+                                                        { key: 'sector', label: 'Settore', align: 'text-left' },
+                                                        { key: 'department', label: 'Reparto', align: 'text-left' },
+                                                        { key: 'cost', label: `Costo ${selectedYearKey}`, align: 'text-right' },
+                                                    ].map((column) => {
+                                                        const isActive = sortConfig.key === column.key;
+                                                        return (
+                                                            <th
+                                                                key={column.key}
+                                                                className={`px-5 py-3 ${column.align}`}
+                                                                aria-sort={
+                                                                    isActive
+                                                                        ? sortConfig.direction === 'asc'
+                                                                            ? 'ascending'
+                                                                            : 'descending'
+                                                                        : 'none'
+                                                                }
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleSort(column.key)}
+                                                                    className={`flex w-full items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/90 transition-colors hover:text-white ${column.align.includes('right') ? 'justify-end' : 'justify-start'
+                                                                        }`}
+                                                                >
+                                                                    <span>{column.label}</span>
+                                                                    <SortIndicatorIcon
+                                                                        active={isActive}
+                                                                        direction={sortConfig.direction}
+                                                                    />
+                                                                </button>
+                                                            </th>
+                                                        );
+                                                    })}
+                                                    <th className="px-5 py-3 text-center">Stato</th>
+                                                    <th className="px-5 py-3 text-center">Azioni</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-rose-50 bg-white">
+                                                {filteredEmployees.map((employee) => (
+                                                    <tr key={employee.id} className="transition-colors hover:bg-rose-50/60">
+                                                        <td className="px-5 py-4">
+                                                            <div className="font-semibold text-slate-900">{employee.name}</div>
+                                                            {employee.notes && (
+                                                                <p className="mt-1 text-xs font-medium text-rose-400">
+                                                                    {employee.notes}
+                                                                </p>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-5 py-4">
+                                                            <span className="text-sm font-medium text-slate-600">
+                                                                {employee.jobTitle || '—'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-5 py-4">
+                                                            <div className="flex flex-col">
+                                                                <span className="text-sm font-semibold text-slate-700">
+                                                                    {branchMap.get(employee.branchId) || 'Non assegnato'}
+                                                                </span>
+                                                                <span className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-300">
+                                                                    {employee.employmentType.replace('_', ' ')}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-5 py-4">
+                                                            <span className="text-sm font-medium text-slate-600">
+                                                                {sectorMap.get(employee.sectorId) || '—'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-5 py-4">
+                                                            <span className="text-sm font-medium text-slate-600">
+                                                                {(employee.department || '—').trim() || '—'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-5 py-4 text-right font-semibold text-slate-900">
+                                                            {formatCurrency(
+                                                                getAnnualCostForEmployee(employee, selectedYearKey)
+                                                            )}
+                                                        </td>
+                                                        <td className="px-5 py-4 text-center">
+                                                            <span
+                                                                className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.28em] ${employee.status === 'inactive'
+                                                                    ? 'bg-rose-100 text-rose-600'
+                                                                    : 'bg-emerald-100 text-emerald-600'
+                                                                    }`}
+                                                            >
+                                                                {STATUS_LABELS[employee.status] || 'Attivo'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-5 py-4 text-center">
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => openEditModal(employee)}
+                                                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-500 transition-all hover:border-rose-400 hover:text-rose-600"
+                                                                >
+                                                                    <Pencil className="h-4 w-4" />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleDeleteEmployee(employee)}
+                                                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-500 transition-all hover:border-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

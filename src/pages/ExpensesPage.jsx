@@ -3,9 +3,9 @@ import { useLocation } from 'react-router-dom';
 import { db } from '../firebase/config';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { collection, query, orderBy, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
-import { 
+import {
     PlusCircle, Search, Wallet, Car, Sailboat, Caravan, Building2, Layers, MapPin,
-    DollarSign, FileText, Paperclip, Copy, Pencil, Trash2, AlertTriangle, CheckCircle2, 
+    DollarSign, FileText, Paperclip, Copy, Pencil, Trash2, AlertTriangle, CheckCircle2,
     SlidersHorizontal, Activity, ArrowUpDown, TrendingDown,
     FileSignature, X, XCircle, Check, Calendar, Filter, Bell
 } from 'lucide-react';
@@ -74,6 +74,7 @@ const buildNonOperationsTrendData = ({
     isOperationsDomain,
     branchMap,
     sectorMap,
+    selectedBranch = 'all',
 }) => {
     if (isOperationsDomain) {
         return {
@@ -163,17 +164,22 @@ const buildNonOperationsTrendData = ({
     const includeOthers = remainingTotal > 0;
     const monthlyBranchKeys = includeOthers
         ? [
-              ...primaryBranchEntries,
-              {
-                  id: '__others__',
-                  key: 'nonops-branch-others',
-                  name: 'Altre filiali',
-                  color: '#CBD5F5',
-                  total: remainingTotal,
-                  isOthers: true,
-              },
-          ]
+            ...primaryBranchEntries,
+            {
+                id: '__others__',
+                key: 'nonops-branch-others',
+                name: 'Altre filiali',
+                color: '#CBD5F5',
+                total: remainingTotal,
+                isOthers: true,
+            },
+        ]
         : primaryBranchEntries;
+
+    // Filter branches if a specific branch is selected
+    const filteredMonthlyBranchKeys = selectedBranch && selectedBranch !== 'all'
+        ? monthlyBranchKeys.filter(branch => branch.id === selectedBranch)
+        : monthlyBranchKeys;
 
     const primaryBranchIdSet = new Set(primaryBranchEntries.map((branch) => branch.id));
 
@@ -188,7 +194,7 @@ const buildNonOperationsTrendData = ({
 
         let topBranchKey = null;
 
-        monthlyBranchKeys.forEach((branch) => {
+        filteredMonthlyBranchKeys.forEach((branch) => {
             let branchValue = 0;
             if (branch.id === '__others__') {
                 const breakdownEntries = Array.from(branchBucket.entries()).filter(([branchId]) => !primaryBranchIdSet.has(branchId));
@@ -234,7 +240,7 @@ const buildNonOperationsTrendData = ({
 
     return {
         monthlyTrendData,
-        monthlyBranchKeys,
+        monthlyBranchKeys: filteredMonthlyBranchKeys,
         hasMonthlyTrendData,
         sectorSplitData,
         hasSectorSplitData,
@@ -269,7 +275,7 @@ const getDefaultEndDate = () => {
 const ProgressBar = ({ value, max, showOverrun = true }) => {
     const percentage = max > 0 ? Math.round((value / max) * 1000) / 10 : 0;
     const displayPercentage = Math.min(percentage, 100);
-    
+
     const getGradient = () => {
         if (percentage > 100) return 'from-red-500 to-rose-600';
         if (percentage >= 100) return 'from-emerald-500 to-green-600';
@@ -277,11 +283,11 @@ const ProgressBar = ({ value, max, showOverrun = true }) => {
         if (percentage > 0) return 'from-orange-400 to-amber-500';
         return 'from-gray-300 to-gray-400';
     };
-    
+
     return (
         <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden relative">
-            <div 
-                className={`h-full rounded-full bg-gradient-to-r ${getGradient()} transition-all duration-700 relative overflow-hidden`} 
+            <div
+                className={`h-full rounded-full bg-gradient-to-r ${getGradient()} transition-all duration-700 relative overflow-hidden`}
                 style={{ width: `${displayPercentage}%` }}
             >
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>
@@ -501,11 +507,10 @@ const ExpensesAdvancedFiltersDropdown = ({
                                             key={`invoice-${option.key || 'all'}`}
                                             type="button"
                                             onClick={() => setInvoiceFilter(option.key)}
-                                            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                                                active
-                                                    ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
-                                                    : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
-                                            }`}
+                                            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${active
+                                                ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                }`}
                                         >
                                             {option.label}
                                         </button>
@@ -529,11 +534,10 @@ const ExpensesAdvancedFiltersDropdown = ({
                                             key={`contract-${option.key || 'all'}`}
                                             type="button"
                                             onClick={() => setContractFilter(option.key)}
-                                            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                                                active
-                                                    ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
-                                                    : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
-                                            }`}
+                                            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${active
+                                                ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                }`}
                                         >
                                             {option.label}
                                         </button>
@@ -895,7 +899,7 @@ export default function ExpensesPage({
     domainConfigs = COST_DOMAINS,
 }) {
     const location = useLocation();
-    
+
     // Stati principali
     const [rawExpenses, setRawExpenses] = useState([]);
     const [branches, setBranches] = useState([]);
@@ -907,11 +911,11 @@ export default function ExpensesPage({
     const [budgets, setBudgets] = useState([]);
     const [sectorBudgets, setSectorBudgets] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    
+
     // Stati UI
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingExpense, setEditingExpense] = useState(null);
-    
+
     // Stati filtri
     const [searchTerm, setSearchTerm] = useState('');
     const [supplierFilter, setSupplierFilter] = useState([]);
@@ -954,7 +958,7 @@ export default function ExpensesPage({
         }
         return 'Analizza e controlla le spese con gli stessi filtri condivisi della dashboard. Salva preset per riutilizzarli rapidamente nelle altre sezioni.';
     }, [currentDomainConfig]);
-    
+
     // Debounce search per performance
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
     useEffect(() => {
@@ -963,7 +967,7 @@ export default function ExpensesPage({
         }, 300);
         return () => clearTimeout(timer);
     }, [searchTerm]);
-    
+
     // Map per lookup rapidi con memoizzazione aggressiva
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
     const branchMap = useMemo(() => new Map(branches.map(b => [b.id, b.name])), [branches]);
@@ -972,7 +976,7 @@ export default function ExpensesPage({
     const contractMap = useMemo(() => new Map(contracts.map(c => [c.id, c])), [contracts]);
     const defaultStartDate = useMemo(() => getDefaultStartDate(), []);
     const defaultEndDate = useMemo(() => getDefaultEndDate(), []);
-    
+
     // Ordinamento settori
     const orderedSectors = useMemo(() => {
         const order = ['Auto', 'Camper&Caravan', 'Yachting', 'Frattin Group'];
@@ -985,19 +989,19 @@ export default function ExpensesPage({
             return indexA - indexB;
         });
     }, [sectors]);
-    
+
     // ID filiale "Generico" memoizzato
-    const genericoBranchId = useMemo(() => 
-        branches.find(b => b.name.toLowerCase() === 'generico')?.id, 
+    const genericoBranchId = useMemo(() =>
+        branches.find(b => b.name.toLowerCase() === 'generico')?.id,
         [branches]
     );
-    
+
     // Cache filiali per settore
     const branchesPerSector = useMemo(() => {
         const cache = new Map();
         sectors.forEach(sector => {
-            const sectorBranches = branches.filter(b => 
-                b.associatedSectors?.includes(sector.id) && 
+            const sectorBranches = branches.filter(b =>
+                b.associatedSectors?.includes(sector.id) &&
                 b.id !== genericoBranchId
             );
             cache.set(sector.id, sectorBranches);
@@ -1016,12 +1020,12 @@ export default function ExpensesPage({
     const orderedBranches = useMemo(() => {
         return [...branches].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }, [branches]);
-    
+
     // Budget per fornitore/settore
     const budgetInfoMap = useMemo(() => {
         const map = new Map();
         const currentYear = new Date().getFullYear();
-        
+
         budgets.forEach(budget => {
             if (budget.year === currentYear && budget.allocations) {
                 budget.allocations.forEach(allocation => {
@@ -1033,16 +1037,16 @@ export default function ExpensesPage({
                 });
             }
         });
-        
+
         return map;
     }, [budgets]);
-    
+
     // Inizializzazione filtri da props/location
     useEffect(() => {
         const filters = initialFilters || location.state;
         if (filters && Object.keys(filters).length > 0) {
-            if (filters.branchFilter) { 
-                setBranchFilter(filters.branchFilter); 
+            if (filters.branchFilter) {
+                setBranchFilter(filters.branchFilter);
             }
         }
     }, [initialFilters, location.state]);
@@ -1055,13 +1059,13 @@ export default function ExpensesPage({
             hasMounted.current = true;
         }
     }, [filterPresets]);
-    
+
     // Caricamento dati da Firebase
     useEffect(() => {
         setIsLoading(true);
-        
+
         let expensesQuery = query(collection(db, "expenses"), orderBy("date", "desc"));
-        
+
         if (user.role === 'collaborator' && user.assignedChannels?.length > 0 && user.assignedChannels.length <= 10) {
             expensesQuery = query(
                 collection(db, "expenses"),
@@ -1069,41 +1073,41 @@ export default function ExpensesPage({
                 orderBy("date", "desc")
             );
         }
-        
+
         const currentYear = new Date().getFullYear();
-        
+
         const unsubscribes = [
             onSnapshot(expensesQuery, (snap) => {
-                const expenses = snap.docs.map(doc => ({ 
-                    ...doc.data(), 
-                    id: doc.id 
+                const expenses = snap.docs.map(doc => ({
+                    ...doc.data(),
+                    id: doc.id
                 }));
                 setRawExpenses(expenses);
             }),
-            onSnapshot(query(collection(db, "sectors"), orderBy("name")), 
+            onSnapshot(query(collection(db, "sectors"), orderBy("name")),
                 snap => setSectors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "branches"), orderBy("name")), 
+            onSnapshot(query(collection(db, "branches"), orderBy("name")),
                 snap => setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "channels"), orderBy("name")), 
+            onSnapshot(query(collection(db, "channels"), orderBy("name")),
                 snap => setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "marketing_channels"), orderBy("name")), 
+            onSnapshot(query(collection(db, "marketing_channels"), orderBy("name")),
                 snap => setMarketingChannels(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "geographic_areas"), orderBy("name")), 
+            onSnapshot(query(collection(db, "geographic_areas"), orderBy("name")),
                 snap => setGeographicAreas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "contracts"), orderBy("description")), 
+            onSnapshot(query(collection(db, "contracts"), orderBy("description")),
                 snap => setContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "budgets"), where("year", "==", currentYear)), 
+            onSnapshot(query(collection(db, "budgets"), where("year", "==", currentYear)),
                 snap => setBudgets(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-            onSnapshot(query(collection(db, "sector_budgets"), where("year", "==", currentYear)), 
+            onSnapshot(query(collection(db, "sector_budgets"), where("year", "==", currentYear)),
                 snap => {
                     setSectorBudgets(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
                     setIsLoading(false);
                 })
         ];
-        
+
         return () => unsubscribes.forEach(unsub => unsub());
     }, [user]);
-    
+
     const filteredExpenses = useMemo(() => {
         return rawExpenses.filter(expense => {
             const expenseDomain = expense.costDomain || DEFAULT_COST_DOMAIN;
@@ -1121,7 +1125,7 @@ export default function ExpensesPage({
             // Normalizza IDs
             let supplierId = expense.supplierId || expense.supplierld || expense.channelId || expense.channelld;
             let sectorId = expense.sectorId || expense.sectorld;
-            
+
             // Prepara lineItems
             let lineItems = [];
             if (Array.isArray(expense.lineItems) && expense.lineItems.length > 0) {
@@ -1174,7 +1178,7 @@ export default function ExpensesPage({
                         : 'N/D'
                 });
             }
-            
+
             // Calcola totale
             const totalAmount = lineItems.reduce((sum, item) => sum + item.amount, 0);
             const { branchTotals, itemTotals, itemBranchTotals } = computeExpenseBranchShares({
@@ -1201,7 +1205,7 @@ export default function ExpensesPage({
             // Processa lineItems per display
             const processedLineItems = [];
             const processedGroupIds = new Set();
-            
+
             lineItemsWithAllocation.forEach(item => {
                 if (item.splitGroupId && !processedGroupIds.has(item.splitGroupId)) {
                     const groupItems = lineItemsWithAllocation.filter(li => li.splitGroupId === item.splitGroupId);
@@ -1220,7 +1224,7 @@ export default function ExpensesPage({
                     const branchNames = uniqueBranchNames.size
                         ? Array.from(uniqueBranchNames).join(', ')
                         : 'N/D';
-                    
+
                     processedLineItems.push({
                         _key: item.splitGroupId,
                         isGroup: true,
@@ -1243,15 +1247,15 @@ export default function ExpensesPage({
                     });
                 }
             });
-            
+
             // Aggiungi info budget
             const budgetKey = `${supplierId}-${sectorId}`;
             const budgetInfo = budgetInfoMap.get(budgetKey);
-            
+
             const hasTopLevelContract = !!expense.contractPdfUrl || !!expense.relatedContractId;
             const allLineItemsHaveContract = lineItems.length > 0 && lineItems.every(li => !!li.relatedContractId);
             const isContractSatisfied = hasTopLevelContract || allLineItemsHaveContract;
-            
+
             return {
                 ...expense,
                 isContractSatisfied,
@@ -1266,32 +1270,32 @@ export default function ExpensesPage({
                 branchShares
             };
         });
-        
+
         // 2. FILTRAGGIO
-        
+
         // Filtro per settore
         if (selectedSector !== 'all') {
             normalized = normalized.filter(exp => exp.sectorId === selectedSector);
         }
-        
+
         // Filtro per fornitore (multi-selezione)
-if (supplierFilter.length > 0) {
-    normalized = normalized.filter(exp => supplierFilter.includes(exp.supplierId));
-}
-        
+        if (supplierFilter.length > 0) {
+            normalized = normalized.filter(exp => supplierFilter.includes(exp.supplierId));
+        }
+
         // Filtro per date
         if (dateFilter.startDate && dateFilter.endDate) {
             const start = new Date(dateFilter.startDate);
             start.setHours(0, 0, 0, 0);
             const end = new Date(dateFilter.endDate);
             end.setHours(23, 59, 59, 999);
-            
+
             normalized = normalized.filter(exp => {
                 const expDate = exp.date ? new Date(exp.date) : null;
                 return expDate && expDate >= start && expDate <= end;
             });
         }
-        
+
         // Filtro stato
         if (statusFilter === 'complete') {
             normalized = normalized.filter(exp => {
@@ -1299,27 +1303,27 @@ if (supplierFilter.length > 0) {
                 return exp.invoicePdfUrl && (!requiresContract || exp.contractPdfUrl || exp.relatedContractId);
             });
         } else if (statusFilter === 'incomplete') {
-         normalized = normalized.filter(exp => {
-        const requiresContract = exp.requiresContract !== false;
-        return !exp.invoicePdfUrl || (requiresContract && !exp.isContractSatisfied);
-        });
-        }else if (statusFilter === 'amortized') {
+            normalized = normalized.filter(exp => {
+                const requiresContract = exp.requiresContract !== false;
+                return !exp.invoicePdfUrl || (requiresContract && !exp.isContractSatisfied);
+            });
+        } else if (statusFilter === 'amortized') {
             normalized = normalized.filter(exp => exp.isAmortized);
         }
-        
+
         // Altri filtri esistenti...
         if (invoiceFilter === 'present') {
             normalized = normalized.filter(exp => !!exp.invoicePdfUrl);
         } else if (invoiceFilter === 'missing') {
             normalized = normalized.filter(exp => !exp.invoicePdfUrl);
         }
-        
+
         if (contractFilter === 'present') {
             normalized = normalized.filter(exp => !!exp.contractPdfUrl || !!exp.relatedContractId);
         } else if (contractFilter === 'missing') {
             normalized = normalized.filter(exp => !exp.contractPdfUrl && !exp.relatedContractId);
         }
-        
+
         // Filtro filiale con calcolo distribuito
         if (effectiveBranchFilter.length > 0) {
             normalized = normalized.filter(exp => {
@@ -1429,25 +1433,25 @@ if (supplierFilter.length > 0) {
                     lineItems: (exp.lineItems || []).length,
                     breakdown: exp.lineItems?.map(item => item.branchBreakdown?.[branchId] || 0).join(', ')
                 }))
-            , [`Filiale: ${branchName}`]);
+                , [`Filiale: ${branchName}`]);
         }
-        
+
         // Filtro ricerca testuale con debounce
         if (debouncedSearchTerm.trim()) {
             const lowerSearch = debouncedSearchTerm.toLowerCase();
             normalized = normalized.filter(exp => {
                 const supplierName = supplierMap.get(exp.supplierId) || '';
-                const channelNames = exp.lineItems?.map(item => 
+                const channelNames = exp.lineItems?.map(item =>
                     marketingChannelMap.get(item.marketingChannelId) || ''
                 ).join(' ');
-                
+
                 return exp.description?.toLowerCase().includes(lowerSearch) ||
-                       supplierName.toLowerCase().includes(lowerSearch) ||
-                       channelNames?.toLowerCase().includes(lowerSearch) ||
-                       exp.lineItems?.some(item => item.description?.toLowerCase().includes(lowerSearch));
+                    supplierName.toLowerCase().includes(lowerSearch) ||
+                    channelNames?.toLowerCase().includes(lowerSearch) ||
+                    exp.lineItems?.some(item => item.description?.toLowerCase().includes(lowerSearch));
             });
         }
-        
+
         // 3. ORDINAMENTO
         normalized.sort((a, b) => {
             switch (sortOrder) {
@@ -1467,26 +1471,26 @@ if (supplierFilter.length > 0) {
                     return 0;
             }
         });
-        
+
         return normalized;
     }, [
-        filteredExpenses, 
-        selectedSector, 
-        supplierFilter, 
-        dateFilter, 
+        filteredExpenses,
+        selectedSector,
+        supplierFilter,
+        dateFilter,
         statusFilter,
-        invoiceFilter, 
+        invoiceFilter,
         contractFilter,
-        effectiveBranchFilter, 
-        debouncedSearchTerm, 
+        effectiveBranchFilter,
+        debouncedSearchTerm,
         sortOrder,
-        supplierMap, 
-        marketingChannelMap, 
+        supplierMap,
+        marketingChannelMap,
         branchMap,
         branchesPerSector,
         budgetInfoMap
     ]);
-    
+
     const expenseAlerts = useMemo(() => {
         if (isOperationsDomain) return [];
         if (processedExpenses.length === 0) return [];
@@ -1582,25 +1586,25 @@ if (supplierFilter.length > 0) {
             setIsNotificationsPanelOpen(false);
         }
     }, [notificationCount, isNotificationsPanelOpen]);
-    
+
     // Calcolo KPI ottimizzato
     const kpiData = useMemo(() => {
         const total = processedExpenses.length;
-        const totalSpend = effectiveBranchFilter.length > 0 
+        const totalSpend = effectiveBranchFilter.length > 0
             ? processedExpenses.reduce((sum, exp) => sum + (exp.displayAmount || 0), 0)
             : processedExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
-        
+
         const withInvoice = processedExpenses.filter(exp => exp.invoicePdfUrl).length;
         const withContract = processedExpenses.filter(exp => exp.contractPdfUrl || exp.relatedContractId).length;
         const complete = processedExpenses.filter(exp => {
-        const requiresContract = exp.requiresContract !== false;
-        return exp.invoicePdfUrl && (!requiresContract || exp.isContractSatisfied);
+            const requiresContract = exp.requiresContract !== false;
+            return exp.invoicePdfUrl && (!requiresContract || exp.isContractSatisfied);
         }).length;
         const incomplete = processedExpenses.filter(exp => {
-        const requiresContract = exp.requiresContract !== false;
-        return !exp.invoicePdfUrl || (requiresContract && !exp.isContractSatisfied);
+            const requiresContract = exp.requiresContract !== false;
+            return !exp.invoicePdfUrl || (requiresContract && !exp.isContractSatisfied);
         }).length;
-        
+
         // Calcola budget totale per spese visualizzate
         let totalBudget = 0;
         if (selectedSector === 'all') {
@@ -1609,9 +1613,9 @@ if (supplierFilter.length > 0) {
             const sectorBudget = sectorBudgets.find(sb => sb.sectorId === selectedSector);
             totalBudget = sectorBudget?.maxAmount || 0;
         }
-        
+
         const budgetUtilization = totalBudget > 0 ? (totalSpend / totalBudget) * 100 : 0;
-        
+
         return {
             totalExpenses: total,
             totalSpend,
@@ -1624,7 +1628,7 @@ if (supplierFilter.length > 0) {
             incomplete
         };
     }, [processedExpenses, effectiveBranchFilter, sectorBudgets, selectedSector]);
-    
+
 
     // Callbacks ottimizzati
 
@@ -1859,8 +1863,8 @@ if (supplierFilter.length > 0) {
             const summary = branchMeta
                 ? operationsBranchSummary.find((item) => item.branchId === branchMeta.id)
                 : operationsBranchSummary.find(
-                      (item) => normalizeBranchLabel(item.name || '') === normalizedLabel
-                  );
+                    (item) => normalizeBranchLabel(item.name || '') === normalizedLabel
+                );
 
             if (!summary) {
                 if (!branchMeta?.id) return null;
@@ -1889,19 +1893,19 @@ if (supplierFilter.length > 0) {
         }).filter(Boolean);
     }, [isOperationsDomain, branches, operationsBranchSummary]);
 
-    
+
     const canEditOrDelete = useCallback((expense) => {
         return user.role === 'manager' || user.role === 'admin' || expense.authorId === user.uid;
     }, [user.role, user.uid]);
-    
-    const handleOpenAddModal = useCallback(() => { 
-        setEditingExpense(null); 
-        setIsModalOpen(true); 
+
+    const handleOpenAddModal = useCallback(() => {
+        setEditingExpense(null);
+        setIsModalOpen(true);
     }, []);
-    
-    const handleCloseModal = useCallback(() => { 
-        setIsModalOpen(false); 
-        setEditingExpense(null); 
+
+    const handleCloseModal = useCallback(() => {
+        setIsModalOpen(false);
+        setEditingExpense(null);
     }, []);
 
     const handleOpenEditModal = useCallback((expense) => {
@@ -1911,30 +1915,30 @@ if (supplierFilter.length > 0) {
         setEditingExpense(expense);
         setIsModalOpen(true);
     }, [canEditOrDelete]);
-    
+
     const handleSaveExpense = useCallback(async (expenseData, invoiceFileArg, contractFileArg) => {
         const isEditing = !!expenseData.id;
         const toastId = toast.loading(isEditing ? 'Aggiornamento...' : 'Salvataggio...');
         const effectiveInvoiceFile = invoiceFileArg || expenseData?.invoiceFile || null;
         const effectiveContractFile = contractFileArg || expenseData?.contractFile || null;
-        
+
         try {
             const expenseId = isEditing ? expenseData.id : doc(collection(db, 'expenses')).id;
             let invoiceURL = expenseData.invoicePdfUrl || "";
             let contractURL = expenseData.contractPdfUrl || "";
-            
+
             if (effectiveInvoiceFile) {
                 const invoiceRef = ref(storage, `invoices/${expenseId}/${effectiveInvoiceFile.name}`);
                 await uploadBytes(invoiceRef, effectiveInvoiceFile);
                 invoiceURL = await getDownloadURL(invoiceRef);
             }
-            
+
             if (effectiveContractFile) {
                 const contractRef = ref(storage, `contracts_on_expenses/${expenseId}/${effectiveContractFile.name}`);
                 await uploadBytes(contractRef, effectiveContractFile);
                 contractURL = await getDownloadURL(contractRef);
             }
-            
+
             const safeLineItems = (expenseData.lineItems || []).map(item => ({
                 ...item,
                 amount: typeof item.amount === 'number' ? item.amount : parseFloat(item.amount) || 0,
@@ -1961,11 +1965,11 @@ if (supplierFilter.length > 0) {
                 amortizationEndDate: expenseData.isAmortized ? expenseData.amortizationEndDate : null,
                 costDomain: expenseData.costDomain || resolvedCostDomain,
             };
-            
+
             if (isEditing) {
-                await updateDoc(doc(db, "expenses", expenseId), { 
-                    ...dataToSave, 
-                    updatedAt: serverTimestamp() 
+                await updateDoc(doc(db, "expenses", expenseId), {
+                    ...dataToSave,
+                    updatedAt: serverTimestamp()
                 });
             } else {
                 dataToSave.authorId = user.uid;
@@ -1973,7 +1977,7 @@ if (supplierFilter.length > 0) {
                 dataToSave.createdAt = serverTimestamp();
                 await setDoc(doc(db, "expenses", expenseId), dataToSave);
             }
-            
+
             toast.success(isEditing ? 'Spesa aggiornata!' : 'Spesa creata!', { id: toastId });
             handleCloseModal();
         } catch (error) {
@@ -1981,27 +1985,27 @@ if (supplierFilter.length > 0) {
             toast.error(error.message || 'Errore imprevisto.', { id: toastId });
         }
     }, [user.uid, user.name, handleCloseModal, resolvedCostDomain]);
-    
+
     const handleDeleteExpense = useCallback(async (expense) => {
         if (!canEditOrDelete(expense)) {
             return toast.error("Non hai i permessi per eliminare questa spesa.");
         }
-        
+
         if (!window.confirm(`Sei sicuro di voler eliminare la spesa "${expense.description}"?`)) return;
-        
+
         const toastId = toast.loading("Eliminazione in corso...");
-        
+
         try {
             if (expense.invoicePdfUrl) {
                 const fileRef = ref(storage, expense.invoicePdfUrl);
                 await deleteObject(fileRef).catch(err => console.warn("File non trovato:", err));
             }
-            
+
             if (expense.contractPdfUrl) {
                 const fileRef = ref(storage, expense.contractPdfUrl);
                 await deleteObject(fileRef).catch(err => console.warn("File non trovato:", err));
             }
-            
+
             await deleteDoc(doc(db, "expenses", expense.id));
             toast.success("Spesa eliminata!", { id: toastId });
         } catch (error) {
@@ -2009,7 +2013,7 @@ if (supplierFilter.length > 0) {
             toast.error("Errore durante l'eliminazione.", { id: toastId });
         }
     }, [canEditOrDelete]);
-    
+
     const handleDuplicateExpense = useCallback((expense) => {
         const {
             id: _ID,
@@ -2021,14 +2025,14 @@ if (supplierFilter.length > 0) {
             authorName: _AUTHOR_NAME,
             ...rest
         } = expense;
-        setEditingExpense({ 
-            ...rest, 
-            description: `${expense.description || ''} (Copia)`, 
-            date: new Date().toISOString().split('T')[0] 
+        setEditingExpense({
+            ...rest,
+            description: `${expense.description || ''} (Copia)`,
+            date: new Date().toISOString().split('T')[0]
         });
         setIsModalOpen(true);
     }, []);
-    
+
     const savePreset = useCallback(() => {
         const name = presetName.trim();
         if (!name) {
@@ -2077,7 +2081,7 @@ if (supplierFilter.length > 0) {
         setFilterPresets(prev => prev.filter(p => p.id !== id));
         toast.success('Preset eliminato');
     }, []);
-    
+
     const resetFilters = useCallback(() => {
         setSearchTerm('');
         setSupplierFilter([]);
@@ -2096,9 +2100,9 @@ if (supplierFilter.length > 0) {
         setIsNotificationsPanelOpen(false);
         toast.success("Filtri resettati!");
     }, [defaultStartDate, defaultEndDate]);
-    
 
-    
+
+
     // Check filtri attivi
     const hasCustomDateRange = Boolean(
         (dateFilter.startDate && dateFilter.startDate !== defaultStartDate) ||
@@ -2117,13 +2121,14 @@ if (supplierFilter.length > 0) {
         statusFilter !== 'all' ||
         sortOrder !== 'date_desc'
     );
-    
+
     const nonOperationsTrendData = buildNonOperationsTrendData({
         processedExpenses,
         selectedYear: selectedOperationsYear,
         isOperationsDomain,
         branchMap,
         sectorMap,
+        selectedBranch,
     });
     const nonOpsSectorTotal = useMemo(
         () => nonOperationsTrendData.sectorSplitData.reduce((sum, entry) => sum + (entry.value || 0), 0),
@@ -2155,7 +2160,8 @@ if (supplierFilter.length > 0) {
                         isOthers: branchMeta.isOthers,
                     };
                 })
-                .filter(Boolean);
+                .filter(Boolean)
+                .sort((a, b) => (b.value || 0) - (a.value || 0));
 
             if (rows.length === 0) return null;
 
@@ -2234,7 +2240,7 @@ if (supplierFilter.length > 0) {
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-orange-100 relative">
             <div className="relative p-4 lg:p-8">
                 <div className="space-y-6">
-                {/* HERO & FILTERS */}
+                    {/* HERO & FILTERS */}
                     <div className="relative rounded-3xl bg-gradient-to-br from-orange-600 via-orange-600 to-orange-600 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.35),transparent_60%)]" />
                         <div className="relative flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
@@ -2330,874 +2336,873 @@ if (supplierFilter.length > 0) {
                         </div>
                     </div>
 
-                {/* Sezione Filtri */}
-                <section className="relative z-20 rounded-3xl border border-white/80 bg-gradient-to-r from-slate-300/95 via-slate-100/90 to-white/90 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
-                    <div className="pointer-events-none absolute inset-0">
-                        <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-indigo-100/35 blur-3xl" />
-                        <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-200/55 blur-3xl" />
-                    </div>
-                    <div className="relative z-10 flex flex-wrap lg:flex-nowrap items-center justify-center gap-3 lg:gap-4 w-full max-w-6xl mx-auto">
-                        <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
-                            <Search className="h-4 w-4 text-slate-700" />
-                            <input
-                                type="text"
-                                value={searchTerm}
-                                onChange={(event) => setSearchTerm(event.target.value)}
-                                placeholder="Ricerca libera"
-                                className="w-full bg-transparent text-sm font-semibold text-slate-700 placeholder:text-slate-600 focus:outline-none"
-                            />
+                    {/* Sezione Filtri */}
+                    <section className="relative z-20 rounded-3xl border border-white/80 bg-gradient-to-r from-slate-300/95 via-slate-100/90 to-white/90 px-4 py-5 shadow-[0_32px_72px_-38px_rgba(15,23,42,0.6)] backdrop-blur-2xl overflow-visible">
+                        <div className="pointer-events-none absolute inset-0">
+                            <div className="absolute -top-16 left-12 h-32 w-32 rounded-full bg-indigo-100/35 blur-3xl" />
+                            <div className="absolute -bottom-20 right-10 h-36 w-36 rounded-full bg-slate-200/55 blur-3xl" />
                         </div>
-                        <ExpensesDateRangeDropdown
-                            isOpen={isDateDropdownOpen}
-                            setIsOpen={setIsDateDropdownOpen}
-                            startDate={dateFilter.startDate}
-                            endDate={dateFilter.endDate}
-                            hasActiveRange={hasCustomDateRange}
-                            onChange={({ startDate, endDate }) =>
-                                setDateFilter(prev => ({ ...prev, startDate, endDate }))
-                            }
-                            onClear={() => setDateFilter({ startDate: defaultStartDate, endDate: defaultEndDate })}
-                            onToggle={() => {
-                                setIsPresetPanelOpen(false);
-                                setIsAdvancedPanelOpen(false);
-                            }}
-                        />
-                        <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
-                            <Layers className="h-4 w-4 text-slate-600" />
-                            <select
-                                value={selectedSector}
-                                onChange={(event) => setSelectedSector(event.target.value)}
-                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
-                            >
-                                <option value="all">Tutti i settori</option>
-                                {orderedSectors.map(sector => (
-                                    <option key={sector.id} value={sector.id}>
-                                        {sector.name || 'N/D'}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
-                            <MapPin className="h-4 w-4 text-slate-600" />
-                            <select
-                                value={selectedBranch}
-                                onChange={(event) => setSelectedBranch(event.target.value)}
-                                className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
-                            >
-                                <option value="all">Tutte le filiali</option>
-                                {orderedBranches.map(branch => (
-                                    <option key={branch.id} value={branch.id}>
-                                        {branch.name || 'N/D'}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <ExpensesAdvancedFiltersDropdown
-                            isOpen={isAdvancedPanelOpen}
-                            setIsOpen={setIsAdvancedPanelOpen}
-                            invoiceFilter={invoiceFilter}
-                            setInvoiceFilter={setInvoiceFilter}
-                            contractFilter={contractFilter}
-                            setContractFilter={setContractFilter}
-                            onClear={() => {
-                                setInvoiceFilter('');
-                                setContractFilter('');
-                            }}
-                            onToggle={() => {
-                                setIsPresetPanelOpen(false);
-                                setIsDateDropdownOpen(false);
-                            }}
-                        />
-                        <div className="relative flex items-center gap-3 flex-wrap">
-                            {isPresetPanelOpen && (
-                                <div className="fixed inset-0 z-[210]" onClick={() => setIsPresetPanelOpen(false)} />
-                            )}
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setIsPresetPanelOpen(prev => !prev);
+                        <div className="relative z-10 flex flex-wrap lg:flex-nowrap items-center justify-center gap-3 lg:gap-4 w-full max-w-6xl mx-auto">
+                            <div className="flex min-w-[220px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                                <Search className="h-4 w-4 text-slate-700" />
+                                <input
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={(event) => setSearchTerm(event.target.value)}
+                                    placeholder="Ricerca libera"
+                                    className="w-full bg-transparent text-sm font-semibold text-slate-700 placeholder:text-slate-600 focus:outline-none"
+                                />
+                            </div>
+                            <ExpensesDateRangeDropdown
+                                isOpen={isDateDropdownOpen}
+                                setIsOpen={setIsDateDropdownOpen}
+                                startDate={dateFilter.startDate}
+                                endDate={dateFilter.endDate}
+                                hasActiveRange={hasCustomDateRange}
+                                onChange={({ startDate, endDate }) =>
+                                    setDateFilter(prev => ({ ...prev, startDate, endDate }))
+                                }
+                                onClear={() => setDateFilter({ startDate: defaultStartDate, endDate: defaultEndDate })}
+                                onToggle={() => {
+                                    setIsPresetPanelOpen(false);
                                     setIsAdvancedPanelOpen(false);
+                                }}
+                            />
+                            <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                                <Layers className="h-4 w-4 text-slate-600" />
+                                <select
+                                    value={selectedSector}
+                                    onChange={(event) => setSelectedSector(event.target.value)}
+                                    className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                                >
+                                    <option value="all">Tutti i settori</option>
+                                    {orderedSectors.map(sector => (
+                                        <option key={sector.id} value={sector.id}>
+                                            {sector.name || 'N/D'}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex min-w-[200px] items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur">
+                                <MapPin className="h-4 w-4 text-slate-600" />
+                                <select
+                                    value={selectedBranch}
+                                    onChange={(event) => setSelectedBranch(event.target.value)}
+                                    className="w-full bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                                >
+                                    <option value="all">Tutte le filiali</option>
+                                    {orderedBranches.map(branch => (
+                                        <option key={branch.id} value={branch.id}>
+                                            {branch.name || 'N/D'}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <ExpensesAdvancedFiltersDropdown
+                                isOpen={isAdvancedPanelOpen}
+                                setIsOpen={setIsAdvancedPanelOpen}
+                                invoiceFilter={invoiceFilter}
+                                setInvoiceFilter={setInvoiceFilter}
+                                contractFilter={contractFilter}
+                                setContractFilter={setContractFilter}
+                                onClear={() => {
+                                    setInvoiceFilter('');
+                                    setContractFilter('');
+                                }}
+                                onToggle={() => {
+                                    setIsPresetPanelOpen(false);
                                     setIsDateDropdownOpen(false);
                                 }}
-                                aria-expanded={isPresetPanelOpen}
-                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
-                                    isPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
-                                }`}
-                            >
-                                <SlidersHorizontal className="h-4 w-4 text-slate-500" />
-                                Preset
-                            </button>
-                            {hasActiveFilters && (
+                            />
+                            <div className="relative flex items-center gap-3">
+                                {isPresetPanelOpen && (
+                                    <div className="fixed inset-0 z-[210]" onClick={() => setIsPresetPanelOpen(false)} />
+                                )}
                                 <button
-                                    onClick={resetFilters}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm shadow-rose-100/60 transition hover:border-rose-300 whitespace-nowrap"
+                                    type="button"
+                                    onClick={() => {
+                                        setIsPresetPanelOpen(prev => !prev);
+                                        setIsAdvancedPanelOpen(false);
+                                        setIsDateDropdownOpen(false);
+                                    }}
+                                    aria-expanded={isPresetPanelOpen}
+                                    className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${isPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
+                                        }`}
                                 >
-                                    <XCircle className="w-3.5 h-3.5" />
-                                    Resetta filtri
+                                    <SlidersHorizontal className="h-4 w-4 text-slate-500" />
+                                    Preset
                                 </button>
-                            )}
-                            {isPresetPanelOpen && (
-                                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-[20rem] rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur">
-                                    <div className="space-y-3">
-                                        <div>
-                                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                                                Preset salvati
-                                            </p>
-                                            <p className="text-xs font-medium text-slate-500">
-                                                Salva e riutilizza combinazioni di filtri condivise.
-                                            </p>
+                                {hasActiveFilters && (
+                                    <button
+                                        onClick={resetFilters}
+                                        className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-600 shadow-sm shadow-rose-100/60 transition hover:border-rose-300 whitespace-nowrap"
+                                    >
+                                        <XCircle className="w-3.5 h-3.5" />
+                                        Resetta filtri
+                                    </button>
+                                )}
+                                {isPresetPanelOpen && (
+                                    <div className="absolute right-0 top-[calc(100%+0.75rem)] z-[220] w-[calc(100vw-3rem)] max-w-[20rem] rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-slate-900/15 backdrop-blur">
+                                        <div className="space-y-3">
+                                            <div>
+                                                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                                    Preset salvati
+                                                </p>
+                                                <p className="text-xs font-medium text-slate-500">
+                                                    Salva e riutilizza combinazioni di filtri condivise.
+                                                </p>
+                                            </div>
+                                            <div className="flex flex-col gap-2 sm:flex-row">
+                                                <input
+                                                    type="text"
+                                                    value={presetName}
+                                                    onChange={(event) => setPresetName(event.target.value)}
+                                                    placeholder="Nome preset (es. Q1 Board)"
+                                                    className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        savePreset();
+                                                        setIsPresetPanelOpen(false);
+                                                    }}
+                                                    disabled={!presetName.trim()}
+                                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-500 px-3 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+                                                >
+                                                    <Check className="h-3.5 w-3.5" />
+                                                    Salva
+                                                </button>
+                                            </div>
+                                            {filterPresets.length > 0 ? (
+                                                <div className="space-y-2">
+                                                    {filterPresets.map(preset => (
+                                                        <div
+                                                            key={preset.id}
+                                                            className="inline-flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-100/60"
+                                                        >
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    applyPreset(preset);
+                                                                    setIsPresetPanelOpen(false);
+                                                                }}
+                                                                className="flex-1 text-left transition-colors hover:text-indigo-600"
+                                                            >
+                                                                {preset.name}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => deletePreset(preset.id)}
+                                                                className="text-slate-300 transition-colors hover:text-rose-500"
+                                                            >
+                                                                <X className="w-3 h-3" />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs font-medium text-slate-400">
+                                                    Non hai ancora salvato preset.
+                                                </p>
+                                            )}
                                         </div>
-                                        <div className="flex flex-col gap-2 sm:flex-row">
-                                            <input
-                                                type="text"
-                                                value={presetName}
-                                                onChange={(event) => setPresetName(event.target.value)}
-                                                placeholder="Nome preset (es. Q1 Board)"
-                                                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-inner focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200/70"
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        {filterPresets.length > 0 && (
+                            <div className="relative z-10 mt-2 flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/70 bg-slate-50/85 px-4 py-3 shadow-inner shadow-slate-200/60 backdrop-blur">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                    Preset rapidi
+                                </span>
+                                {filterPresets.map(preset => (
+                                    <div
+                                        key={preset.id}
+                                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100/60"
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => applyPreset(preset)}
+                                            className="flex-1 text-left transition-colors hover:text-indigo-600"
+                                        >
+                                            {preset.name}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => deletePreset(preset.id)}
+                                            className="text-slate-300 transition-colors hover:text-rose-500"
+                                        >
+                                            <XCircle className="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+
+                    {/* KPI Cards */}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:gap-6">
+                        <KpiCard
+                            title="Spese Totali"
+                            value={kpiData.totalExpenses.toString()}
+                            subtitle={isOperationsDomain ? 'Voci registrate per le sedi' : `${processedExpenses.length} spese filtrate`}
+                            icon={<FileText className="w-6 h-6" />}
+                            gradient="from-orange-500 to-amber-600"
+                        />
+                        <KpiCard
+                            title="Importo Totale"
+                            value={formatCurrency(kpiData.totalSpend)}
+                            subtitle={isOperationsDomain ? 'Ripartite automaticamente per filiale' : `Budget: ${formatCurrency(kpiData.totalBudget)}`}
+                            icon={<DollarSign className="w-6 h-6" />}
+                            gradient="from-orange-600 to-amber-700"
+                        />
+                        {isOperationsDomain ? (
+                            <>
+                                <KpiCard
+                                    title="Filiali Attive"
+                                    value={operationsBranchSummary.length.toString()}
+                                    subtitle="Con costi registrati"
+                                    icon={<MapPin className="w-6 h-6" />}
+                                    gradient="from-orange-500 to-orange-600"
+                                />
+                                <KpiCard
+                                    title="Spesa Media"
+                                    value={formatCurrency(operationsAveragePerBranch || 0)}
+                                    subtitle="Per filiale attiva"
+                                    icon={<Layers className="w-6 h-6" />}
+                                    gradient="from-orange-500 to-orange-600"
+                                />
+                            </>
+                        ) : (
+                            <>
+                                <KpiCard
+                                    title="Con Fattura"
+                                    value={`${kpiData.withInvoicePercentage}%`}
+                                    subtitle="Documenti fiscali"
+                                    icon={<CheckCircle2 className="w-6 h-6" />}
+                                    gradient="from-amber-400 to-yellow-500"
+                                />
+                                <KpiCard
+                                    title="Complete"
+                                    value={`${kpiData.completePercentage}%`}
+                                    subtitle="Tutti i documenti"
+                                    icon={<Activity className="w-6 h-6" />}
+                                    gradient="from-orange-400 to-amber-500"
+                                />
+                            </>
+                        )}
+                    </div>
+
+                    {!isOperationsDomain && (
+                        <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+                            <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                                <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                                    <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                                    <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                            Andamento
+                                        </p>
+                                        <h2 className="text-lg font-black text-white">
+                                            Spesa mensile {selectedOperationsYear}
+                                        </h2>
+                                    </div>
+                                </div>
+                                <div className="flex-1 bg-white px-6 py-6">
+                                    {nonOperationsTrendData.hasMonthlyTrendData ? (
+                                        <>
+                                            <ResponsiveContainer width="100%" height={320}>
+                                                <AreaChart
+                                                    data={nonOperationsTrendData.monthlyTrendData}
+                                                    stackOffset="none"
+                                                    margin={{ top: 10, right: 8, left: -12, bottom: 0 }}
+                                                >
+                                                    <defs>
+                                                        {nonOperationsTrendData.monthlyBranchKeys.length > 0 ? (
+                                                            nonOperationsTrendData.monthlyBranchKeys.map((branch) => (
+                                                                <linearGradient
+                                                                    key={`non-ops-monthly-gradient-${branch.key}`}
+                                                                    id={`non-ops-monthly-gradient-${branch.key}`}
+                                                                    x1="0"
+                                                                    y1="0"
+                                                                    x2="0"
+                                                                    y2="1"
+                                                                >
+                                                                    <stop offset="0%" stopColor={branch.color} stopOpacity={0.9} />
+                                                                    <stop offset="100%" stopColor={branch.color} stopOpacity={0.35} />
+                                                                </linearGradient>
+                                                            ))
+                                                        ) : (
+                                                            <linearGradient
+                                                                id="non-ops-monthly-gradient-fallback"
+                                                                x1="0"
+                                                                y1="0"
+                                                                x2="0"
+                                                                y2="1"
+                                                            >
+                                                                <stop offset="0%" stopColor="#fb923c" stopOpacity={0.95} />
+                                                                <stop offset="100%" stopColor="#f97316" stopOpacity={0.35} />
+                                                            </linearGradient>
+                                                        )}
+                                                    </defs>
+                                                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
+                                                    <XAxis
+                                                        dataKey="monthLabel"
+                                                        tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
+                                                        axisLine={false}
+                                                        tickLine={false}
+                                                    />
+                                                    <YAxis
+                                                        tickFormatter={(value) => {
+                                                            if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+                                                            if (value >= 1000) return `${Math.round(value / 1000)}k`;
+                                                            return value.toFixed(0);
+                                                        }}
+                                                        tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
+                                                        axisLine={false}
+                                                        tickLine={false}
+                                                    />
+                                                    <Tooltip
+                                                        cursor={{ stroke: '#fb923c', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                                        content={renderNonOpsMonthlyTooltip}
+                                                    />
+                                                    {nonOperationsTrendData.monthlyBranchKeys.length > 0 ? (
+                                                        nonOperationsTrendData.monthlyBranchKeys.map((branch) => (
+                                                            <Area
+                                                                key={`non-ops-monthly-area-${branch.key}`}
+                                                                type="monotone"
+                                                                dataKey={branch.key}
+                                                                name={branch.name}
+                                                                stackId="non-ops-monthly"
+                                                                stroke={branch.color}
+                                                                strokeWidth={2}
+                                                                fill={`url(#non-ops-monthly-gradient-${branch.key})`}
+                                                                fillOpacity={1}
+                                                                activeDot={{ r: 4, strokeWidth: 0 }}
+                                                                isAnimationActive={false}
+                                                            />
+                                                        ))
+                                                    ) : (
+                                                        <Area
+                                                            type="monotone"
+                                                            dataKey="total"
+                                                            name="Spesa"
+                                                            stroke="#fb923c"
+                                                            strokeWidth={3}
+                                                            fill="url(#non-ops-monthly-gradient-fallback)"
+                                                            fillOpacity={1}
+                                                            activeDot={{ r: 4, strokeWidth: 0 }}
+                                                            isAnimationActive={false}
+                                                        />
+                                                    )}
+                                                </AreaChart>
+                                            </ResponsiveContainer>
+                                            {nonOperationsTrendData.monthlyBranchKeys.length > 0 && (
+                                                <div className="mt-6">
+                                                    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                                        {nonOperationsTrendData.monthlyBranchKeys.map((branch) => (
+                                                            <li
+                                                                key={`non-ops-monthly-legend-${branch.key}`}
+                                                                className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-slate-50/50 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm"
+                                                            >
+                                                                <span className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                                                                    <span
+                                                                        className="inline-flex h-2.5 w-2.5 rounded-full"
+                                                                        style={{ backgroundColor: branch.color }}
+                                                                    />
+                                                                    {branch.name}
+                                                                </span>
+                                                                <span className="text-sm font-semibold text-slate-900">
+                                                                    {formatCurrency(branch.total || 0)}
+                                                                </span>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div className="flex h-full items-center justify-center">
+                                            <EmptyState
+                                                icon={TrendingDown}
+                                                title="Nessun dato disponibile"
+                                                message="Registra alcune spese o modifica i filtri per vedere l'andamento mensile."
                                             />
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    savePreset();
-                                                    setIsPresetPanelOpen(false);
-                                                }}
-                                                disabled={!presetName.trim()}
-                                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-500 px-3 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
-                                            >
-                                                <Check className="h-3.5 w-3.5" />
-                                                Salva
-                                            </button>
                                         </div>
-                                        {filterPresets.length > 0 ? (
-                                            <div className="space-y-2">
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                                <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                                    <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                                    <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                            Ripartizione spese
+                                        </p>
+                                        <h2 className="text-lg font-black text-white">
+                                            Peso economico per settore
+                                        </h2>
+                                    </div>
+                                </div>
+                                <div className="flex-1 bg-white px-6 py-6">
+                                    {nonOperationsTrendData.hasSectorSplitData ? (
+                                        <ResponsiveContainer width="100%" height={320}>
+                                            <PieChart>
+                                                <Tooltip content={renderNonOpsSectorTooltip} />
+                                                <Pie
+                                                    data={nonOperationsTrendData.sectorSplitData}
+                                                    dataKey="value"
+                                                    nameKey="name"
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    innerRadius="55%"
+                                                    outerRadius="80%"
+                                                    paddingAngle={4}
+                                                    strokeWidth={0}
+                                                >
+                                                    {nonOperationsTrendData.sectorSplitData.map((entry) => (
+                                                        <Cell key={`non-ops-sector-${entry.id}`} fill={entry.color} />
+                                                    ))}
+                                                </Pie>
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="flex h-full items-center justify-center">
+                                            <EmptyState
+                                                icon={Layers}
+                                                title="Nessun dato di settore"
+                                                message="Registra spese o modifica i filtri per vedere il peso delle aree."
+                                            />
+                                        </div>
+                                    )}
+                                    {nonOperationsTrendData.hasSectorSplitData && (
+                                        <div className="mt-6">
+                                            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                {nonOperationsTrendData.sectorSplitData.map((entry) => (
+                                                    <li
+                                                        key={entry.name}
+                                                        className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-slate-50/50 px-3 py-2 shadow-sm"
+                                                    >
+                                                        <span className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                                                            <span
+                                                                className="inline-flex h-2.5 w-2.5 rounded-full"
+                                                                style={{ backgroundColor: entry.color }}
+                                                            />
+                                                            {entry.name}
+                                                        </span>
+                                                        <span className="text-sm font-semibold text-slate-900">
+                                                            {formatCurrency(entry.value)}
+                                                        </span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </section>
+                    )}
+
+                    {isOperationsDomain && (
+                        <>
+                            <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+                                <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                                        <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                                Filiali
+                                            </p>
+                                            <h2 className="text-lg font-black text-white">
+                                                Distribuzione mensile {selectedOperationsYear}
+                                            </h2>
+                                        </div>
+                                    </div>
+                                    <div className="relative flex flex-1 flex-col px-6 py-6 bg-white">
+                                        <div className="flex-1">
+                                            {!hasOperationsMonthlyData ? (
+                                                <div className="flex h-full items-center justify-center">
+                                                    <EmptyState
+                                                        icon={Building2}
+                                                        title="Nessun dato disponibile"
+                                                        message="Registra spese sulle filiali o aggiorna i filtri per visualizzare la distribuzione mensile."
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <AreaChart
+                                                        data={operationsMonthlyBranchData}
+                                                        stackOffset="none"
+                                                        margin={{ top: 10, right: 8, left: -12, bottom: 0 }}
+                                                    >
+                                                        <defs>
+                                                            {operationsTopBranchKeys.map((branch) => (
+                                                                <linearGradient
+                                                                    key={`ops-branch-gradient-${branch.id}`}
+                                                                    id={`ops-branch-gradient-${branch.id}`}
+                                                                    x1="0"
+                                                                    y1="0"
+                                                                    x2="0"
+                                                                    y2="1"
+                                                                >
+                                                                    <stop offset="0%" stopColor={branch.color} stopOpacity={0.9} />
+                                                                    <stop offset="100%" stopColor={branch.color} stopOpacity={0.35} />
+                                                                </linearGradient>
+                                                            ))}
+                                                        </defs>
+                                                        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
+                                                        <XAxis
+                                                            dataKey="monthLabel"
+                                                            tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
+                                                            axisLine={false}
+                                                            tickLine={false}
+                                                        />
+                                                        <YAxis
+                                                            tickFormatter={(value) => {
+                                                                if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+                                                                if (value >= 1000) return `${Math.round(value / 1000)}k`;
+                                                                return value.toFixed(0);
+                                                            }}
+                                                            tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
+                                                            axisLine={false}
+                                                            tickLine={false}
+                                                        />
+                                                        <Tooltip
+                                                            cursor={{ stroke: '#6366f1', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                                            content={renderOperationsMonthlyTooltip}
+                                                        />
+                                                        {operationsTopBranchKeys.map((branch) => (
+                                                            <Area
+                                                                key={`ops-area-${branch.id}`}
+                                                                type="monotone"
+                                                                dataKey={branch.key}
+                                                                name={branch.name}
+                                                                stackId="ops-monthly"
+                                                                stroke={branch.color}
+                                                                strokeWidth={2}
+                                                                fill={`url(#ops-branch-gradient-${branch.id})`}
+                                                                fillOpacity={1}
+                                                                activeDot={{ r: 4, strokeWidth: 0 }}
+                                                                isAnimationActive={false}
+                                                            />
+                                                        ))}
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            )}
+                                        </div>
+                                        {operationsTopBranches.length > 0 && (
+                                            <div className="pt-4">
+                                                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                    {operationsTopBranches.map((branch, index) => (
+                                                        <li
+                                                            key={branch.branchId || `top-${index}`}
+                                                            className="flex items-center justify-between rounded-2xl border border-orange-200/70 bg-white px-3 py-2 shadow-sm shadow-slate-200/40"
+                                                        >
+                                                            <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                                                                <span
+                                                                    className="inline-flex h-2.5 w-2.5 rounded-full"
+                                                                    style={{
+                                                                        backgroundColor: branchColorPalette[index % branchColorPalette.length],
+                                                                    }}
+                                                                />
+                                                                {branch.name}
+                                                            </span>
+                                                            <span className="text-sm font-semibold text-slate-900">
+                                                                {formatCurrency(branch.amount)}
+                                                            </span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                                        <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                                Filiali
+                                            </p>
+                                            <h2 className="text-lg font-black text-white">
+                                                Incidenza sui costi {selectedOperationsYear}
+                                            </h2>
+                                        </div>
+                                    </div>
+                                    <div className="relative flex flex-1 flex-col px-6 py-6 bg-white">
+                                        <div className="flex-1">
+                                            {!hasOperationsDonutData ? (
+                                                <div className="flex h-full items-center justify-center">
+                                                    <EmptyState
+                                                        icon={Layers}
+                                                        title="Nessun dato disponibile"
+                                                        message="Popola i costi delle filiali per visualizzare l’incidenza complessiva."
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <ResponsiveContainer width="100%" height={320}>
+                                                    <PieChart>
+                                                        <defs>
+                                                            {operationsBranchDonutData.map((entry) => (
+                                                                <linearGradient
+                                                                    key={`ops-donut-${entry.id}`}
+                                                                    id={`ops-donut-${entry.id}`}
+                                                                    x1="0"
+                                                                    y1="1"
+                                                                    x2="0"
+                                                                    y2="0"
+                                                                >
+                                                                    <stop offset="0%" stopColor={entry.color} stopOpacity={0.65} />
+                                                                    <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
+                                                                </linearGradient>
+                                                            ))}
+                                                        </defs>
+                                                        <Tooltip content={renderBranchDonutTooltip} />
+                                                        <Pie
+                                                            data={operationsBranchDonutData}
+                                                            dataKey="value"
+                                                            nameKey="name"
+                                                            cx="50%"
+                                                            cy="50%"
+                                                            innerRadius="60%"
+                                                            outerRadius="80%"
+                                                            paddingAngle={4}
+                                                            strokeWidth={0}
+                                                        >
+                                                            {operationsBranchDonutData.map((entry) => (
+                                                                <Cell key={`ops-donut-cell-${entry.id}`} fill={`url(#ops-donut-${entry.id})`} />
+                                                            ))}
+                                                        </Pie>
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                            )}
+                                        </div>
+                                        {operationsBranchDonutSummary.length > 0 && (
+                                            <div className="mt-6">
+                                                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                    {operationsBranchDonutSummary.map((entry) => (
+                                                        <li
+                                                            key={entry.id}
+                                                            className="flex items-center justify-between rounded-2xl border border-orange-100/70 bg-white px-3 py-2 shadow-sm shadow-slate-200/40"
+                                                        >
+                                                            <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                                                                <span
+                                                                    className="inline-flex h-2.5 w-2.5 rounded-full"
+                                                                    style={{ backgroundColor: entry.color }}
+                                                                />
+                                                                {entry.name}
+                                                            </span>
+                                                            <span className="text-sm font-semibold text-slate-900">
+                                                                {formatCurrency(entry.value)}
+                                                            </span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </section>
+                            {operationsBranchSections.map((branch) => {
+                                const share =
+                                    operationsTotalSpend > 0 ? (branch.totalAmount / operationsTotalSpend) * 100 : 0;
+                                const hasExpensesForBranch = branch.totalAmount > 0;
+
+                                return (
+                                    <section
+                                        key={branch.key}
+                                        className="relative overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]"
+                                    >
+                                        <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                                            <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                                            <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white md:flex-row md:items-center md:justify-between">
+                                                <div>
+                                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                                        Filiale
+                                                    </p>
+                                                    <h2 className="text-lg font-black text-white">
+                                                        {branch.displayName}
+                                                    </h2>
+                                                </div>
+                                                <div className="text-left md:text-right">
+                                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                                        Totale {selectedOperationsYear}
+                                                    </p>
+                                                    <p className="text-lg font-black text-white">
+                                                        {formatCurrency(branch.totalAmount)}
+                                                    </p>
+                                                    <p className="text-xs font-semibold text-white/70">
+                                                        Incidenza: {share.toFixed(1)}% del totale sedi
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="relative z-10 px-6 pb-6 pt-6">
+                                            {!hasExpensesForBranch ? (
+                                                <div className="rounded-3xl border-2 border-dashed border-orange-100 bg-orange-50/30 p-8 text-center">
+                                                    <EmptyState
+                                                        icon={Layers}
+                                                        title="Nessuna spesa per questa filiale"
+                                                        message="Registra un costo o aggiorna i filtri per visualizzare le spese della sede."
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div className="overflow-hidden rounded-3xl border border-orange-100/70 shadow-inner shadow-orange-100/70">
+                                                    <ExpenseTableView
+                                                        expenses={processedExpenses}
+                                                        sectorMap={sectorMap}
+                                                        supplierMap={supplierMap}
+                                                        branchMap={branchMap}
+                                                        contractMap={contractMap}
+                                                        onEdit={handleOpenEditModal}
+                                                        onDelete={handleDeleteExpense}
+                                                        onDuplicate={handleDuplicateExpense}
+                                                        canEditOrDelete={canEditOrDelete}
+                                                        showDocuments={false}
+                                                        splitByBranch
+                                                        limitBranchId={branch.branchId}
+                                                        actionVariant="icon"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </section>
+                                );
+                            })}
+                        </>
+                    )}
+
+                    {/* Lista Spese generale (solo per domini non Operations) */}
+                    {!isOperationsDomain && (
+                        <section className="relative overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
+                            <div className="pointer-events-none absolute inset-0">
+                                <div className="absolute -top-40 right-0 h-72 w-72 rounded-full bg-orange-200/25 blur-3xl" />
+                                <div className="absolute bottom-[-35%] left-1/4 h-64 w-64 rounded-full bg-orange-200/20 blur-3xl" />
+                            </div>
+                            <div className="relative z-10 flex flex-col">
+                                <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
+                                    <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
+                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
+                                    <div className="relative z-10 flex flex-col gap-4 px-6 py-5 text-white">
+                                        <div className="space-y-1">
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                                Elenco spese
+                                            </p>
+                                            <h2 className="text-lg font-black text-white">
+                                                Dettaglio fornitori e documentazione
+                                            </h2>
+                                        </div>
+
+                                        {filterPresets.length > 0 && (
+                                            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-white shadow-inner shadow-black/10 backdrop-blur">
+                                                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
+                                                    Preset rapidi
+                                                </span>
                                                 {filterPresets.map(preset => (
                                                     <div
                                                         key={preset.id}
-                                                        className="inline-flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-100/60"
+                                                        className="inline-flex items-center gap-2 rounded-2xl border border-white/40 bg-white/15 px-3 py-1.5 text-sm font-semibold text-white shadow-sm shadow-black/10"
                                                     >
                                                         <button
                                                             type="button"
-                                                            onClick={() => {
-                                                                applyPreset(preset);
-                                                                setIsPresetPanelOpen(false);
-                                                            }}
-                                                            className="flex-1 text-left transition-colors hover:text-indigo-600"
+                                                            onClick={() => applyPreset(preset)}
+                                                            className="flex-1 text-left transition-colors hover:text-white/80"
                                                         >
                                                             {preset.name}
                                                         </button>
                                                         <button
                                                             type="button"
                                                             onClick={() => deletePreset(preset.id)}
-                                                            className="text-slate-300 transition-colors hover:text-rose-500"
+                                                            className="text-white/70 transition-colors hover:text-rose-100"
                                                         >
-                                                            <X className="w-3 h-3" />
+                                                            <XCircle className="h-3.5 w-3.5" />
                                                         </button>
                                                     </div>
                                                 ))}
                                             </div>
-                                        ) : (
-                                            <p className="text-xs font-medium text-slate-400">
-                                                Non hai ancora salvato preset.
-                                            </p>
                                         )}
                                     </div>
                                 </div>
-                            )}
-                        </div>
-                    </div>
-                    {filterPresets.length > 0 && (
-                        <div className="relative z-10 mt-2 flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/70 bg-slate-50/85 px-4 py-3 shadow-inner shadow-slate-200/60 backdrop-blur">
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                Preset rapidi
-                            </span>
-                            {filterPresets.map(preset => (
-                                <div
-                                    key={preset.id}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100/60"
-                                >
-                                    <button
-                                        type="button"
-                                        onClick={() => applyPreset(preset)}
-                                        className="flex-1 text-left transition-colors hover:text-indigo-600"
-                                    >
-                                        {preset.name}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => deletePreset(preset.id)}
-                                        className="text-slate-300 transition-colors hover:text-rose-500"
-                                    >
-                                        <XCircle className="h-3.5 w-3.5" />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </section>
-
-                {/* KPI Cards */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:gap-6">
-                    <KpiCard
-                        title="Spese Totali"
-                        value={kpiData.totalExpenses.toString()}
-                        subtitle={isOperationsDomain ? 'Voci registrate per le sedi' : `${processedExpenses.length} spese filtrate`}
-                        icon={<FileText className="w-6 h-6" />}
-                        gradient="from-orange-500 to-amber-600"
-                    />
-                    <KpiCard
-                        title="Importo Totale"
-                        value={formatCurrency(kpiData.totalSpend)}
-                        subtitle={isOperationsDomain ? 'Ripartite automaticamente per filiale' : `Budget: ${formatCurrency(kpiData.totalBudget)}`}
-                        icon={<DollarSign className="w-6 h-6" />}
-                        gradient="from-orange-600 to-amber-700"
-                    />
-                    {isOperationsDomain ? (
-                        <>
-                            <KpiCard
-                                title="Filiali Attive"
-                                value={operationsBranchSummary.length.toString()}
-                                subtitle="Con costi registrati"
-                                icon={<MapPin className="w-6 h-6" />}
-                                gradient="from-orange-500 to-orange-600"
-                            />
-                            <KpiCard
-                                title="Spesa Media"
-                                value={formatCurrency(operationsAveragePerBranch || 0)}
-                                subtitle="Per filiale attiva"
-                                icon={<Layers className="w-6 h-6" />}
-                                gradient="from-orange-500 to-orange-600"
-                            />
-                        </>
-                    ) : (
-                        <>
-                            <KpiCard
-                                title="Con Fattura"
-                                value={`${kpiData.withInvoicePercentage}%`}
-                                subtitle="Documenti fiscali"
-                                icon={<CheckCircle2 className="w-6 h-6" />}
-                                gradient="from-amber-400 to-yellow-500"
-                            />
-                            <KpiCard
-                                title="Complete"
-                                value={`${kpiData.completePercentage}%`}
-                                subtitle="Tutti i documenti"
-                                icon={<Activity className="w-6 h-6" />}
-                                gradient="from-orange-400 to-amber-500"
-                            />
-                        </>
-                    )}
-                </div>
-
-        {!isOperationsDomain && (
-            <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-                <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
-                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
-                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
-                        <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
-                                Andamento
-                            </p>
-                            <h2 className="text-lg font-black text-white">
-                                Spesa mensile {selectedOperationsYear}
-                            </h2>
-                        </div>
-                    </div>
-                    <div className="flex-1 bg-white px-6 py-6">
-                        {nonOperationsTrendData.hasMonthlyTrendData ? (
-                            <>
-                                <ResponsiveContainer width="100%" height={320}>
-                                    <AreaChart
-                                        data={nonOperationsTrendData.monthlyTrendData}
-                                        stackOffset="none"
-                                        margin={{ top: 10, right: 8, left: -12, bottom: 0 }}
-                                    >
-                                        <defs>
-                                            {nonOperationsTrendData.monthlyBranchKeys.length > 0 ? (
-                                                nonOperationsTrendData.monthlyBranchKeys.map((branch) => (
-                                                    <linearGradient
-                                                        key={`non-ops-monthly-gradient-${branch.key}`}
-                                                        id={`non-ops-monthly-gradient-${branch.key}`}
-                                                        x1="0"
-                                                        y1="0"
-                                                        x2="0"
-                                                        y2="1"
-                                                    >
-                                                        <stop offset="0%" stopColor={branch.color} stopOpacity={0.9} />
-                                                        <stop offset="100%" stopColor={branch.color} stopOpacity={0.35} />
-                                                    </linearGradient>
-                                                ))
-                                            ) : (
-                                                <linearGradient
-                                                    id="non-ops-monthly-gradient-fallback"
-                                                    x1="0"
-                                                    y1="0"
-                                                    x2="0"
-                                                    y2="1"
-                                                >
-                                                    <stop offset="0%" stopColor="#fb923c" stopOpacity={0.95} />
-                                                    <stop offset="100%" stopColor="#f97316" stopOpacity={0.35} />
-                                                </linearGradient>
-                                            )}
-                                        </defs>
-                                        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
-                                        <XAxis
-                                            dataKey="monthLabel"
-                                            tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                        />
-                                        <YAxis
-                                            tickFormatter={(value) => {
-                                                if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-                                                if (value >= 1000) return `${Math.round(value / 1000)}k`;
-                                                return value.toFixed(0);
-                                            }}
-                                            tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                        />
-                                        <Tooltip
-                                            cursor={{ stroke: '#fb923c', strokeWidth: 1, strokeDasharray: '4 4' }}
-                                            content={renderNonOpsMonthlyTooltip}
-                                        />
-                                        {nonOperationsTrendData.monthlyBranchKeys.length > 0 ? (
-                                            nonOperationsTrendData.monthlyBranchKeys.map((branch) => (
-                                                <Area
-                                                    key={`non-ops-monthly-area-${branch.key}`}
-                                                    type="monotone"
-                                                    dataKey={branch.key}
-                                                    name={branch.name}
-                                                    stackId="non-ops-monthly"
-                                                    stroke={branch.color}
-                                                    strokeWidth={2}
-                                                    fill={`url(#non-ops-monthly-gradient-${branch.key})`}
-                                                    fillOpacity={1}
-                                                    activeDot={{ r: 4, strokeWidth: 0 }}
-                                                    isAnimationActive={false}
-                                                />
-                                            ))
-                                        ) : (
-                                            <Area
-                                                type="monotone"
-                                                dataKey="total"
-                                                name="Spesa"
-                                                stroke="#fb923c"
-                                                strokeWidth={3}
-                                                fill="url(#non-ops-monthly-gradient-fallback)"
-                                                fillOpacity={1}
-                                                activeDot={{ r: 4, strokeWidth: 0 }}
-                                                isAnimationActive={false}
+                                <div className="relative z-10 px-6 pb-6 pt-6">
+                                    {processedExpenses.length > 0 ? (
+                                        <div className="overflow-hidden rounded-3xl border border-orange-100 bg-white shadow-inner shadow-orange-100/50">
+                                            <ExpenseTableView
+                                                expenses={processedExpenses}
+                                                sectorMap={sectorMap}
+                                                supplierMap={supplierMap}
+                                                branchMap={branchMap}
+                                                contractMap={contractMap}
+                                                onEdit={handleOpenEditModal}
+                                                onDelete={handleDeleteExpense}
+                                                onDuplicate={handleDuplicateExpense}
+                                                canEditOrDelete={canEditOrDelete}
+                                                showDocuments
+                                                actionVariant="icon"
                                             />
-                                        )}
-                                    </AreaChart>
-                                </ResponsiveContainer>
-                                {nonOperationsTrendData.monthlyBranchKeys.length > 0 && (
-                                    <div className="mt-6">
-                                        <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-                                            {nonOperationsTrendData.monthlyBranchKeys.map((branch) => (
-                                                <li
-                                                    key={`non-ops-monthly-legend-${branch.key}`}
-                                                    className="flex items-center justify-between rounded-2xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-orange-50"
-                                                >
-                                                    <span className="flex items-center gap-2">
-                                                        <span
-                                                            className="inline-flex h-2.5 w-2.5 rounded-full"
-                                                            style={{ backgroundColor: branch.color }}
-                                                        />
-                                                        {branch.name}
-                                                    </span>
-                                                    <span className="text-sm font-semibold text-slate-900">
-                                                        {formatCurrency(branch.total || 0)}
-                                                    </span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <div className="flex h-full items-center justify-center">
-                                <EmptyState
-                                    icon={TrendingDown}
-                                    title="Nessun dato disponibile"
-                                    message="Registra alcune spese o modifica i filtri per vedere l'andamento mensile."
-                                />
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
-                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
-                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
-                        <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
-                                Ripartizione spese
-                            </p>
-                            <h2 className="text-lg font-black text-white">
-                                Peso economico per settore
-                            </h2>
-                        </div>
-                    </div>
-                    <div className="flex-1 bg-white px-6 py-6">
-                        {nonOperationsTrendData.hasSectorSplitData ? (
-                            <ResponsiveContainer width="100%" height={320}>
-                                <PieChart>
-                                    <Tooltip content={renderNonOpsSectorTooltip} />
-                                    <Pie
-                                        data={nonOperationsTrendData.sectorSplitData}
-                                        dataKey="value"
-                                        nameKey="name"
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius="55%"
-                                        outerRadius="80%"
-                                        paddingAngle={4}
-                                        strokeWidth={0}
-                                    >
-                                        {nonOperationsTrendData.sectorSplitData.map((entry) => (
-                                            <Cell key={`non-ops-sector-${entry.id}`} fill={entry.color} />
-                                        ))}
-                                    </Pie>
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="flex h-full items-center justify-center">
-                                <EmptyState
-                                    icon={Layers}
-                                    title="Nessun dato di settore"
-                                    message="Registra spese o modifica i filtri per vedere il peso delle aree."
-                                />
-                            </div>
-                        )}
-                        {nonOperationsTrendData.hasSectorSplitData && (
-                            <div className="mt-6">
-                                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                    {nonOperationsTrendData.sectorSplitData.map((entry) => (
-                                        <li
-                                            key={entry.name}
-                                            className="flex items-center justify-between rounded-2xl border border-orange-100 bg-white px-3 py-2 shadow-sm shadow-orange-50"
-                                        >
-                                            <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                                                <span
-                                                    className="inline-flex h-2.5 w-2.5 rounded-full"
-                                                    style={{ backgroundColor: entry.color }}
-                                                />
-                                                {entry.name}
-                                            </span>
-                                            <span className="text-sm font-semibold text-slate-900">
-                                                {formatCurrency(entry.value)}
-                                            </span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </section>
-        )}
-
-        {isOperationsDomain && (
-            <>
-            <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-                <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
-                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
-                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
-                        <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
-                                Filiali
-                            </p>
-                            <h2 className="text-lg font-black text-white">
-                                Distribuzione mensile {selectedOperationsYear}
-                            </h2>
-                        </div>
-                    </div>
-                    <div className="relative flex flex-1 flex-col px-6 py-6 bg-white">
-                        <div className="flex-1">
-                            {!hasOperationsMonthlyData ? (
-                                <div className="flex h-full items-center justify-center">
-                                    <EmptyState
-                                        icon={Building2}
-                                        title="Nessun dato disponibile"
-                                        message="Registra spese sulle filiali o aggiorna i filtri per visualizzare la distribuzione mensile."
-                                    />
-                                </div>
-                            ) : (
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart
-                                        data={operationsMonthlyBranchData}
-                                        stackOffset="none"
-                                        margin={{ top: 10, right: 8, left: -12, bottom: 0 }}
-                                    >
-                                        <defs>
-                                            {operationsTopBranchKeys.map((branch) => (
-                                                <linearGradient
-                                                    key={`ops-branch-gradient-${branch.id}`}
-                                                    id={`ops-branch-gradient-${branch.id}`}
-                                                    x1="0"
-                                                    y1="0"
-                                                    x2="0"
-                                                    y2="1"
-                                                >
-                                                    <stop offset="0%" stopColor={branch.color} stopOpacity={0.9} />
-                                                    <stop offset="100%" stopColor={branch.color} stopOpacity={0.35} />
-                                                </linearGradient>
-                                            ))}
-                                        </defs>
-                                        <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
-                                        <XAxis
-                                            dataKey="monthLabel"
-                                            tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                        />
-                                        <YAxis
-                                            tickFormatter={(value) => {
-                                                if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-                                                if (value >= 1000) return `${Math.round(value / 1000)}k`;
-                                                return value.toFixed(0);
-                                            }}
-                                            tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                        />
-                                        <Tooltip
-                                            cursor={{ stroke: '#6366f1', strokeWidth: 1, strokeDasharray: '4 4' }}
-                                            content={renderOperationsMonthlyTooltip}
-                                        />
-                                        {operationsTopBranchKeys.map((branch) => (
-                                            <Area
-                                                key={`ops-area-${branch.id}`}
-                                                type="monotone"
-                                                dataKey={branch.key}
-                                                name={branch.name}
-                                                stackId="ops-monthly"
-                                                stroke={branch.color}
-                                                strokeWidth={2}
-                                                fill={`url(#ops-branch-gradient-${branch.id})`}
-                                                fillOpacity={1}
-                                                activeDot={{ r: 4, strokeWidth: 0 }}
-                                                isAnimationActive={false}
-                                            />
-                                        ))}
-                                    </AreaChart>
-                                </ResponsiveContainer>
-                            )}
-                        </div>
-                        {operationsTopBranches.length > 0 && (
-                            <div className="pt-4">
-                                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                    {operationsTopBranches.map((branch, index) => (
-                                        <li
-                                            key={branch.branchId || `top-${index}`}
-                                            className="flex items-center justify-between rounded-2xl border border-orange-200/70 bg-white px-3 py-2 shadow-sm shadow-slate-200/40"
-                                        >
-                                            <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
-                                                <span
-                                                    className="inline-flex h-2.5 w-2.5 rounded-full"
-                                                    style={{
-                                                        backgroundColor: branchColorPalette[index % branchColorPalette.length],
-                                                    }}
-                                                />
-                                                {branch.name}
-                                            </span>
-                                            <span className="text-sm font-semibold text-slate-900">
-                                                {formatCurrency(branch.amount)}
-                                            </span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
-                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
-                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
-                        <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
-                                Filiali
-                            </p>
-                            <h2 className="text-lg font-black text-white">
-                                Incidenza sui costi {selectedOperationsYear}
-                            </h2>
-                        </div>
-                    </div>
-                    <div className="relative flex flex-1 flex-col px-6 py-6 bg-white">
-                        <div className="flex-1">
-                            {!hasOperationsDonutData ? (
-                                <div className="flex h-full items-center justify-center">
-                                    <EmptyState
-                                        icon={Layers}
-                                        title="Nessun dato disponibile"
-                                        message="Popola i costi delle filiali per visualizzare l’incidenza complessiva."
-                                    />
-                                </div>
-                            ) : (
-                                <ResponsiveContainer width="100%" height={320}>
-                                    <PieChart>
-                                        <defs>
-                                            {operationsBranchDonutData.map((entry) => (
-                                                <linearGradient
-                                                    key={`ops-donut-${entry.id}`}
-                                                    id={`ops-donut-${entry.id}`}
-                                                    x1="0"
-                                                    y1="1"
-                                                    x2="0"
-                                                    y2="0"
-                                                >
-                                                    <stop offset="0%" stopColor={entry.color} stopOpacity={0.65} />
-                                                    <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
-                                                </linearGradient>
-                                            ))}
-                                        </defs>
-                                        <Tooltip content={renderBranchDonutTooltip} />
-                                        <Pie
-                                            data={operationsBranchDonutData}
-                                            dataKey="value"
-                                            nameKey="name"
-                                            cx="50%"
-                                            cy="50%"
-                                            innerRadius="60%"
-                                            outerRadius="80%"
-                                            paddingAngle={4}
-                                            strokeWidth={0}
-                                        >
-                                            {operationsBranchDonutData.map((entry) => (
-                                                <Cell key={`ops-donut-cell-${entry.id}`} fill={`url(#ops-donut-${entry.id})`} />
-                                            ))}
-                                        </Pie>
-                                    </PieChart>
-                                </ResponsiveContainer>
-                            )}
-                        </div>
-                        {operationsBranchDonutSummary.length > 0 && (
-                            <div className="mt-6">
-                                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                    {operationsBranchDonutSummary.map((entry) => (
-                                        <li
-                                            key={entry.id}
-                                            className="flex items-center justify-between rounded-2xl border border-orange-100/70 bg-white px-3 py-2 shadow-sm shadow-slate-200/40"
-                                        >
-                                            <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
-                                                <span
-                                                    className="inline-flex h-2.5 w-2.5 rounded-full"
-                                                    style={{ backgroundColor: entry.color }}
-                                                />
-                                                {entry.name}
-                                            </span>
-                                            <span className="text-sm font-semibold text-slate-900">
-                                                {formatCurrency(entry.value)}
-                                            </span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </section>
-            {operationsBranchSections.map((branch) => {
-                const share =
-                    operationsTotalSpend > 0 ? (branch.totalAmount / operationsTotalSpend) * 100 : 0;
-                const hasExpensesForBranch = branch.totalAmount > 0;
-
-                return (
-                    <section
-                        key={branch.key}
-                        className="relative overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]"
-                    >
-                        <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
-                            <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
-                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
-                            <div className="relative z-10 flex flex-col gap-1 px-6 py-5 text-white md:flex-row md:items-center md:justify-between">
-                                <div>
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
-                                        Filiale
-                                    </p>
-                                    <h2 className="text-lg font-black text-white">
-                                        {branch.displayName}
-                                    </h2>
-                                </div>
-                                <div className="text-left md:text-right">
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
-                                        Totale {selectedOperationsYear}
-                                    </p>
-                                    <p className="text-lg font-black text-white">
-                                        {formatCurrency(branch.totalAmount)}
-                                    </p>
-                                    <p className="text-xs font-semibold text-white/70">
-                                        Incidenza: {share.toFixed(1)}% del totale sedi
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="relative z-10 px-6 pb-6 pt-6">
-                            {!hasExpensesForBranch ? (
-                                <div className="rounded-3xl border-2 border-dashed border-orange-100 bg-orange-50/30 p-8 text-center">
-                                    <EmptyState
-                                        icon={Layers}
-                                        title="Nessuna spesa per questa filiale"
-                                        message="Registra un costo o aggiorna i filtri per visualizzare le spese della sede."
-                                    />
-                                </div>
-                            ) : (
-                                <div className="overflow-hidden rounded-3xl border border-orange-100/70 shadow-inner shadow-orange-100/70">
-                                    <ExpenseTableView
-                                        expenses={processedExpenses}
-                                        sectorMap={sectorMap}
-                                        supplierMap={supplierMap}
-                                        branchMap={branchMap}
-                                        contractMap={contractMap}
-                                        onEdit={handleOpenEditModal}
-                                        onDelete={handleDeleteExpense}
-                                        onDuplicate={handleDuplicateExpense}
-                                        canEditOrDelete={canEditOrDelete}
-                                        showDocuments={false}
-                                        splitByBranch
-                                        limitBranchId={branch.branchId}
-                                        actionVariant="icon"
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    </section>
-                );
-            })}
-            </>
-        )}
-
-        {/* Lista Spese generale (solo per domini non Operations) */}
-        {!isOperationsDomain && (
-            <section className="relative overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
-                <div className="pointer-events-none absolute inset-0">
-                    <div className="absolute -top-40 right-0 h-72 w-72 rounded-full bg-orange-200/25 blur-3xl" />
-                    <div className="absolute bottom-[-35%] left-1/4 h-64 w-64 rounded-full bg-orange-200/20 blur-3xl" />
-                </div>
-                <div className="relative z-10 flex flex-col">
-                    <div className="relative overflow-hidden rounded-t-3xl border-b border-white/20">
-                        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/95 via-orange-500/90 to-amber-500/85" />
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.45),transparent_55%)]" />
-                        <div className="relative z-10 flex flex-col gap-4 px-6 py-5 text-white">
-                            <div className="space-y-1">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
-                                    Elenco spese
-                                </p>
-                                <h2 className="text-lg font-black text-white">
-                                    Dettaglio fornitori e documentazione
-                                </h2>
-                            </div>
-
-                            {filterPresets.length > 0 && (
-                                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-white shadow-inner shadow-black/10 backdrop-blur">
-                                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
-                                        Preset rapidi
-                                    </span>
-                                    {filterPresets.map(preset => (
-                                        <div
-                                            key={preset.id}
-                                            className="inline-flex items-center gap-2 rounded-2xl border border-white/40 bg-white/15 px-3 py-1.5 text-sm font-semibold text-white shadow-sm shadow-black/10"
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => applyPreset(preset)}
-                                                className="flex-1 text-left transition-colors hover:text-white/80"
-                                            >
-                                                {preset.name}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => deletePreset(preset.id)}
-                                                className="text-white/70 transition-colors hover:text-rose-100"
-                                            >
-                                                <XCircle className="h-3.5 w-3.5" />
-                                            </button>
                                         </div>
-                                    ))}
+                                    ) : (
+                                        <div className="bg-white/85 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 p-12 text-center">
+                                            <div className="p-4 rounded-2xl bg-orange-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
+                                                <Search className="w-8 h-8 text-orange-600" />
+                                            </div>
+                                            <h3 className="text-xl font-bold text-gray-800 mb-4">Nessuna Spesa Trovata</h3>
+                                            <p className="text-gray-600 mb-6">
+                                                Non ci sono spese che corrispondono ai filtri selezionati.
+                                            </p>
+                                            {hasActiveFilters && (
+                                                <button
+                                                    onClick={resetFilters}
+                                                    className="px-6 py-3 bg-gradient-to-r from-orange-600 to-orange-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all"
+                                                >
+                                                    Resetta Filtri
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
-                    </div>
-                    <div className="relative z-10 px-6 pb-6 pt-6">
-                        {processedExpenses.length > 0 ? (
-                            <div className="overflow-hidden rounded-3xl border border-orange-100 bg-white shadow-inner shadow-orange-100/50">
-                                <ExpenseTableView
-                                    expenses={processedExpenses}
-                                    sectorMap={sectorMap}
-                                    supplierMap={supplierMap}
-                                    branchMap={branchMap}
-                                    contractMap={contractMap}
-                                    onEdit={handleOpenEditModal}
-                                    onDelete={handleDeleteExpense}
-                                    onDuplicate={handleDuplicateExpense}
-                                    canEditOrDelete={canEditOrDelete}
-                                    showDocuments
-                                    actionVariant="icon"
-                                />
                             </div>
-                        ) : (
-                            <div className="bg-white/85 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 p-12 text-center">
-                                <div className="p-4 rounded-2xl bg-orange-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
-                                    <Search className="w-8 h-8 text-orange-600" />
-                                </div>
-                                <h3 className="text-xl font-bold text-gray-800 mb-4">Nessuna Spesa Trovata</h3>
-                                <p className="text-gray-600 mb-6">
-                                    Non ci sono spese che corrispondono ai filtri selezionati.
-                                </p>
-                                {hasActiveFilters && (
-                                    <button
-                                        onClick={resetFilters}
-                                        className="px-6 py-3 bg-gradient-to-r from-orange-600 to-orange-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all"
-                                    >
-                                        Resetta Filtri
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </section>
-        )}
+                        </section>
+                    )}
 
-        {isOperationsDomain && processedExpenses.length === 0 && (
-            <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center">
-                <div className="p-4 rounded-2xl bg-orange-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
-                    <Search className="w-8 h-8 text-orange-600" />
+                    {isOperationsDomain && processedExpenses.length === 0 && (
+                        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-12 text-center">
+                            <div className="p-4 rounded-2xl bg-orange-100 w-16 h-16 mx-auto mb-6 flex items-center justify-center">
+                                <Search className="w-8 h-8 text-orange-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-800 mb-4">Nessuna Spesa Trovata</h3>
+                            <p className="text-gray-600">
+                                Non ci sono costi associati alle sedi in questo periodo.
+                            </p>
+                        </div>
+                    )}
                 </div>
-                <h3 className="text-xl font-bold text-gray-800 mb-4">Nessuna Spesa Trovata</h3>
-                <p className="text-gray-600">
-                    Non ci sono costi associati alle sedi in questo periodo.
-                </p>
             </div>
-        )}
-                </div>
-            </div>
-        {/* Modali */}
-        {isModalOpen && (
-            <ExpenseFormModal
-                isOpen={isModalOpen} 
-                onClose={handleCloseModal} 
-                onSave={handleSaveExpense} 
-                initialData={editingExpense} 
-                sectors={sectors} 
-                branches={branches} 
-                suppliers={suppliers} 
-                marketingChannels={marketingChannels} 
-                contracts={contracts} 
-                geographicAreas={geographicAreas} 
-                domainConfigs={domainConfigs}
-                defaultCostDomain={resolvedCostDomain}
-                domainOptions={domainOptions}
-                allowDomainSwitch={canChangeDomain}
-            />
-        )}
-    </div>
-);
+            {/* Modali */}
+            {isModalOpen && (
+                <ExpenseFormModal
+                    isOpen={isModalOpen}
+                    onClose={handleCloseModal}
+                    onSave={handleSaveExpense}
+                    initialData={editingExpense}
+                    sectors={sectors}
+                    branches={branches}
+                    suppliers={suppliers}
+                    marketingChannels={marketingChannels}
+                    contracts={contracts}
+                    geographicAreas={geographicAreas}
+                    domainConfigs={domainConfigs}
+                    defaultCostDomain={resolvedCostDomain}
+                    domainOptions={domainOptions}
+                    allowDomainSwitch={canChangeDomain}
+                />
+            )}
+        </div>
+    );
 }

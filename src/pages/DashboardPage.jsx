@@ -127,7 +127,7 @@ const SectorCard = React.memo(({ sector, onClick, includeProjections }) => {
     const utilization = hasBudget ? (totalValue / sector.budget) * 100 : (totalValue > 0 ? Infinity : 0);
     const isOverBudget = !hasBudget ? totalValue > 0 : utilization > 100;
     const isWarning = hasBudget && utilization > 85 && !isOverBudget;
-    
+
     const spendPercentage = hasBudget ? (sector.spent / sector.budget) * 100 : 0;
     const projectionPercentage = hasBudget ? (totalProjections / sector.budget) * 100 : 0;
 
@@ -169,19 +169,19 @@ const SectorCard = React.memo(({ sector, onClick, includeProjections }) => {
 
                 <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-2xl border border-slate-200/60 bg-slate-50/70 px-4 py-3">
-                    <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-slate-500">
-                        Spesa effettiva
-                        <InfoTooltip message="Importo già registrato come spesa per il settore nel periodo considerato." />
+                        <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-slate-500">
+                            Spesa effettiva
+                            <InfoTooltip message="Importo già registrato come spesa per il settore nel periodo considerato." />
+                        </div>
+                        <p className="mt-1 text-lg font-black text-slate-900">{formatCurrency(sector.spent)}</p>
                     </div>
-                    <p className="mt-1 text-lg font-black text-slate-900">{formatCurrency(sector.spent)}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200/60 bg-slate-50/70 px-4 py-3">
-                    <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-slate-500">
-                        Budget annuo
-                        <InfoTooltip message="Budget assegnato al settore per l'anno in corso (o il periodo filtrato)." />
-                    </div>
-                    <p className="mt-1 text-lg font-black text-slate-900">
-                        {hasBudget ? formatCurrency(sector.budget) : 'N/D'}
+                    <div className="rounded-2xl border border-slate-200/60 bg-slate-50/70 px-4 py-3">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-slate-500">
+                            Budget annuo
+                            <InfoTooltip message="Budget assegnato al settore per l'anno in corso (o il periodo filtrato)." />
+                        </div>
+                        <p className="mt-1 text-lg font-black text-slate-900">
+                            {hasBudget ? formatCurrency(sector.budget) : 'N/D'}
                         </p>
                     </div>
                     {hasBudget && (
@@ -235,13 +235,12 @@ const SectorCard = React.memo(({ sector, onClick, includeProjections }) => {
                         </div>
                         <div className="relative h-2.5 overflow-hidden rounded-full bg-slate-200/80">
                             <div
-                                className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${
-                                    isOverBudget
-                                        ? 'bg-gradient-to-r from-rose-500 via-rose-500 to-red-600'
-                                        : isWarning
-                                            ? 'bg-gradient-to-r from-amber-400 via-orange-400 to-orange-500'
-                                            : 'bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600'
-                                }`}
+                                className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${isOverBudget
+                                    ? 'bg-gradient-to-r from-rose-500 via-rose-500 to-red-600'
+                                    : isWarning
+                                        ? 'bg-gradient-to-r from-amber-400 via-orange-400 to-orange-500'
+                                        : 'bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600'
+                                    }`}
                                 style={{ width: `${Math.min(spendPercentage + projectionPercentage, 100)}%` }}
                             />
                             <div
@@ -506,6 +505,8 @@ export default function DashboardPage({ navigate, user }) {
     const [suppliers, setSuppliers] = useState([]);
     const [sectors, setSectors] = useState([]);
     const [branches, setBranches] = useState([]);
+    const [marketingChannels, setMarketingChannels] = useState([]);
+    const [channelCategories, setChannelCategories] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedSector, setSelectedSector] = useState('all');
@@ -543,7 +544,9 @@ export default function DashboardPage({ navigate, user }) {
     const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
     const [isAdvancedPanelOpen, setIsAdvancedPanelOpen] = useState(false);
     const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
-    
+    const [isUncategorizedModalOpen, setIsUncategorizedModalOpen] = useState(false);
+    const [uncategorizedExpensesList, setUncategorizedExpensesList] = useState([]);
+
     const [startDate, setStartDate] = useState(() => {
         const currentYear = new Date().getFullYear();
         return formatDateInput(currentYear, 0, 1);
@@ -552,20 +555,20 @@ export default function DashboardPage({ navigate, user }) {
         const currentYear = new Date().getFullYear();
         return formatDateInput(currentYear, 11, 31);
     });
-    
+
     const [year, setYear] = useState(() => new Date().getFullYear());
-    
+
     // ✅ CORREZIONE: defaultStartDate e defaultEndDate corretti
     const defaultStartDate = useMemo(() => {
         const currentYear = new Date().getFullYear();
         return formatDateInput(currentYear, 0, 1);
     }, []);
-    
+
     const defaultEndDate = useMemo(() => {
         const currentYear = new Date().getFullYear();
         return formatDateInput(currentYear, 11, 31);
     }, []);
-    
+
     const hasCustomDateRange = useMemo(
         () => startDate !== defaultStartDate || endDate !== defaultEndDate,
         [startDate, endDate, defaultStartDate, defaultEndDate]
@@ -607,7 +610,7 @@ export default function DashboardPage({ navigate, user }) {
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
     const sectorNameToId = useMemo(() => new Map(sectors.map(s => [s.name, s.id])), [sectors]);
     const branchMap = useMemo(() => new Map(branches.map(b => [b.id, b.name])), [branches]);
-    
+
     const orderedSectors = useMemo(() => {
         const order = ['Auto', 'Camper&Caravan', 'Yachting', 'Frattin Group'];
         return [...sectors].sort((a, b) => {
@@ -627,17 +630,17 @@ export default function DashboardPage({ navigate, user }) {
     useEffect(() => {
         if (!user) return;
         setIsLoading(true);
-        
+
         let expensesQuery = query(collection(db, "expenses"));
         let contractsQuery = query(collection(db, "contracts"));
-        
+
         if (user.role === 'collaborator' && user.assignedChannels && user.assignedChannels.length > 0) {
             if (user.assignedChannels.length <= 10) {
                 expensesQuery = query(collection(db, "expenses"), where("supplierId", "in", user.assignedChannels));
                 contractsQuery = query(collection(db, "contracts"), where("supplierld", "in", user.assignedChannels));
             }
         }
-        
+
         const unsubs = [
             onSnapshot(expensesQuery, snap => setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(contractsQuery, snap => setAllContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
@@ -646,10 +649,15 @@ export default function DashboardPage({ navigate, user }) {
             onSnapshot(query(collection(db, "sectors"), orderBy("name")), snap => setSectors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "branches"), orderBy("name")), snap => {
                 setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                setIsLoading(false);
+                // setIsLoading(false); // Moved to the last data fetch
+            }),
+            onSnapshot(query(collection(db, "marketing_channels"), orderBy("name")), snap => setMarketingChannels(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+            onSnapshot(query(collection(db, "channel_categories"), orderBy("name")), snap => {
+                setChannelCategories(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                setIsLoading(false); // Set loading to false after the last data fetch
             })
         ];
-        
+
         return () => unsubs.forEach(unsub => unsub());
     }, [year, user]);
 
@@ -670,7 +678,8 @@ export default function DashboardPage({ navigate, user }) {
             annualBudgetTotal: 0,
             totalSuppliersSpent: 0,
             totalBranchesSpent: 0,
-            overdueEntries: []
+            overdueEntries: [],
+            categoryData: [] // Added categoryData
         };
 
         const dayMs = 24 * 60 * 60 * 1000;
@@ -687,7 +696,7 @@ export default function DashboardPage({ navigate, user }) {
         const filterEndDate = normalizeDate(endDate) || new Date(endDate);
         const today = normalizeDate(new Date()) || new Date();
 
-        const totals = { bySupplier: {}, bySector: {}, byBranch: {} };
+        const totals = { bySupplier: {}, bySector: {}, byBranch: {}, byCategory: {} }; // Added byCategory
         const monthlyTotals = Array.from({ length: 12 }, () => ({ real: 0, projected: 0 }));
 
         const supplierProjectionsTotal = {};
@@ -706,13 +715,13 @@ export default function DashboardPage({ navigate, user }) {
         let spesaPrevistaTotale = 0;
         let spesaPrevistaFutura = 0;
         let spesaPrevistaScaduta = 0;
-        
+
         const genericoBranchId = branches.find(b => b.name.toLowerCase() === 'generico')?.id;
-        
+
         const branchesPerSector = new Map();
         sectors.forEach(sector => {
-            const sectorBranches = branches.filter(b => 
-                b.associatedSectors?.includes(sector.id) && 
+            const sectorBranches = branches.filter(b =>
+                b.associatedSectors?.includes(sector.id) &&
                 b.id !== genericoBranchId
             );
             branchesPerSector.set(sector.id, sectorBranches);
@@ -725,14 +734,26 @@ export default function DashboardPage({ navigate, user }) {
             return mapped || null;
         };
 
+        // Maps for quick lookup for categories
+        const channelMap = new Map(marketingChannels.map(c => [c.id, c]));
+        const categoryMap = new Map(channelCategories.map(c => [c.id, c.name]));
+
+        // Helper to get category name from channel ID
+        const getCategoryName = (channelId) => {
+            if (!channelId) return 'Non categorizzato';
+            const channel = channelMap.get(channelId);
+            if (!channel || !channel.categoryId) return 'Non categorizzato';
+            return categoryMap.get(channel.categoryId) || 'Non categorizzato';
+        };
+
         // Processa spese
         marketingExpenses.forEach((expense) => {
             const supplierId = expense.supplierId || expense.supplierld || expense.channelId || expense.channelld;
             const expenseSectorId = normalizeSectorId(expense.sectorId || expense.sectorld);
-            
+
             const expenseDate = expense.date ? new Date(expense.date) : null;
             if (!expenseDate || expenseDate < filterStartDate || expenseDate > filterEndDate) return;
-            
+
             (expense.lineItems || []).forEach(item => {
                 const itemAmount = item.amount || 0;
                 const itemSectorId = normalizeSectorId(item.sectorId || expenseSectorId);
@@ -747,7 +768,7 @@ export default function DashboardPage({ navigate, user }) {
                 });
                 const matchesBranchFilter = selectedBranch === 'all' || associatedBranches.includes(selectedBranch);
                 if (!matchesBranchFilter) return;
-                
+
                 const branchShareFactor = selectedBranch === 'all'
                     ? 1
                     : (associatedBranches.length > 0 ? 1 / associatedBranches.length : 0);
@@ -759,9 +780,12 @@ export default function DashboardPage({ navigate, user }) {
                         monthlyTotals[date.getMonth()].real += amount;
                         if (supplierId) totals.bySupplier[supplierId] = (totals.bySupplier[supplierId] || 0) + amount;
                         totals.bySector[sectorName] = (totals.bySector[sectorName] || 0) + amount;
+                        // Category aggregation
+                        const categoryName = getCategoryName(item.marketingChannelId || expense.marketingChannelId);
+                        totals.byCategory[categoryName] = (totals.byCategory[categoryName] || 0) + amount;
                     }
                 };
-                
+
                 const processBranchAmount = (amount, date, branchesList) => {
                     if (date >= filterStartDate && date <= filterEndDate) {
                         let targetBranches = branchesList;
@@ -776,13 +800,13 @@ export default function DashboardPage({ navigate, user }) {
                         });
                     }
                 };
-                
+
                 if (expense.isAmortized && expense.amortizationStartDate && expense.amortizationEndDate) {
                     const startDate = new Date(expense.amortizationStartDate);
                     const endDate = new Date(expense.amortizationEndDate);
                     const durationDays = Math.max(1, (endDate - startDate) / (1000 * 60 * 60 * 24) + 1);
                     const dailyAmount = itemAmount / durationDays;
-                    
+
                     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
                         const currentDate = new Date(d);
                         const adjustedAmount = dailyAmount * branchShareFactor;
@@ -796,7 +820,7 @@ export default function DashboardPage({ navigate, user }) {
                 }
             });
         });
-        
+
         const overdueEntries = [];
 
         // Calcolo quote contrattuali attese e residui per contratto
@@ -812,6 +836,7 @@ export default function DashboardPage({ navigate, user }) {
                     const supplierId = lineItem.supplierId || contract.supplierId || lineItem.supplierld || contract.supplierld || null;
                     const sectorId = normalizeSectorId(lineItem.sectorId || contract.sectorId || lineItem.sectorld || contract.sectorld || null);
                     const branchId = lineItem.branchId || contract.branchId || lineItem.branchld || contract.branchld || null;
+                    const marketingChannelId = lineItem.marketingChannelId || contract.marketingChannelId || null; // Added marketingChannelId
                     return {
                         ...lineItem,
                         lineItemId,
@@ -821,6 +846,7 @@ export default function DashboardPage({ navigate, user }) {
                         supplierId,
                         sectorId,
                         branchId,
+                        marketingChannelId, // Added marketingChannelId
                         description: lineItem.description || 'N/D'
                     };
                 })
@@ -928,7 +954,7 @@ export default function DashboardPage({ navigate, user }) {
             allContracts.forEach(contract => {
                 const lineItems = contractLineItemsMeta.get(contract.id) || [];
                 lineItems.forEach(lineItem => {
-                    const { lineItemId, total, startDate, endDate, supplierId, sectorId, branchId, description } = lineItem;
+                    const { lineItemId, total, startDate, endDate, supplierId, sectorId, branchId, description, marketingChannelId } = lineItem; // Destructure marketingChannelId
                     if (!supplierId || total <= 0 || !startDate || !endDate || startDate > endDate) return;
                     if (selectedSector !== 'all' && sectorId !== selectedSector) return;
 
@@ -1088,7 +1114,7 @@ export default function DashboardPage({ navigate, user }) {
             const sectorBudgetInfo = sectorBudgets.find(sb => sb.sectorId === selectedSector);
             currentSectorBudget = sectorBudgetInfo?.maxAmount || 0;
         }
-        
+
         let budgetTotale = 0;
         const numberOfDays = (filterEndDate - filterStartDate) / (1000 * 60 * 60 * 24) + 1;
         const isFullYear = numberOfDays > 360;
@@ -1106,7 +1132,7 @@ export default function DashboardPage({ navigate, user }) {
             real: data.real,
             projected: data.projected,
         }));
-        
+
         const sectorData = orderedSectors.map(sector => {
             const budgetInfo = sectorBudgets.find(sb => sb.sectorId === sector.id);
             const spent = totals.bySector[sector.name] || 0;
@@ -1119,7 +1145,7 @@ export default function DashboardPage({ navigate, user }) {
             }
             return { id: sector.id, name: sector.name, spent, budget, projections, futureProjections: future, overdueProjections: overdue };
         }).filter(s => s.budget > 0 || s.spent > 0 || s.projections > 0);
-            
+
         const supplierIds = new Set([
             ...Object.keys(totals.bySupplier),
             ...Object.keys(supplierProjectionsTotal)
@@ -1142,7 +1168,7 @@ export default function DashboardPage({ navigate, user }) {
         const topSuppliers = sortedSuppliers.slice(0, TOP_SUPPLIERS_LIMIT);
         const topSuppliersTotal = topSuppliers.reduce((sum, supplier) => sum + supplier.spent + supplier.projections, 0);
         const topSuppliersSpentOnly = topSuppliers.reduce((sum, supplier) => sum + supplier.spent, 0);
-        
+
         const allBranches = Object.entries(totals.byBranch)
             .map(([branchId, spent]) => ({
                 id: branchId,
@@ -1155,6 +1181,11 @@ export default function DashboardPage({ navigate, user }) {
             .filter(b => b.name !== 'N/D')
             .sort((a, b) => (b.spent + (b.projections || 0)) - (a.spent + (a.projections || 0)));
         const totalBranchesSpent = allBranches.reduce((sum, b) => sum + b.spent + (b.projections || 0), 0);
+
+        const categoryData = Object.entries(totals.byCategory).map(([name, spent]) => ({
+            name,
+            spent
+        })).sort((a, b) => b.spent - a.spent);
 
         return {
             spesaSostenuta,
@@ -1174,10 +1205,11 @@ export default function DashboardPage({ navigate, user }) {
             topSuppliersSpentOnly,
             suppliersGlobalCommitment: allSuppliersTotal,
             totalBranchesSpent,
-            overdueEntries
+            overdueEntries,
+            categoryData // Added categoryData
         };
-    }, [isLoading, marketingExpenses, allContracts, sectorBudgets, startDate, endDate, selectedSector, selectedBranch, sectors, branches, showProjections, supplierMap, sectorMap, sectorNameToId, branchMap, orderedSectors]);
-    
+    }, [isLoading, marketingExpenses, allContracts, sectorBudgets, startDate, endDate, selectedSector, selectedBranch, sectors, branches, showProjections, supplierMap, sectorMap, sectorNameToId, branchMap, orderedSectors, marketingChannels, channelCategories]);
+
     const overdueList = useMemo(() => {
         return (metrics.overdueEntries || []).slice().sort((a, b) => (b.overdueAmount || 0) - (a.overdueAmount || 0));
     }, [metrics.overdueEntries]);
@@ -1360,24 +1392,184 @@ export default function DashboardPage({ navigate, user }) {
     }, []);
 
     const categoryDistribution = useMemo(() => {
-        const usableSectors = metrics.sectorData.filter(sector => (sector.name || '').toLowerCase() !== 'sconosciuto' && (sector.spent || 0) > 0);
-        const total = usableSectors.reduce((sum, sector) => sum + (sector.spent || 0), 0);
+        // Filter out 'affitto' and 'sconosciuto'
+        const usableCategories = (metrics.categoryData || [])
+            .filter(cat => {
+                const lowerName = (cat.name || '').toLowerCase();
+                return lowerName !== 'sconosciuto' && lowerName !== 'affitto' && (cat.spent || 0) > 0;
+            })
+            .map(cat => ({ name: cat.name, amount: cat.spent }));
+
+        const total = usableCategories.reduce((sum, cat) => sum + cat.amount, 0);
         if (total <= 0) {
             return { total: 0, segments: [] };
         }
-        const segments = usableSectors.map((sector, idx) => {
-            const amount = sector.spent || 0;
-            const percent = amount / total;
-            return {
-                id: sector.id,
-                name: sector.name,
-                amount,
-                percent,
-                color: getSectorColor(sector.name, idx)
-            };
-        });
+
+        // Sort by amount descending
+        usableCategories.sort((a, b) => b.amount - a.amount);
+
+        let segments = [];
+        if (usableCategories.length > 6) {
+            const top5 = usableCategories.slice(0, 5);
+            const others = usableCategories.slice(5);
+            const othersAmount = others.reduce((sum, cat) => sum + cat.amount, 0);
+
+            segments = top5.map((cat, idx) => ({
+                id: idx,
+                name: cat.name,
+                amount: cat.amount,
+                percent: cat.amount / total,
+                color: getSectorColor(cat.name, idx)
+            }));
+
+            segments.push({
+                id: 5,
+                name: 'Altre Categorie',
+                amount: othersAmount,
+                percent: othersAmount / total,
+                color: '#94a3b8', // Slate-400 for "Others"
+                isOthers: true,
+                othersBreakdown: others.map(cat => ({
+                    name: cat.name,
+                    value: cat.amount
+                }))
+            });
+        } else {
+            segments = usableCategories.map((cat, idx) => ({
+                id: idx,
+                name: cat.name,
+                amount: cat.amount,
+                percent: cat.amount / total,
+                color: getSectorColor(cat.name, idx)
+            }));
+        }
+
         return { total, segments };
-    }, [metrics.sectorData]);
+    }, [metrics.categoryData]);
+    const handlePieClick = useCallback((data, index) => {
+        if (data && (data.name === 'Non categorizzato' || data.name === 'Altro')) {
+
+            const normalizeDate = (value) => {
+                if (!value) return null;
+                const d = new Date(value);
+                if (isNaN(d)) return null;
+                d.setHours(0, 0, 0, 0);
+                return d;
+            };
+
+            const normalizeSectorId = (value) => {
+                if (!value) return null;
+                if (sectorMap.has(value)) return value;
+                const mapped = sectorNameToId.get(value);
+                return mapped || null;
+            };
+
+            const filterStartDate = normalizeDate(startDate);
+            const filterEndDate = normalizeDate(endDate);
+
+            // Maps for quick lookup
+            const channelMap = new Map(marketingChannels.map(c => [c.id, c]));
+            const categoryMap = new Map(channelCategories.map(c => [c.id, c.name]));
+            const supplierMap = new Map(suppliers.map(s => [s.id, s.name]));
+
+            // Prepare helpers for branch derivation
+            const genericoBranchId = branches.find(b => b.name.toLowerCase() === 'generico')?.id;
+            const branchesPerSector = new Map();
+            sectors.forEach(sector => {
+                const sectorBranches = branches.filter(b =>
+                    b.associatedSectors?.includes(sector.id) &&
+                    b.id !== genericoBranchId
+                );
+                branchesPerSector.set(sector.id, sectorBranches);
+            });
+
+            const getCategoryName = (channelId) => {
+                if (!channelId) return 'Non categorizzato';
+                const channel = channelMap.get(channelId);
+                if (!channel || !channel.categoryId) return 'Non categorizzato';
+                return categoryMap.get(channel.categoryId) || 'Non categorizzato';
+            };
+
+            const relevantExpenses = [];
+
+            marketingExpenses.forEach((expense) => {
+                const expenseDate = expense.date ? new Date(expense.date) : null;
+                // Initial date check is removed here because amortized expenses might be outside but overlap
+
+                const expenseSectorId = normalizeSectorId(expense.sectorId || expense.sectorld);
+
+                (expense.lineItems || []).forEach(item => {
+                    const itemAmount = parseFloat(item.amount) || 0;
+                    const itemSectorId = normalizeSectorId(item.sectorId || expenseSectorId);
+
+                    // Correctly call deriveBranchesForLineItem with object argument
+                    const associatedBranches = deriveBranchesForLineItem({
+                        expense,
+                        item,
+                        sectorId: itemSectorId,
+                        branchMap,
+                        branchesPerSector
+                    });
+
+                    const matchesBranchFilter = selectedBranch === 'all' || associatedBranches.includes(selectedBranch);
+                    if (!matchesBranchFilter) return;
+
+                    const branchShareFactor = selectedBranch === 'all'
+                        ? 1
+                        : (associatedBranches.length > 0 ? 1 / associatedBranches.length : 0);
+
+                    if (branchShareFactor === 0) return;
+
+                    let contributedAmount = 0;
+
+                    if (expense.isAmortized && expense.amortizationStartDate && expense.amortizationEndDate) {
+                        const amortStart = new Date(expense.amortizationStartDate);
+                        const amortEnd = new Date(expense.amortizationEndDate);
+                        const durationDays = Math.max(1, (amortEnd - amortStart) / (1000 * 60 * 60 * 24) + 1);
+                        const dailyAmount = itemAmount / durationDays;
+
+                        // Calculate overlap
+                        const overlapStart = new Date(Math.max(amortStart, filterStartDate));
+                        const overlapEnd = new Date(Math.min(amortEnd, filterEndDate));
+
+                        if (overlapStart <= overlapEnd) {
+                            const overlapDays = Math.max(0, (overlapEnd - overlapStart) / (1000 * 60 * 60 * 24) + 1);
+                            contributedAmount = dailyAmount * overlapDays * branchShareFactor;
+                        }
+                    } else {
+                        if (expenseDate && expenseDate >= filterStartDate && expenseDate <= filterEndDate) {
+                            contributedAmount = itemAmount * branchShareFactor;
+                        }
+                    }
+
+                    if (contributedAmount > 0) {
+                        let isSectorMatch = true;
+                        if (selectedSector !== 'all') {
+                            isSectorMatch = itemSectorId === selectedSector;
+                        }
+
+                        if (isSectorMatch) {
+                            const categoryName = getCategoryName(item.marketingChannelId || expense.marketingChannelId);
+                            if (categoryName === data.name) {
+                                relevantExpenses.push({
+                                    ...item,
+                                    date: expense.date,
+                                    supplierName: supplierMap.get(expense.supplierId) || 'Sconosciuto',
+                                    expenseDescription: expense.description,
+                                    amount: contributedAmount, // Show the amount contributed to this period/filter
+                                    originalAmount: itemAmount
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+
+            setUncategorizedExpensesList(relevantExpenses.sort((a, b) => b.amount - a.amount));
+            setIsUncategorizedModalOpen(true);
+        }
+    }, [marketingExpenses, startDate, endDate, selectedSector, selectedBranch, marketingChannels, channelCategories, suppliers, branches, sectors, branchMap, sectorMap, sectorNameToId]);
+
     const renderMonthlyTrendTooltip = useCallback(
         ({ active, payload }) => {
             if (!active || !payload || payload.length === 0) return null;
@@ -1429,7 +1621,7 @@ export default function DashboardPage({ navigate, user }) {
                                 <span className="flex items-center gap-2 text-slate-600">
                                     <span
                                         className="inline-block h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: row.color }}
+                                        style={{ backgroundColor: row.color }}
                                     />
                                     {row.label}
                                 </span>
@@ -1442,26 +1634,30 @@ export default function DashboardPage({ navigate, user }) {
         },
         [monthlyTrendStats.monthlyAvgBudget, showProjections]
     );
-    const renderCategoryTooltip = useCallback(
-        ({ active, payload }) => {
-            if (!active || !payload || payload.length === 0) return null;
-            const entry = payload[0]?.payload;
-            if (!entry) return null;
-            const percentage = categoryDistribution.total > 0
-                ? ((entry.amount / categoryDistribution.total) * 100).toFixed(1)
-                : '0.0';
-
+    const renderCategoryTooltip = useCallback(({ active, payload }) => {
+        if (active && payload && payload.length) {
+            const data = payload[0].payload;
             return (
-                <div className={getTooltipContainerClass('orange')}>
-                    <p className="text-sm font-bold text-slate-900">{entry.name}</p>
+                <div className={getTooltipContainerClass('indigo')}>
+                    <p className="text-sm font-bold text-slate-900">{data.name}</p>
                     <p className="mt-1 text-xs font-semibold text-slate-600">
-                        {formatCurrency(entry.amount)} · {percentage}%
+                        {formatCurrency(data.amount)} · {(data.percent * 100).toFixed(1)}%
                     </p>
+                    {data.isOthers && data.othersBreakdown && (
+                        <div className="mt-2 space-y-1 border-t border-slate-100 pt-2">
+                            {data.othersBreakdown.map((item, idx) => (
+                                <div key={idx} className="flex justify-between text-[10px]">
+                                    <span className="text-slate-500">{item.name}</span>
+                                    <span className="font-medium text-slate-700">{formatCurrency(item.value)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             );
-        },
-        [categoryDistribution.total]
-    );
+        }
+        return null;
+    }, []);
 
     const resetFilters = () => {
         const currentYear = new Date().getFullYear();
@@ -1537,7 +1733,7 @@ export default function DashboardPage({ navigate, user }) {
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
             <div className="relative p-4 lg:p-8 space-y-6">
-                
+
                 {/* HEADER */}
                 <div className="space-y-6">
                     <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white shadow-2xl border border-white/20 p-6 lg:p-10">
@@ -1564,9 +1760,8 @@ export default function DashboardPage({ navigate, user }) {
                                             setIsAdvancedPanelOpen(false);
                                             setIsDateDropdownOpen(false);
                                         }}
-                                        className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold shadow-lg shadow-indigo-900/30 backdrop-blur-sm transition-all ${
-                                            hasPriorityInsights ? 'bg-white/15 text-white' : 'bg-white/10 text-white/70 hover:text-white'
-                                        }`}
+                                        className={`inline-flex items-center gap-2 rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold shadow-lg shadow-indigo-900/30 backdrop-blur-sm transition-all ${hasPriorityInsights ? 'bg-white/15 text-white' : 'bg-white/10 text-white/70 hover:text-white'
+                                            }`}
                                         aria-expanded={isNotificationsPanelOpen}
                                     >
                                         <Bell className="w-4 h-4" />
@@ -1687,16 +1882,14 @@ export default function DashboardPage({ navigate, user }) {
                                     setIsAdvancedPanelOpen(false);
                                 }}
                                 aria-expanded={isDateDropdownOpen}
-                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
-                                    hasCustomDateRange ? 'ring-2 ring-indigo-100' : ''
-                                }`}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${hasCustomDateRange ? 'ring-2 ring-indigo-100' : ''
+                                    }`}
                             >
                                 <Calendar className="h-4 w-4 text-slate-500" />
                                 <span className="whitespace-nowrap">{dateLabel}</span>
                                 <ArrowUpDown
-                                    className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${
-                                        isDateDropdownOpen ? 'rotate-180' : ''
-                                    }`}
+                                    className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${isDateDropdownOpen ? 'rotate-180' : ''
+                                        }`}
                                 />
                             </button>
                             {isDateDropdownOpen && (
@@ -1796,16 +1989,14 @@ export default function DashboardPage({ navigate, user }) {
                                     setIsDateDropdownOpen(false);
                                 }}
                                 aria-expanded={isAdvancedPanelOpen}
-                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
-                                    !showProjections ? 'ring-2 ring-indigo-100' : ''
-                                }`}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${!showProjections ? 'ring-2 ring-indigo-100' : ''
+                                    }`}
                             >
                                 <Filter className="h-4 w-4 text-slate-500" />
                                 <span className="whitespace-nowrap">Filtri avanzati</span>
                                 <ArrowUpDown
-                                    className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${
-                                        isAdvancedPanelOpen ? 'rotate-180' : ''
-                                    }`}
+                                    className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${isAdvancedPanelOpen ? 'rotate-180' : ''
+                                        }`}
                                 />
                             </button>
                             {isAdvancedPanelOpen && (
@@ -1830,11 +2021,10 @@ export default function DashboardPage({ navigate, user }) {
                                                         type="button"
                                                         key={`projection-${option.label}`}
                                                         onClick={() => setShowProjections(option.key)}
-                                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                                                            active
-                                                                ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
-                                                                : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
-                                                        }`}
+                                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${active
+                                                            ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                            : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                            }`}
                                                     >
                                                         {option.label}
                                                     </button>
@@ -1874,9 +2064,8 @@ export default function DashboardPage({ navigate, user }) {
                                     setIsDateDropdownOpen(false);
                                 }}
                                 aria-expanded={isPresetPanelOpen}
-                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
-                                    isPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
-                                }`}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/60 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/60 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${isPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
+                                    }`}
                             >
                                 <SlidersHorizontal className="h-4 w-4 text-slate-500" />
                                 Preset
@@ -2021,176 +2210,184 @@ export default function DashboardPage({ navigate, user }) {
                 )}
 
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
-                    <div className="pointer-events-none absolute inset-0">
-                        <div className="absolute -top-40 right-0 h-80 w-80 rounded-full bg-indigo-200/35 blur-3xl" />
-                        <div className="absolute bottom-[-35%] left-1/4 h-72 w-72 rounded-full bg-blue-200/25 blur-3xl" />
-                    </div>
-                    <div className="relative z-10 flex flex-col">
-                        <div className="flex flex-col gap-1 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 px-6 py-5 text-white">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
-                                Trend mensile
-                            </p>
-                            <div className="flex items-center gap-2">
-                                <h2 className="text-lg font-black text-white">Andamento spesa mensile</h2>
-                                <InfoTooltip message="Confronto mensile tra spesa realizzata, proiezioni e budget medio assegnato." />
-                            </div>
-                        </div>
-                        <div className="relative z-10 flex flex-col px-6 pb-6 pt-6 bg-white">
-                            {monthlyTrendStats.hasData ? (
-                                <>
-                                    <div className="h-72">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <RechartsBarChart
-                                                data={monthlyTrendStats.chartData}
-                                                margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
-                                            >
-                                                <defs>
-                                                    <linearGradient id="monthly-real-gradient" x1="0" y1="1" x2="0" y2="0">
-                                                        <stop offset="0%" stopColor="#F97316" stopOpacity={1} />
-                                                        <stop offset="100%" stopColor="#FDBA74" stopOpacity={1} />
-                                                    </linearGradient>
-                                                    <linearGradient id="monthly-projected-gradient" x1="0" y1="1" x2="0" y2="0">
-                                                        <stop offset="0%" stopColor="#818CF8" stopOpacity={1} />
-                                                        <stop offset="100%" stopColor="#A855F7" stopOpacity={1} />
-                                                    </linearGradient>
-                                                </defs>
-                                                <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
-                                                <XAxis
-                                                    dataKey="mese"
-                                                    tickLine={false}
-                                                    axisLine={false}
-                                                    tick={{ fill: '#475569', fontSize: 12, fontWeight: 600 }}
-                                                />
-                                                <YAxis hide />
-                                                <RechartsTooltip
-                                                    content={renderMonthlyTrendTooltip}
-                                                    cursor={{ fill: 'rgba(99,102,241,0.08)' }}
-                                                />
-                                                {monthlyTrendStats.monthlyAvgBudget > 0 && (
-                                                    <ReferenceLine
-                                                        y={monthlyTrendStats.monthlyAvgBudget}
-                                                        stroke="#F43F5E"
-                                                        strokeDasharray="6 4"
-                                                        strokeWidth={2}
-                                                        label={renderMonthlyBudgetLabel}
-                                                    />
-                                                )}
-                                                <Bar
-                                                    dataKey="real"
-                                                    stackId="spend"
-                                                    fill="url(#monthly-real-gradient)"
-                                                    maxBarSize={32}
-                                                >
-                                                    {monthlyTrendStats.chartData.map((entry, index) => {
-                                                        const hasProjected = showProjections && entry.projected > 0;
-                                                        return (
-                                                            <Cell
-                                                                key={`monthly-real-${entry.mese}-${index}`}
-                                                                radius={hasProjected ? [0, 0, 0, 0] : [8, 8, 0, 0]}
-                                                            />
-                                                        );
-                                                    })}
-                                                </Bar>
-                                                {showProjections && (
-                                                    <Bar
-                                                        dataKey="projected"
-                                                        stackId="spend"
-                                                        fill="url(#monthly-projected-gradient)"
-                                                        radius={[8, 8, 0, 0]}
-                                                        maxBarSize={32}
-                                                    />
-                                                )}
-                                            </RechartsBarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                    <div className="mt-6">
-                                        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                            {monthlyTrendStats.summaryCards.map(card => (
-                                                <li
-                                                    key={card.label}
-                                                    className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-indigo-100/50"
-                                                >
-                                                    <span className="text-sm font-semibold text-slate-700">{card.label}</span>
-                                                    <span className="text-sm font-bold text-slate-900">
-                                                        {card.value}
-                                                    </span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="flex h-72 items-center justify-center text-sm font-semibold text-slate-500">
-                                    Nessun dato disponibile per il periodo selezionato.
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </section>
-
-                {categoryDistribution.segments.length > 0 && selectedSector === 'all' && (
-                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
                         <div className="pointer-events-none absolute inset-0">
-                            <div className="absolute -top-32 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-indigo-200/35 blur-3xl" />
-                            <div className="absolute bottom-[-35%] right-1/4 h-56 w-56 rounded-full bg-purple-200/25 blur-3xl" />
+                            <div className="absolute -top-40 right-0 h-80 w-80 rounded-full bg-indigo-200/35 blur-3xl" />
+                            <div className="absolute bottom-[-35%] left-1/4 h-72 w-72 rounded-full bg-blue-200/25 blur-3xl" />
                         </div>
-                        <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 px-6 py-5 z-10 text-white">
-                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/70">
-                                Composizione settori
-                            </p>
-                            <div className="flex items-center gap-2">
-                                <h2 className="text-lg font-black text-white">Distribuzione per settore</h2>
-                                <InfoTooltip message="Ripartizione dell'impegno economico per settore, con proiezioni incluse se abilitate." />
+                        <div className="relative z-10 flex flex-col">
+                            <div className="flex flex-col gap-1 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 px-6 py-5 text-white">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                                    Trend mensile
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <h2 className="text-lg font-black text-white">Andamento spesa mensile</h2>
+                                    <InfoTooltip message="Confronto mensile tra spesa realizzata, proiezioni e budget medio assegnato." />
+                                </div>
                             </div>
-                        </div>
-                        <div className="relative z-10 flex flex-col px-6 pb-6 pt-6 bg-white">
-                            <div className="h-72">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <RechartsPieChart>
-                                        <RechartsTooltip content={renderCategoryTooltip} />
-                                        <Pie
-                                            data={categoryDistribution.segments}
-                                            dataKey="amount"
-                                            nameKey="name"
-                                            cx="50%"
-                                            cy="50%"
-                                            innerRadius="55%"
-                                            outerRadius="80%"
-                                            paddingAngle={4}
-                                            strokeWidth={0}
-                                        >
-                                            {categoryDistribution.segments.map(segment => (
-                                                <Cell key={`category-segment-${segment.id}`} fill={segment.color} />
-                                            ))}
-                                        </Pie>
-                                    </RechartsPieChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <div className="mt-6">
-                                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                    {categoryDistribution.segments.map(segment => (
-                                        <li
-                                            key={`category-summary-${segment.id}`}
-                                            className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-white px-3 py-2 shadow-sm shadow-indigo-100/50"
-                                        >
-                                            <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                                                <span
-                                                    className="inline-flex h-2.5 w-2.5 rounded-full"
-                                                    style={{ backgroundColor: segment.color }}
-                                                />
-                                                {segment.name}
-                                            </span>
-                                            <span className="text-sm font-semibold text-slate-900">
-                                                {formatCurrency(segment.amount)}
-                                            </span>
-                                        </li>
-                                    ))}
-                                </ul>
+                            <div className="relative z-10 flex flex-col px-6 pb-6 pt-6 bg-white">
+                                {monthlyTrendStats.hasData ? (
+                                    <>
+                                        <div className="h-72">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <RechartsBarChart
+                                                    data={monthlyTrendStats.chartData}
+                                                    margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                                                >
+                                                    <defs>
+                                                        <linearGradient id="monthly-real-gradient" x1="0" y1="1" x2="0" y2="0">
+                                                            <stop offset="0%" stopColor="#F97316" stopOpacity={1} />
+                                                            <stop offset="100%" stopColor="#FDBA74" stopOpacity={1} />
+                                                        </linearGradient>
+                                                        <linearGradient id="monthly-projected-gradient" x1="0" y1="1" x2="0" y2="0">
+                                                            <stop offset="0%" stopColor="#818CF8" stopOpacity={1} />
+                                                            <stop offset="100%" stopColor="#A855F7" stopOpacity={1} />
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
+                                                    <XAxis
+                                                        dataKey="mese"
+                                                        tickLine={false}
+                                                        axisLine={false}
+                                                        tick={{ fill: '#475569', fontSize: 12, fontWeight: 600 }}
+                                                    />
+                                                    <YAxis hide />
+                                                    <RechartsTooltip
+                                                        content={renderMonthlyTrendTooltip}
+                                                        cursor={{ fill: 'rgba(99,102,241,0.08)' }}
+                                                    />
+                                                    {monthlyTrendStats.monthlyAvgBudget > 0 && (
+                                                        <ReferenceLine
+                                                            y={monthlyTrendStats.monthlyAvgBudget}
+                                                            stroke="#F43F5E"
+                                                            strokeDasharray="6 4"
+                                                            strokeWidth={2}
+                                                            label={renderMonthlyBudgetLabel}
+                                                        />
+                                                    )}
+                                                    <Bar
+                                                        dataKey="real"
+                                                        stackId="spend"
+                                                        fill="url(#monthly-real-gradient)"
+                                                        maxBarSize={32}
+                                                    >
+                                                        {monthlyTrendStats.chartData.map((entry, index) => {
+                                                            const hasProjected = showProjections && entry.projected > 0;
+                                                            return (
+                                                                <Cell
+                                                                    key={`monthly-real-${entry.mese}-${index}`}
+                                                                    radius={hasProjected ? [0, 0, 0, 0] : [8, 8, 0, 0]}
+                                                                />
+                                                            );
+                                                        })}
+                                                    </Bar>
+                                                    {showProjections && (
+                                                        <Bar
+                                                            dataKey="projected"
+                                                            stackId="spend"
+                                                            fill="url(#monthly-projected-gradient)"
+                                                            radius={[8, 8, 0, 0]}
+                                                            maxBarSize={32}
+                                                        />
+                                                    )}
+                                                </RechartsBarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                        <div className="mt-6">
+                                            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                {monthlyTrendStats.summaryCards.map(card => (
+                                                    <li
+                                                        key={card.label}
+                                                        className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-slate-50/50 px-3 py-2 shadow-sm"
+                                                    >
+                                                        <span className="text-sm font-medium text-slate-600">{card.label}</span>
+                                                        <span className="text-sm font-semibold text-slate-900">
+                                                            {card.value}
+                                                        </span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="flex h-72 items-center justify-center text-sm font-semibold text-slate-500">
+                                        Nessun dato disponibile per il periodo selezionato.
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </section>
-                )}
+
+                    {categoryDistribution.segments.length > 0 && selectedSector === 'all' && (
+                        <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                            <div className="pointer-events-none absolute inset-0">
+                                <div className="absolute -top-32 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-indigo-200/35 blur-3xl" />
+                                <div className="absolute bottom-[-35%] right-1/4 h-56 w-56 rounded-full bg-purple-200/25 blur-3xl" />
+                            </div>
+                            <div className="relative flex flex-col gap-1 rounded-t-3xl border-b border-white/20 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 px-6 py-5 z-10 text-white">
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/70">
+                                    Composizione categorie
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <h2 className="text-lg font-black text-white">Distribuzione per categorie</h2>
+                                    <InfoTooltip message="Analisi della spesa effettiva suddivisa per categorie di marketing." />
+                                </div>
+                            </div>
+                            <div className="relative z-10 flex flex-col px-6 pb-6 pt-6 bg-white">
+                                <div className="h-72">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <RechartsPieChart>
+                                            <RechartsTooltip content={renderCategoryTooltip} />
+                                            <Pie
+                                                data={categoryDistribution.segments}
+                                                dataKey="amount"
+                                                nameKey="name"
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius="55%"
+                                                outerRadius="80%"
+                                                paddingAngle={4}
+                                                strokeWidth={0}
+                                                onClick={handlePieClick}
+                                                className="cursor-pointer"
+                                            >
+                                                {categoryDistribution.segments.map(segment => (
+                                                    <Cell
+                                                        key={`category-segment-${segment.id}`}
+                                                        fill={segment.color}
+                                                        className="transition-all duration-300 hover:opacity-80 stroke-white hover:stroke-2"
+                                                    />
+                                                ))}
+                                            </Pie>
+                                        </RechartsPieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="mt-6">
+                                    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        {categoryDistribution.segments.map(segment => (
+                                            <li
+                                                key={segment.id}
+                                                className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-slate-50/50 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span
+                                                        className="h-2.5 w-2.5 rounded-full"
+                                                        style={{ backgroundColor: segment.color }}
+                                                    />
+                                                    <span className="text-sm font-medium text-slate-600 truncate max-w-[100px]" title={segment.name}>
+                                                        {segment.name}
+                                                    </span>
+                                                </div>
+                                                <span className="text-sm font-semibold text-slate-900">
+                                                    {formatCurrency(segment.amount)}
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+                        </section>
+                    )}
                 </div>
 
                 {/* PERFORMANCE SETTORI */}
@@ -2215,13 +2412,13 @@ export default function DashboardPage({ navigate, user }) {
                                     onClick={() => navigate && navigate('expenses')}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/20 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-indigo-900/30 backdrop-blur transition hover:border-white/80 hover:bg-white/30"
                                 >
-                                Vedi tutte le spese
-                                <ChevronRight className="w-4 h-4" />
-                            </button>
+                                    Vedi tutte le spese
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
                             </div>
                             <div className="relative z-10 space-y-6 px-6 pb-6 pt-6">
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:gap-6">
-                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm flex flex-col justify-between">
+                                    <div className="rounded-2xl border border-indigo-100 bg-slate-50/50 px-4 py-3 shadow-sm flex flex-col justify-between">
                                         <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
                                             Budget attivo
                                             <InfoTooltip message="Budget complessivo disponibile per i settori nel periodo selezionato." />
@@ -2230,7 +2427,7 @@ export default function DashboardPage({ navigate, user }) {
                                             {formatCurrency(metrics.budgetTotale)}
                                         </p>
                                     </div>
-                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
+                                    <div className="rounded-2xl border border-indigo-100 bg-slate-50/50 px-4 py-3 shadow-sm">
                                         <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
                                             Spesa effettiva
                                             <InfoTooltip message="Somma delle spese già registrate nei settori attivi." />
@@ -2239,7 +2436,7 @@ export default function DashboardPage({ navigate, user }) {
                                             {formatCurrency(metrics.spesaSostenuta)}
                                         </p>
                                     </div>
-                                    <div className="rounded-2xl border border-slate-200/60 bg-white/90 px-4 py-3 shadow-sm">
+                                    <div className="rounded-2xl border border-indigo-100 bg-slate-50/50 px-4 py-3 shadow-sm">
                                         <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.18em]">
                                             Proiezioni attive
                                             <InfoTooltip message="Quote future o scadute legate ai contratti dei settori. Visibili solo se le proiezioni sono abilitate." />
@@ -2249,7 +2446,7 @@ export default function DashboardPage({ navigate, user }) {
                                         </p>
                                     </div>
                                 </div>
-                                
+
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 lg:gap-6">
                                     {visibleSectors.map(sector => (
                                         <SectorCard
@@ -2278,7 +2475,7 @@ export default function DashboardPage({ navigate, user }) {
                         </div>
                     </section>
                 )}
-                
+
                 {/* TOP FORNITORI */}
                 {metrics.topSuppliers.length > 0 && (
                     <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
@@ -2410,9 +2607,9 @@ export default function DashboardPage({ navigate, user }) {
                                 </div>
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                                     {visibleBranches.map((branch, index) => (
-                                        <BranchItem 
-                                            key={branch.id} 
-                                            branch={branch} 
+                                        <BranchItem
+                                            key={branch.id}
+                                            branch={branch}
                                             rank={index}
                                             onClick={() => {
                                                 if (navigate) {
@@ -2429,8 +2626,58 @@ export default function DashboardPage({ navigate, user }) {
                     </section>
                 )}
 
-                
+
             </div>
+
+            {/* Uncategorized Expenses Modal */}
+            {isUncategorizedModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4" onClick={() => setIsUncategorizedModalOpen(false)}>
+                    <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                        <div className="bg-slate-900 px-6 py-5 flex items-center justify-between shrink-0">
+                            <div>
+                                <h3 className="text-xl font-black text-white">Spese Non Categorizzate</h3>
+                                <p className="text-slate-400 text-sm">
+                                    Totale: {formatCurrency(uncategorizedExpensesList.reduce((sum, item) => sum + item.amount, 0))}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setIsUncategorizedModalOpen(false)}
+                                className="p-2 bg-white/10 rounded-xl text-white hover:bg-white/20 transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="overflow-y-auto p-6 space-y-4">
+                            {uncategorizedExpensesList.length === 0 ? (
+                                <div className="text-center py-10 text-slate-500">
+                                    Nessuna spesa trovata in questa categoria.
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {uncategorizedExpensesList.map((item, idx) => (
+                                        <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200 hover:border-indigo-300 transition-colors">
+                                            <div className="flex-1 min-w-0 mr-4">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{formatDate(item.date)}</span>
+                                                    <span className="text-slate-300">•</span>
+                                                    <span className="text-xs font-semibold text-indigo-600">{item.supplierName}</span>
+                                                </div>
+                                                <p className="font-semibold text-slate-900 truncate">{item.description || item.expenseDescription}</p>
+                                                <p className="text-xs text-slate-500 mt-1 truncate">
+                                                    Canale: {item.marketingChannelId ? 'ID: ' + item.marketingChannelId : 'Nessun canale assegnato'}
+                                                </p>
+                                            </div>
+                                            <div className="text-right shrink-0">
+                                                <p className="font-black text-slate-900">{formatCurrency(item.amount)}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

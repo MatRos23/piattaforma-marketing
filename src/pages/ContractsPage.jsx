@@ -2,10 +2,10 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { db } from '../firebase/config';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, setDoc, where } from 'firebase/firestore';
-import { 
+import {
     PlusCircle, Pencil, Trash2, Search, Layers, XCircle, FileSignature, Check,
     Paperclip, DollarSign, Calendar, Target, AlertTriangle, CheckCircle,
-    ArrowUpDown, MapPin, SlidersHorizontal, Bell, Filter
+    ArrowUpDown, MapPin, SlidersHorizontal, Bell, Filter, X
 } from 'lucide-react';
 import ContractFormModal from '../components/ContractFormModal';
 import toast from 'react-hot-toast';
@@ -178,9 +178,8 @@ const ContractsTableView = ({
                                         <button
                                             type="button"
                                             onClick={() => handleSort(column.key)}
-                                            className={`flex w-full items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/90 transition-colors hover:text-white ${
-                                                isRightAligned ? 'justify-end' : 'justify-start'
-                                            }`}
+                                            className={`flex w-full items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/90 transition-colors hover:text-white ${isRightAligned ? 'justify-end' : 'justify-start'
+                                                }`}
                                         >
                                             <span>{column.label}</span>
                                             <SortIndicatorIcon
@@ -331,8 +330,8 @@ const DateRangeFilter = ({
     dateFilter,
     setDateFilter,
     hasDateRange,
-    setIsPresetPanelOpen = () => {},
-    setIsAdvancedPanelOpen = () => {},
+    setIsPresetPanelOpen = () => { },
+    setIsAdvancedPanelOpen = () => { },
     variant = 'card'
 }) => {
     const formatDateLabel = (value) => {
@@ -607,18 +606,18 @@ export default function ContractsPage({ user }) {
     const presetsMountedRef = useRef(false);
     const [sortConfig, setSortConfig] = useState({ key: 'supplier', direction: 'asc' });
     const hasCustomDateRange = Boolean(dateFilter.startDate || dateFilter.endDate);
-    
+
     const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers]);
     const sectorMap = useMemo(() => new Map(sectors.map(s => [s.id, s.name])), [sectors]);
     const orderedBranches = useMemo(() => {
         return [...branches].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }, [branches]);
 
-        useEffect(() => {
+    useEffect(() => {
         setIsLoading(true);
-        
+
         let contractsQuery = query(collection(db, "contracts"), orderBy("signingDate", "desc"));
-        
+
         if (user.role === 'collaborator' && user.assignedChannels && user.assignedChannels.length > 0) {
             if (user.assignedChannels.length <= 10) {
                 contractsQuery = query(
@@ -628,7 +627,7 @@ export default function ContractsPage({ user }) {
                 );
             }
         }
-        
+
         const unsubs = [
             onSnapshot(contractsQuery, snap => setAllContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "expenses")), snap => setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
@@ -758,12 +757,12 @@ export default function ContractsPage({ user }) {
                 }
             });
 
-        const enrichedNormalizedLineItems = normalizedLineItems.map(li => {
-            const total = parseFloat(li.totalAmount) || 0;
-            const spent = lineItemSpent.get(li._normalizedId) || 0;
-            const spentUpToToday = lineItemSpentToDate.get(li._normalizedId) || 0;
-            const remaining = Math.max(0, total - spent);
-            let overdue = 0;
+            const enrichedNormalizedLineItems = normalizedLineItems.map(li => {
+                const total = parseFloat(li.totalAmount) || 0;
+                const spent = lineItemSpent.get(li._normalizedId) || 0;
+                const spentUpToToday = lineItemSpentToDate.get(li._normalizedId) || 0;
+                const remaining = Math.max(0, total - spent);
+                let overdue = 0;
 
                 if (total > 0 && li.startDate && li.endDate) {
                     const start = new Date(li.startDate);
@@ -781,20 +780,20 @@ export default function ContractsPage({ user }) {
                                 overdue = Math.max(0, Math.min(remaining, shortfall));
                             }
                         }
+                    }
                 }
-            }
 
-            const { _normalizedId, ...baseLineItem } = li;
-            return {
-                ...baseLineItem,
-                spent,
-                spentUpToToday,
-                remaining,
-                overdue
-            };
-        });
+                const { _normalizedId, ...baseLineItem } = li;
+                return {
+                    ...baseLineItem,
+                    spent,
+                    spentUpToToday,
+                    remaining,
+                    overdue
+                };
+            });
 
-        const cleanedLineItems = enrichedNormalizedLineItems;
+            const cleanedLineItems = enrichedNormalizedLineItems;
             const spentAmount = enrichedNormalizedLineItems.reduce((sum, li) => sum + li.spent, 0);
             const overdueAmount = enrichedNormalizedLineItems.reduce((sum, li) => sum + li.overdue, 0);
             const totalAmountFromLines = enrichedNormalizedLineItems.reduce((sum, li) => sum + (parseFloat(li.totalAmount) || 0), 0);
@@ -1214,7 +1213,7 @@ export default function ContractsPage({ user }) {
                 await uploadBytes(storageRef, contractFile);
                 fileURL = await getDownloadURL(storageRef);
             }
-            
+
             const dataToSave = { ...cleanFormData, lineItems: cleanLineItems, contractPdfUrl: fileURL, updatedAt: serverTimestamp() };
             Object.keys(dataToSave).forEach(key => { if (dataToSave[key] === undefined) dataToSave[key] = null; });
             (dataToSave.lineItems || []).forEach(item => Object.keys(item).forEach(key => { if (item[key] === undefined) item[key] = null; }));
@@ -1252,7 +1251,7 @@ export default function ContractsPage({ user }) {
     };
 
     const resetFilters = () => {
-        setSearchTerm(''); 
+        setSearchTerm('');
         setSelectedBranch('all');
         setSelectedSector('all');
         setDateFilter({ startDate: '', endDate: '' });
@@ -1479,9 +1478,8 @@ export default function ContractsPage({ user }) {
                                     setIsDateDropdownOpen(false);
                                 }}
                                 aria-expanded={isAdvancedPanelOpen}
-                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
-                                    contractAdvancedFilter ? 'ring-2 ring-indigo-100' : ''
-                                }`}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${contractAdvancedFilter ? 'ring-2 ring-indigo-100' : ''
+                                    }`}
                             >
                                 <Filter className="h-4 w-4 text-slate-500" />
                                 <span className="whitespace-nowrap">Filtri avanzati</span>
@@ -1507,11 +1505,10 @@ export default function ContractsPage({ user }) {
                                                     key={option.key || 'all'}
                                                     type="button"
                                                     onClick={() => setContractAdvancedFilter(option.key)}
-                                                    className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                                                        active
-                                                            ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
-                                                            : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
-                                                    }`}
+                                                    className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${active
+                                                        ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                        : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                        }`}
                                                 >
                                                     {option.label}
                                                 </button>
@@ -1538,7 +1535,7 @@ export default function ContractsPage({ user }) {
                                 </div>
                             )}
                         </div>
-                        <div className="relative flex flex-wrap items-center gap-3">
+                        <div className="relative flex flex-row items-center gap-3">
                             {isFiltersPresetPanelOpen && (
                                 <div
                                     className="fixed inset-0 z-[210]"
@@ -1553,9 +1550,8 @@ export default function ContractsPage({ user }) {
                                     setIsDateDropdownOpen(false);
                                 }}
                                 aria-expanded={isFiltersPresetPanelOpen}
-                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
-                                    isFiltersPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
-                                }`}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${isFiltersPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
+                                    }`}
                             >
                                 <SlidersHorizontal className="h-4 w-4 text-slate-500" />
                                 Preset
@@ -1757,12 +1753,12 @@ export default function ContractsPage({ user }) {
                                             {contractsTrendSummary.map((entry) => (
                                                 <li
                                                     key={`trend-summary-${entry.sortKey}`}
-                                                    className="flex items-center justify-between rounded-2xl border border-blue-100/70 bg-white px-3 py-2 shadow-sm shadow-blue-100/40"
+                                                    className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-slate-50/50 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm"
                                                 >
-                                                    <span className="text-sm font-semibold text-slate-700">
+                                                    <span className="text-sm font-medium text-slate-600">
                                                         {entry.fullLabel}
                                                     </span>
-                                                    <span className="text-sm font-bold text-slate-900">
+                                                    <span className="text-sm font-semibold text-slate-900">
                                                         {formatCurrency(entry.spend + entry.overdue)}
                                                     </span>
                                                 </li>
@@ -1823,16 +1819,16 @@ export default function ContractsPage({ user }) {
                                                 return (
                                                     <li
                                                         key={`sector-summary-${entry.id}`}
-                                                        className="flex items-center justify-between rounded-2xl border border-blue-100/70 bg-white px-3 py-2 shadow-sm shadow-blue-100/40"
+                                                        className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-slate-50/50 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm"
                                                     >
-                                                        <span className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                                                        <span className="flex items-center gap-3 text-sm font-medium text-slate-600">
                                                             <span
                                                                 className="inline-flex h-2.5 w-2.5 rounded-full"
                                                                 style={{ backgroundColor: entry.color }}
                                                             />
                                                             {entry.name}
                                                         </span>
-                                                        <span className="text-sm font-bold text-slate-900">
+                                                        <span className="text-sm font-semibold text-slate-900">
                                                             {percentage}
                                                         </span>
                                                     </li>
@@ -1862,17 +1858,17 @@ export default function ContractsPage({ user }) {
                     onSortChange={handleSortChange}
                 />
 
-            {/* Modal */}
-            <ContractFormModal 
-                isOpen={isModalOpen}
-                onClose={handleCloseModal}
-                onSave={handleSaveContract}
-                initialData={editingContract}
-                suppliers={suppliers}
-                sectors={sectors}
-                branches={branches}
-            />
+                {/* Modal */}
+                <ContractFormModal
+                    isOpen={isModalOpen}
+                    onClose={handleCloseModal}
+                    onSave={handleSaveContract}
+                    initialData={editingContract}
+                    suppliers={suppliers}
+                    sectors={sectors}
+                    branches={branches}
+                />
+            </div>
         </div>
-    </div>
-);
+    );
 }

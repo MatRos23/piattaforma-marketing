@@ -136,20 +136,18 @@ const BudgetProgressBar = ({ spent = 0, forecast = 0, budget = 0 }) => {
         <div className="relative h-[10px] w-full rounded-full bg-slate-200/70 shadow-inner shadow-slate-300/70 overflow-hidden" role="progressbar" aria-valuenow={Math.min(totalUtilization, 130)} aria-valuemin={0} aria-valuemax={100}>
             <div className="absolute inset-0 bg-gradient-to-r from-white/25 via-transparent to-white/25 pointer-events-none" />
             <div
-                className={`absolute inset-y-0 left-0 z-[1] rounded-full transition-all duration-500 ease-out ${
-                    hasOverrun
-                        ? 'bg-gradient-to-r from-rose-500 via-rose-500 to-red-600'
-                        : 'bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500'
-                }`}
+                className={`absolute inset-y-0 left-0 z-[1] rounded-full transition-all duration-500 ease-out ${hasOverrun
+                    ? 'bg-gradient-to-r from-rose-500 via-rose-500 to-red-600'
+                    : 'bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500'
+                    }`}
                 style={{ width: `${clamp(spentWidth)}%` }}
             />
             {forecastWidth > 0 && (
                 <div
-                    className={`absolute inset-y-0 z-[2] rounded-full transition-all duration-500 ease-out ${
-                        hasOverrun
-                            ? 'bg-gradient-to-r from-rose-300 via-rose-400 to-red-400'
-                            : 'bg-gradient-to-r from-amber-400 via-orange-500 to-amber-500'
-                    }`}
+                    className={`absolute inset-y-0 z-[2] rounded-full transition-all duration-500 ease-out ${hasOverrun
+                        ? 'bg-gradient-to-r from-rose-300 via-rose-400 to-red-400'
+                        : 'bg-gradient-to-r from-amber-400 via-orange-500 to-amber-500'
+                        }`}
                     style={{
                         left: `${clamp(spentWidth)}%`,
                         width: `${clamp(forecastWidth)}%`
@@ -235,10 +233,10 @@ const SupplierTableView = React.memo(({
                         const progressLabel = isExtraBudget
                             ? 'Extra Budget'
                             : Number.isFinite(totalPercentage)
-                            ? (hasMeaningfulForecast
-                                ? `${Math.round(spentPercentage)}% + ${Math.round(forecastPercentage)}%`
-                                : `${Math.round(spentPercentage)}%`)
-                            : 'N/D';
+                                ? (hasMeaningfulForecast
+                                    ? `${Math.round(spentPercentage)}% + ${Math.round(forecastPercentage)}%`
+                                    : `${Math.round(spentPercentage)}%`)
+                                : 'N/D';
                         const isOverrun = !isExtraBudget && (Number.isFinite(totalPercentage)
                             ? totalPercentage >= 101
                             : spentValue > 0);
@@ -398,10 +396,10 @@ export default function BudgetPage() {
     const orderedSectors = useMemo(() => {
         const order = ['Auto', 'Camper&Caravan', 'Yachting', 'Frattin Group'];
         return [...sectors].sort((a, b) => {
-            const indexA = order.indexOf(a.name); 
+            const indexA = order.indexOf(a.name);
             const indexB = order.indexOf(b.name);
             if (indexA === -1 && indexB === -1) return a.name.localeCompare(b.name);
-            if (indexA === -1) return 1; 
+            if (indexA === -1) return 1;
             if (indexB === -1) return -1;
             return indexA - indexB;
         });
@@ -421,11 +419,11 @@ export default function BudgetPage() {
     useEffect(() => {
         setIsLoading(true);
         let staticDataLoaded = 0;
-        const onStaticDataLoad = () => { 
-            staticDataLoaded++; 
-            if (staticDataLoaded >= 2) setIsLoading(false); 
+        const onStaticDataLoad = () => {
+            staticDataLoaded++;
+            if (staticDataLoaded >= 2) setIsLoading(false);
         };
-        
+
         const unsubSummaries = onSnapshot(query(collection(db, "budget_summaries"), where("year", "==", year)), snap => setSummaries(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
         const unsubContracts = onSnapshot(query(collection(db, "contracts")), snap => setContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
         const unsubExpenses = onSnapshot(query(collection(db, "expenses")), snap => setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))); // NUOVO
@@ -443,16 +441,16 @@ export default function BudgetPage() {
         const unsubBranches = onSnapshot(collection(db, "branches"), snap => setBranches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
         const unsubMarketingChannels = onSnapshot(collection(db, "marketing_channels"), snap => setMarketingChannels(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
         const unsubSectorBudgets = onSnapshot(query(collection(db, "sector_budgets"), where("year", "==", year)), snap => setSectorBudgets(snap.docs.map(doc => doc.data())));
-        
-        return () => { 
-            unsubSummaries(); 
+
+        return () => {
+            unsubSummaries();
             unsubContracts();
             unsubExpenses(); // NUOVO
-            unsubSuppliers(); 
-            unsubSectors(); 
-            unsubBranches(); 
-            unsubMarketingChannels(); 
-            unsubSectorBudgets(); 
+            unsubSuppliers();
+            unsubSectors();
+            unsubBranches();
+            unsubMarketingChannels();
+            unsubSectorBudgets();
         };
     }, [year]);
 
@@ -650,12 +648,12 @@ export default function BudgetPage() {
                 displaySpend = displayDetails.reduce((sum, d) => sum + (d.detailedSpend || 0), 0);
                 displayBudget = displayDetails.reduce((sum, d) => sum + (d.budgetAmount || 0), 0);
             }
-            
-            return { 
-                ...summary, 
-                ...supplierInfo, 
-                displaySpend, 
-                displayBudget, 
+
+            return {
+                ...summary,
+                ...supplierInfo,
+                displaySpend,
+                displayBudget,
                 displayDetails,
                 projections,
                 overdue
@@ -663,7 +661,7 @@ export default function BudgetPage() {
         });
 
         let baseFiltered = enriched.filter(s => s.displaySpend > 0 || s.displayBudget > 0 || s.projections > 0 || s.overdue > 0);
-        
+
         if (selectedSector !== 'all' && baseFiltered.length > 0) {
             baseFiltered = baseFiltered.filter(s => {
                 const supplierInfo = supplierMap.get(s.supplierId);
@@ -674,7 +672,7 @@ export default function BudgetPage() {
         if (selectedBranch !== 'all') {
             baseFiltered = baseFiltered.filter(s => (s.displayDetails || []).length > 0);
         }
-        
+
         if (searchTerm.trim() !== '') {
             baseFiltered = baseFiltered.filter(s => s.name?.toLowerCase().includes(searchTerm.toLowerCase()));
         }
@@ -769,11 +767,11 @@ export default function BudgetPage() {
     ]);
 
     const supplierBarPalette = useMemo(
-    () => ['#10B981', '#059669', '#047857', '#14B8A6', '#22D3EE', '#2DD4BF'],
-    []
-);
+        () => ['#10B981', '#059669', '#047857', '#14B8A6', '#22D3EE', '#2DD4BF'],
+        []
+    );
 
-const supplierBarData = useMemo(() => {
+    const supplierBarData = useMemo(() => {
         const computeValue = (item) =>
             (item.displaySpend || 0) + (showProjections ? (item.overdue || 0) : 0);
 
@@ -1026,12 +1024,12 @@ const supplierBarData = useMemo(() => {
 
         return alerts;
     }, [displayData, showProjections]);
-    
+
     const globalKpis = useMemo(() => {
         const totalSpend = displayData.reduce((sum, item) => sum + item.displaySpend, 0);
         const totalFutureProjections = displayData.reduce((sum, item) => sum + (item.projections || 0), 0);
         const totalOverdueProjections = displayData.reduce((sum, item) => sum + (item.overdue || 0), 0);
-        
+
         let totalMasterBudget = 0;
         if (selectedSector === 'all') {
             totalMasterBudget = sectorBudgets.reduce((sum, item) => sum + (item.maxAmount || 0), 0);
@@ -1039,16 +1037,16 @@ const supplierBarData = useMemo(() => {
             const budgetInfo = sectorBudgets.find(b => b.sectorId === selectedSector);
             totalMasterBudget = budgetInfo?.maxAmount || 0;
         }
-        
+
         const totalAllocatedBudget = displayData.reduce((sum, item) => sum + item.displayBudget, 0);
         const projectionsCombined = totalFutureProjections + totalOverdueProjections;
         const totalForecast = totalSpend + (showProjections ? projectionsCombined : 0);
         const utilizationPercentage = totalMasterBudget > 0 ? (totalForecast / totalMasterBudget) * 100 : 0;
         const hasOverrunRisk = showProjections && totalForecast > totalMasterBudget;
-        
+
         return { totalSpend, totalFutureProjections, totalOverdueProjections, totalMasterBudget, totalAllocatedBudget, utilizationPercentage, totalForecast, hasOverrunRisk };
     }, [displayData, sectorBudgets, selectedSector, showProjections]);
-    
+
     const kpiCards = useMemo(() => {
         const supplierCount = displayData.length;
         const utilizationPct = globalKpis.totalMasterBudget > 0
@@ -1111,37 +1109,37 @@ const supplierBarData = useMemo(() => {
             setIsNotificationsPanelOpen(false);
         }
     }, [notificationCount, isNotificationsPanelOpen]);
-    
-    const handleOpenModal = (supplier) => { 
-        setIsModalOpen(true); 
-        const summary = summaries.find(s => s.supplierId === supplier.id); 
-        setSelectedSupplier({ 
-            ...supplier, 
-            allocations: summary?.details || [], 
-            isUnexpected: summary?.isUnexpected || false 
-        }); 
+
+    const handleOpenModal = (supplier) => {
+        setIsModalOpen(true);
+        const summary = summaries.find(s => s.supplierId === supplier.id);
+        setSelectedSupplier({
+            ...supplier,
+            allocations: summary?.details || [],
+            isUnexpected: summary?.isUnexpected || false
+        });
     };
-    
-    const handleCloseModal = () => { 
-        setIsModalOpen(false); 
-        setSelectedSupplier(null); 
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setSelectedSupplier(null);
     };
-    
+
     const handleSaveBudget = async (allocations, isUnexpected) => {
         if (!selectedSupplier || !year) return;
         const toastId = toast.loading("Salvataggio budget...");
-        
+
         try {
             const budgetQuery = query(collection(db, "budgets"), where("year", "==", year), where("supplierId", "==", selectedSupplier.id));
             const existingDocs = await getDocs(budgetQuery);
-            const dataToSave = { 
-                year, 
-                supplierId: selectedSupplier.id, 
-                allocations, 
-                isUnexpected, 
-                updatedAt: serverTimestamp() 
+            const dataToSave = {
+                year,
+                supplierId: selectedSupplier.id,
+                allocations,
+                isUnexpected,
+                updatedAt: serverTimestamp()
             };
-            
+
             const batch = writeBatch(db);
             if (existingDocs.empty) {
                 const newDocRef = doc(collection(db, "budgets"));
@@ -1149,16 +1147,16 @@ const supplierBarData = useMemo(() => {
             } else {
                 batch.update(existingDocs.docs[0].ref, dataToSave);
             }
-            
+
             await batch.commit();
             toast.success("Budget salvato!", { id: toastId });
             handleCloseModal();
-        } catch (error) { 
+        } catch (error) {
             console.error("Errore durante il salvataggio del budget:", error);
-            toast.error("Errore salvataggio.", { id: toastId }); 
+            toast.error("Errore salvataggio.", { id: toastId });
         }
     };
-    
+
     const resetFilters = () => {
         setSearchTerm('');
         setSelectedSector('all');
@@ -1218,7 +1216,7 @@ const supplierBarData = useMemo(() => {
             };
         });
     }, []);
-    
+
     if (isLoading) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
@@ -1229,7 +1227,7 @@ const supplierBarData = useMemo(() => {
             </div>
         );
     }
-    
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative">
             <div className="relative p-4 lg:p-8 space-y-6">
@@ -1453,11 +1451,10 @@ const supplierBarData = useMemo(() => {
                                 onClick={() => {
                                     setIsAdvancedPanelOpen(prev => !prev);
                                     setIsFiltersPresetPanelOpen(false);
-                                                            }}
+                                }}
                                 aria-expanded={isAdvancedPanelOpen}
-                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
-                                    advancedFilter ? 'ring-2 ring-indigo-100' : ''
-                                }`}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${advancedFilter ? 'ring-2 ring-indigo-100' : ''
+                                    }`}
                             >
                                 <Filter className="h-4 w-4 text-slate-500" />
                                 <span className="whitespace-nowrap">Filtri avanzati</span>
@@ -1489,11 +1486,10 @@ const supplierBarData = useMemo(() => {
                                                         type="button"
                                                         key={option.key || 'all'}
                                                         onClick={() => setAdvancedFilter(option.key)}
-                                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                                                            active
-                                                                ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
-                                                                : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
-                                                        }`}
+                                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${active
+                                                            ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                            : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                            }`}
                                                     >
                                                         {option.label}
                                                     </button>
@@ -1521,7 +1517,7 @@ const supplierBarData = useMemo(() => {
                                 </div>
                             )}
                         </div>
-                        <div className="relative flex flex-wrap items-center gap-3">
+                        <div className="relative flex flex-row items-center gap-3">
                             {isFiltersPresetPanelOpen && (
                                 <div className="fixed inset-0 z-[210]" onClick={() => setIsFiltersPresetPanelOpen(false)} />
                             )}
@@ -1530,11 +1526,10 @@ const supplierBarData = useMemo(() => {
                                 onClick={() => {
                                     setIsFiltersPresetPanelOpen(prev => !prev);
                                     setIsAdvancedPanelOpen(false);
-                                                            }}
+                                }}
                                 aria-expanded={isFiltersPresetPanelOpen}
-                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${
-                                    isFiltersPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
-                                }`}
+                                className={`inline-flex items-center gap-2 rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm shadow-slate-200/80 backdrop-blur transition hover:border-indigo-200 hover:text-indigo-600 ${isFiltersPresetPanelOpen ? 'ring-2 ring-indigo-100' : ''
+                                    }`}
                             >
                                 <SlidersHorizontal className="h-4 w-4 text-slate-500" />
                                 Preset
@@ -1781,9 +1776,9 @@ const supplierBarData = useMemo(() => {
                                         ].map((card) => (
                                             <div
                                                 key={card.label}
-                                                className="flex h-9 items-center justify-between rounded-xl border border-emerald-100/70 bg-white/85 px-3 py-1.5 shadow-inner shadow-emerald-100/40"
+                                                className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-slate-50/50 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm"
                                             >
-                                                <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                                <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                                                     {card.label}
                                                     <InfoTooltip message={card.tooltip} />
                                                 </div>
@@ -1864,9 +1859,9 @@ const supplierBarData = useMemo(() => {
                                                     return (
                                                         <div
                                                             key={`sector-stat-${entry.id}`}
-                                                            className="flex h-9 items-center justify-between rounded-xl border border-emerald-100/70 bg-white/80 px-3 py-1.5 shadow-inner shadow-emerald-100/40"
+                                                            className="flex items-center justify-between rounded-2xl border border-indigo-100 bg-slate-50/50 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm"
                                                         >
-                                                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                                            <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                                                                 {entry.name}
                                                                 <InfoTooltip message={`${entry.name}: ${formatCurrency(entry.value)} (${percentage}).`} />
                                                             </div>
@@ -1934,15 +1929,15 @@ const supplierBarData = useMemo(() => {
 
             {/* Modal */}
             {isModalOpen && (
-                <BudgetAllocationModal 
-                    isOpen={isModalOpen} 
-                    onClose={handleCloseModal} 
-                    onSave={handleSaveBudget} 
-                    supplier={selectedSupplier} 
-                    year={year} 
-                    initialAllocations={selectedSupplier?.allocations} 
-                    sectors={sectors} 
-                    branches={branches} 
+                <BudgetAllocationModal
+                    isOpen={isModalOpen}
+                    onClose={handleCloseModal}
+                    onSave={handleSaveBudget}
+                    supplier={selectedSupplier}
+                    year={year}
+                    initialAllocations={selectedSupplier?.allocations}
+                    sectors={sectors}
+                    branches={branches}
                     marketingChannels={marketingChannels}
                 />
             )}
