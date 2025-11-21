@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '../firebase/config';
 import { collection, query, onSnapshot, where, orderBy } from 'firebase/firestore';
 import {
@@ -71,7 +72,9 @@ const getSectorIcon = (sectorName, className = "w-5 h-5") => {
 
 const InfoTooltip = ({ message }) => {
     const [open, setOpen] = useState(false);
+    const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
     const containerRef = useRef(null);
+    const buttonRef = useRef(null);
 
     useEffect(() => {
         if (!open) return;
@@ -82,34 +85,49 @@ const InfoTooltip = ({ message }) => {
         };
         window.addEventListener('mousedown', handleClickOutside);
         window.addEventListener('touchstart', handleClickOutside);
+        window.addEventListener('scroll', () => setOpen(false), true); // Close on scroll
         return () => {
             window.removeEventListener('mousedown', handleClickOutside);
             window.removeEventListener('touchstart', handleClickOutside);
+            window.removeEventListener('scroll', () => setOpen(false), true);
         };
     }, [open]);
 
     const handleToggle = (event) => {
         event.stopPropagation();
+
+        if (!open && buttonRef.current) {
+            // Calculate fixed position based on button position
+            const rect = buttonRef.current.getBoundingClientRect();
+            setTooltipPosition({
+                top: rect.bottom + 8, //  8px below button (mt-2)
+                left: rect.left + rect.width / 2, // centered on button
+            });
+        }
+
         setOpen(prev => !prev);
     };
 
     return (
         <span ref={containerRef} className="relative inline-flex">
             <button
+                ref={buttonRef}
                 type="button"
                 onClick={handleToggle}
                 className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
                 <HelpCircle className="w-3.5 h-3.5" />
             </button>
-            {open && (
+            {open && createPortal(
                 <div
                     role="tooltip"
-                    className="absolute left-1/2 top-full z-30 mt-2 w-max max-w-[260px] -translate-x-1/2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-semibold text-white shadow-xl shadow-slate-900/25"
+                    className="fixed z-[9999] w-max max-w-[260px] -translate-x-1/2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-semibold text-white shadow-xl shadow-slate-900/25"
+                    style={{ top: `${tooltipPosition.top}px`, left: `${tooltipPosition.left}px` }}
                     onClick={event => event.stopPropagation()}
                 >
                     {message}
-                </div>
+                </div>,
+                document.body
             )}
         </span>
     );
@@ -1573,12 +1591,28 @@ export default function DashboardPage({ navigate, user }) {
     const renderMonthlyTrendTooltip = useCallback(
         ({ active, payload }) => {
             if (!active || !payload || payload.length === 0) return null;
-            const monthLabel = payload[0]?.payload?.mese || '';
+            const currentData = payload[0]?.payload;
+            const monthLabel = currentData?.mese || '';
+
+            // Find current month index
+            const monthIndex = monthlyTrendStats.chartData.findIndex(m => m.mese === monthLabel);
+            const prevMonthData = monthIndex > 0 ? monthlyTrendStats.chartData[monthIndex - 1] : null;
+
+            const currentTotal = payload.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
+            const prevTotal = prevMonthData ? (prevMonthData.real || 0) + (prevMonthData.projected || 0) : null;
+
+            let changePercent = null;
+            let changeDirection = null;
+            if (prevTotal && prevTotal > 0) {
+                changePercent = ((currentTotal - prevTotal) / prevTotal * 100).toFixed(1);
+                changeDirection = currentTotal > prevTotal ? 'up' : currentTotal < prevTotal ? 'down' : 'same';
+            }
+
             const rows = [
                 {
                     id: 'total',
                     label: 'Totale',
-                    value: payload.reduce((sum, item) => sum + (Number(item.value) || 0), 0),
+                    value: currentTotal,
                     color: '#6366F1',
                 },
             ];
@@ -1614,7 +1648,17 @@ export default function DashboardPage({ navigate, user }) {
 
             return (
                 <div className={getTooltipContainerClass('indigo')}>
-                    <p className="text-sm font-bold text-slate-900">{monthLabel}</p>
+                    <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-bold text-slate-900">{monthLabel}</p>
+                        {changePercent !== null && (
+                            <span className={`text-xs font-semibold ${changeDirection === 'up' ? 'text-rose-600' : changeDirection === 'down' ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                {changeDirection === 'up' && '↑'}
+                                {changeDirection === 'down' && '↓'}
+                                {changeDirection === 'same' && '→'}
+                                {' '}{Math.abs(parseFloat(changePercent))}%
+                            </span>
+                        )}
+                    </div>
                     <div className="mt-2 space-y-1 text-xs font-semibold text-slate-600">
                         {rows.map(row => (
                             <div key={`${monthLabel}-${row.id}`} className="flex items-center justify-between gap-6">
@@ -1632,7 +1676,7 @@ export default function DashboardPage({ navigate, user }) {
                 </div>
             );
         },
-        [monthlyTrendStats.monthlyAvgBudget, showProjections]
+        [monthlyTrendStats.chartData, monthlyTrendStats.monthlyAvgBudget, showProjections]
     );
     const renderCategoryTooltip = useCallback(({ active, payload }) => {
         if (active && payload && payload.length) {
@@ -2210,7 +2254,7 @@ export default function DashboardPage({ navigate, user }) {
                 )}
 
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
+                    <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/90 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-2xl">
                         <div className="pointer-events-none absolute inset-0">
                             <div className="absolute -top-40 right-0 h-80 w-80 rounded-full bg-indigo-200/35 blur-3xl" />
                             <div className="absolute bottom-[-35%] left-1/4 h-72 w-72 rounded-full bg-blue-200/25 blur-3xl" />
@@ -2319,7 +2363,7 @@ export default function DashboardPage({ navigate, user }) {
                     </section>
 
                     {categoryDistribution.segments.length > 0 && selectedSector === 'all' && (
-                        <section className="relative flex flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
+                        <section className="relative flex flex-col overflow-visible rounded-3xl border border-white/60 bg-white shadow-[0_28px_60px_-36px_rgba(15,23,42,0.45)]">
                             <div className="pointer-events-none absolute inset-0">
                                 <div className="absolute -top-32 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-indigo-200/35 blur-3xl" />
                                 <div className="absolute bottom-[-35%] right-1/4 h-56 w-56 rounded-full bg-purple-200/25 blur-3xl" />

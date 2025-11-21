@@ -438,11 +438,14 @@ const ExpensesAdvancedFiltersDropdown = ({
     setInvoiceFilter,
     contractFilter,
     setContractFilter,
+    selectedCategory,
+    setSelectedCategory,
+    channelCategories,
     onClear,
     onToggle,
     variant = 'card'
 }) => {
-    const hasAdvancedFilters = invoiceFilter !== '' || contractFilter !== '';
+    const hasAdvancedFilters = invoiceFilter !== '' || contractFilter !== '' || selectedCategory !== 'all';
     const isHeroVariant = variant === 'hero';
     const buttonClasses = isHeroVariant
         ? 'inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 shadow-lg shadow-orange-900/30 backdrop-blur-sm transition hover:border-white/60 hover:bg-white/20'
@@ -545,6 +548,43 @@ const ExpensesAdvancedFiltersDropdown = ({
                                 })}
                             </div>
                         </div>
+                        <div className="space-y-3">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Categoria
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    key="category-all"
+                                    type="button"
+                                    onClick={() => setSelectedCategory('all')}
+                                    className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${selectedCategory === 'all'
+                                        ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                        : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                        }`}
+                                >
+                                    Tutte
+                                </button>
+                                {channelCategories
+                                    .filter(cat => cat.name !== 'Affitto')
+                                    .sort((a, b) => a.name.localeCompare(b.name))
+                                    .map(category => {
+                                        const active = selectedCategory === category.id;
+                                        return (
+                                            <button
+                                                key={`category-${category.id}`}
+                                                type="button"
+                                                onClick={() => setSelectedCategory(category.id)}
+                                                className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${active
+                                                    ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-lg shadow-indigo-500/25'
+                                                    : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                                    }`}
+                                            >
+                                                {category.name}
+                                            </button>
+                                        );
+                                    })}
+                            </div>
+                        </div>
                         <div className="flex items-center justify-between">
                             <button
                                 type="button"
@@ -577,6 +617,8 @@ const ExpenseTableView = React.memo(({
     supplierMap,
     branchMap,
     contractMap,
+    marketingChannels,
+    channelCategories,
     onEdit,
     onDelete,
     onDuplicate,
@@ -694,7 +736,7 @@ const ExpenseTableView = React.memo(({
                                     {renderSortIndicator('supplier')}
                                 </button>
                             </th>
-                            <th className="px-4 py-3 text-left hidden lg:table-cell">DESCRIZIONE</th>
+                            <th className="px-4 py-3 text-left hidden lg:table-cell">CATEGORIA</th>
                             <th className="px-4 py-3 text-left hidden xl:table-cell">SETTORE</th>
                             <th className="px-4 py-3 text-left hidden xl:table-cell">FILIALE</th>
                             <th className="px-4 py-3 text-left">
@@ -721,6 +763,29 @@ const ExpenseTableView = React.memo(({
                             const hasContract = expense.isContractSatisfied;
                             const requiresContract = expense.requiresContract !== false;
                             const supplierName = supplierMap.get(expense.supplierId) || 'N/D';
+
+                            // Get category name from expense line items
+                            let categoryName = '—';
+                            if (expense.lineItems && expense.lineItems.length > 0) {
+                                const categoryIds = new Set();
+                                expense.lineItems.forEach(item => {
+                                    if (item.marketingChannelId) {
+                                        const channel = marketingChannels.find(ch => ch.id === item.marketingChannelId);
+                                        if (channel && channel.categoryId) {
+                                            categoryIds.add(channel.categoryId);
+                                        }
+                                    }
+                                });
+
+                                if (categoryIds.size === 1) {
+                                    const categoryId = Array.from(categoryIds)[0];
+                                    const category = channelCategories.find(cat => cat.id === categoryId);
+                                    categoryName = category ? category.name : '—';
+                                } else if (categoryIds.size > 1) {
+                                    categoryName = 'Categorie Multiple';
+                                }
+                            }
+
                             const segments = getBranchSegments(expense);
                             const filteredSegments = limitBranchId
                                 ? segments.filter((segment) => (segment.branchId || 'unassigned') === limitBranchId)
@@ -752,7 +817,7 @@ const ExpenseTableView = React.memo(({
                                         <td className="px-4 py-3 hidden lg:table-cell">
                                             {isPrimaryRow ? (
                                                 <p className="text-sm text-slate-600 truncate max-w-xs">
-                                                    {expense.description || '—'}
+                                                    {categoryName}
                                                 </p>
                                             ) : (
                                                 <span className="text-xs font-semibold text-slate-400">Quota filiale</span>
@@ -905,6 +970,7 @@ export default function ExpensesPage({
     const [branches, setBranches] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [marketingChannels, setMarketingChannels] = useState([]);
+    const [channelCategories, setChannelCategories] = useState([]);
     const [sectors, setSectors] = useState([]);
     const [geographicAreas, setGeographicAreas] = useState([]);
     const [contracts, setContracts] = useState([]);
@@ -925,6 +991,7 @@ export default function ExpensesPage({
     }));
     const [selectedSector, setSelectedSector] = useState('all');
     const [selectedBranch, setSelectedBranch] = useState('all');
+    const [selectedCategory, setSelectedCategory] = useState('all');
     const [invoiceFilter, setInvoiceFilter] = useState('');
     const [contractFilter, setContractFilter] = useState('');
     const [branchFilter, setBranchFilter] = useState([]);
@@ -1092,6 +1159,8 @@ export default function ExpensesPage({
                 snap => setSuppliers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "marketing_channels"), orderBy("name")),
                 snap => setMarketingChannels(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+            onSnapshot(query(collection(db, "channel_categories"), orderBy("name")),
+                snap => setChannelCategories(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "geographic_areas"), orderBy("name")),
                 snap => setGeographicAreas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
             onSnapshot(query(collection(db, "contracts"), orderBy("description")),
@@ -1276,6 +1345,20 @@ export default function ExpensesPage({
         // Filtro per settore
         if (selectedSector !== 'all') {
             normalized = normalized.filter(exp => exp.sectorId === selectedSector);
+        }
+
+        // Filtro per categoria
+        if (selectedCategory !== 'all') {
+            normalized = normalized.filter(exp => {
+                // Get category from marketing channel
+                if (exp.lineItems && exp.lineItems.length > 0) {
+                    return exp.lineItems.some(item => {
+                        const channel = marketingChannels.find(ch => ch.id === item.marketingChannelId);
+                        return channel && channel.categoryId === selectedCategory;
+                    });
+                }
+                return false;
+            });
         }
 
         // Filtro per fornitore (multi-selezione)
@@ -1476,6 +1559,7 @@ export default function ExpensesPage({
     }, [
         filteredExpenses,
         selectedSector,
+        selectedCategory,
         supplierFilter,
         dateFilter,
         statusFilter,
@@ -1486,6 +1570,7 @@ export default function ExpensesPage({
         sortOrder,
         supplierMap,
         marketingChannelMap,
+        marketingChannels,
         branchMap,
         branchesPerSector,
         budgetInfoMap
@@ -2046,6 +2131,7 @@ export default function ExpensesPage({
             endDate: dateFilter.endDate,
             selectedSector,
             selectedBranch,
+            selectedCategory,
             supplierFilter,
             branchFilter,
             statusFilter,
@@ -2059,7 +2145,7 @@ export default function ExpensesPage({
         });
         setPresetName('');
         toast.success('Preset salvato');
-    }, [presetName, dateFilter.startDate, dateFilter.endDate, selectedSector, selectedBranch, supplierFilter, branchFilter, statusFilter, invoiceFilter, contractFilter, sortOrder]);
+    }, [presetName, dateFilter.startDate, dateFilter.endDate, selectedSector, selectedBranch, selectedCategory, supplierFilter, branchFilter, statusFilter, invoiceFilter, contractFilter, sortOrder]);
 
     const applyPreset = useCallback((preset) => {
         setDateFilter({
@@ -2068,6 +2154,7 @@ export default function ExpensesPage({
         });
         setSelectedSector(preset.selectedSector || 'all');
         setSelectedBranch(preset.selectedBranch || 'all');
+        setSelectedCategory(preset.selectedCategory || 'all');
         setSupplierFilter(preset.supplierFilter || []);
         setBranchFilter(preset.branchFilter || []);
         setInvoiceFilter(preset.invoiceFilter || '');
@@ -2405,9 +2492,13 @@ export default function ExpensesPage({
                                 setInvoiceFilter={setInvoiceFilter}
                                 contractFilter={contractFilter}
                                 setContractFilter={setContractFilter}
+                                selectedCategory={selectedCategory}
+                                setSelectedCategory={setSelectedCategory}
+                                channelCategories={channelCategories}
                                 onClear={() => {
                                     setInvoiceFilter('');
                                     setContractFilter('');
+                                    setSelectedCategory('all');
                                 }}
                                 onToggle={() => {
                                     setIsPresetPanelOpen(false);
@@ -3061,6 +3152,8 @@ export default function ExpensesPage({
                                                         supplierMap={supplierMap}
                                                         branchMap={branchMap}
                                                         contractMap={contractMap}
+                                                        marketingChannels={marketingChannels}
+                                                        channelCategories={channelCategories}
                                                         onEdit={handleOpenEditModal}
                                                         onDelete={handleDeleteExpense}
                                                         onDuplicate={handleDuplicateExpense}
@@ -3139,6 +3232,8 @@ export default function ExpensesPage({
                                                 supplierMap={supplierMap}
                                                 branchMap={branchMap}
                                                 contractMap={contractMap}
+                                                marketingChannels={marketingChannels}
+                                                channelCategories={channelCategories}
                                                 onEdit={handleOpenEditModal}
                                                 onDelete={handleDeleteExpense}
                                                 onDuplicate={handleDuplicateExpense}
